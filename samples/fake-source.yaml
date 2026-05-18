@@ -1,0 +1,16 @@
+records:
+  - kind: note
+    source: sample
+    title: Open synth jam example
+    text: A local synth meetup with open participation and informal social time.
+    url: https://example.test/synth-jam
+    payload:
+      topic: electronic-music
+  - kind: note
+    source: sample
+    title: Metal show example
+    text: A small metal concert announcement in Vilnius.
+    url: https://example.test/metal-show
+    payload:
+      topic: metal
+

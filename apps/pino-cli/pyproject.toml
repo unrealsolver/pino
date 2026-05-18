@@ -1,0 +1,24 @@
+[project]
+name = "pino-cli"
+version = "0.1.0"
+description = "Command line interface for Pino."
+requires-python = ">=3.12"
+dependencies = [
+    "pino-core",
+    "rich>=13.9",
+    "typer>=0.15",
+]
+
+[project.scripts]
+pino = "pino_cli.main:app"
+
+[tool.uv.sources]
+pino-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pino_cli"]
+
