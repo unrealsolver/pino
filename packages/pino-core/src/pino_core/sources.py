@@ -16,10 +16,9 @@ class SourceAdapter(Protocol):
 
 
 class StaticYamlSource:
-    name = "static-yaml"
-
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, name: str = "static-yaml") -> None:
         self.path = path
+        self.name = name
 
     def fetch(self) -> list[Record]:
         data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
@@ -44,4 +43,3 @@ class StaticYamlSource:
             **raw["provenance"],
         }
         return Record.model_validate(raw)
-

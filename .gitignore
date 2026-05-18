@@ -1,4 +1,6 @@
 .pino/
+INFERCOM_API_KEY
+*.local.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -92,6 +92,31 @@ Providers:
 
 The application should still be partly useful without LLM calls. Fetching, storing, listing, simple filtering, and deterministic tests should not require a remote model.
 
+## Interactive Agent Shape
+
+Pino should use an LLM-to-tools design, not a kitchen-sink autonomous agent.
+
+The interactive path should look like this:
+
+1. Accept a natural-language user request.
+2. Store the user message.
+3. Assemble recent chat history, active memory, and available tool descriptions.
+4. Ask the configured LLM for either a normal response or a bounded tool request.
+5. Execute only explicit local tools.
+6. Store tool results and the assistant response.
+
+Initial tools should be narrow and inspectable:
+
+- `memory.add`
+- `memory.list`
+- `records.list`
+- `digest.create`
+- `sources.check`
+
+Do not expose shell execution, arbitrary filesystem access, browser automation, or generic Python execution to the LLM. Add real-world tools one at a time after the bounded local loop works.
+
+`pino chat` is part of the product direction because Pino should handle user requests through a natural-language interface. It is also the first practical proof of Infercom and Ollama provider integration.
+
 ## Integrations
 
 Each source should be isolated behind a small interface. Integrations should fetch and parse source-specific data, then return generic records with payloads and provenance. Evaluation and digest decisions belong in the core.

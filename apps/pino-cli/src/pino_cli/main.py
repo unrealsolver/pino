@@ -7,8 +7,18 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from pino_core import CheckPipeline, DigestService, MemoryEntry, SQLiteStore
-from pino_core.sources import StaticYamlSource
+from pino_core import (
+    ChatAgent,
+    CheckPipeline,
+    DigestService,
+    MemoryEntry,
+    PinoConfig,
+    SQLiteStore,
+    build_provider,
+    build_sources,
+    build_tools,
+    load_config,
+)
 
 app = typer.Typer(no_args_is_help=True)
 memory_app = typer.Typer(no_args_is_help=True)
@@ -17,48 +27,84 @@ app.add_typer(memory_app, name="memory")
 app.add_typer(sources_app, name="sources")
 
 console = Console()
-DEFAULT_DB = Path(".pino/pino.sqlite")
-DEFAULT_SOURCE = Path("samples/fake-source.yaml")
 
 
-def get_store(db: Path) -> SQLiteStore:
-    store = SQLiteStore(db)
+def get_config(path: Path | None) -> PinoConfig:
+    return load_config(path)
+
+
+def get_store(config: PinoConfig) -> SQLiteStore:
+    store = SQLiteStore(config.storage.path)
     store.init_schema()
     return store
 
 
 @app.command()
 def check(
-    source: Annotated[Path, typer.Option("--source", "-s")] = DEFAULT_SOURCE,
-    db: Annotated[Path, typer.Option("--db")] = DEFAULT_DB,
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
 ) -> None:
-    """Fetch records from a static source and store them."""
-    store = get_store(db)
-    pipeline = CheckPipeline(store=store, sources=[StaticYamlSource(source)])
+    """Fetch configured sources and store records."""
+    config = get_config(config_path)
+    store = get_store(config)
+    pipeline = CheckPipeline(store=store, sources=build_sources(config.sources))
     records = pipeline.run()
     console.print(f"Captured {len(records)} record(s).")
 
 
 @app.command()
 def digest(
-    db: Annotated[Path, typer.Option("--db")] = DEFAULT_DB,
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     limit: Annotated[int, typer.Option("--limit", "-n", min=1)] = 20,
 ) -> None:
     """Create and print a digest from recent records."""
-    store = get_store(db)
+    config = get_config(config_path)
+    store = get_store(config)
     artifact = DigestService(store).create_digest(limit=limit)
     console.rule(artifact.title)
     console.print(artifact.body)
+
+
+@app.command()
+def chat(
+    message: Annotated[str | None, typer.Option("--message", "-m")] = None,
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Start interactive chat or send a single chat message."""
+    config = get_config(config_path)
+    store = get_store(config)
+    sources = build_sources(config.sources)
+    agent = ChatAgent(
+        store=store,
+        provider=build_provider(config.llm),
+        tools=build_tools(store, sources),
+        config=config.chat,
+    )
+
+    if message:
+        result = agent.respond(message)
+        console.print(result.content)
+        return
+
+    console.print("Pino chat. Type /exit to quit.")
+    while True:
+        user_input = console.input("[bold]Boss[/bold]> ").strip()
+        if user_input in {"/exit", "/quit"}:
+            return
+        if not user_input:
+            continue
+        result = agent.respond(user_input)
+        console.print(result.content)
 
 
 @memory_app.command("add")
 def memory_add(
     content: Annotated[str, typer.Argument()],
     tags: Annotated[list[str] | None, typer.Option("--tag", "-t")] = None,
-    db: Annotated[Path, typer.Option("--db")] = DEFAULT_DB,
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
 ) -> None:
     """Add an active memory entry."""
-    store = get_store(db)
+    config = get_config(config_path)
+    store = get_store(config)
     memory = MemoryEntry(content=content, tags=tags or [])
     store.add_memory(memory)
     console.print(f"Added memory {memory.id}.")
@@ -66,11 +112,12 @@ def memory_add(
 
 @memory_app.command("list")
 def memory_list(
-    db: Annotated[Path, typer.Option("--db")] = DEFAULT_DB,
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     limit: Annotated[int, typer.Option("--limit", "-n", min=1)] = 50,
 ) -> None:
     """List active memory entries."""
-    store = get_store(db)
+    config = get_config(config_path)
+    store = get_store(config)
     rows = store.list_memory(limit=limit)
     table = Table("Created", "Tags", "Content")
     for row in rows:
@@ -79,9 +126,12 @@ def memory_list(
 
 
 @sources_app.command("list")
-def sources_list() -> None:
-    """List currently available source adapters."""
-    table = Table("Adapter", "Status")
-    table.add_row("static-yaml", "available")
+def sources_list(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """List configured source adapters."""
+    config = get_config(config_path)
+    table = Table("Name", "Type", "Status")
+    for source in config.sources:
+        table.add_row(source.name, source.type, "enabled" if source.enabled else "disabled")
     console.print(table)
-

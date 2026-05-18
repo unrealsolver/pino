@@ -178,6 +178,28 @@ Configuration should cover:
 
 Avoid hard-coding user preferences that should be editable without code changes.
 
+Current config entry point:
+
+- `config.example.yaml` is the committed sample config.
+- `config.local.yaml` is the default local override and should not be committed.
+- `INFERCOM_API_KEY` is a local secret file and should not be committed.
+
+Most CLI commands accept `--config/-c`. If omitted, Pino loads `config.local.yaml` when it exists, otherwise `config.example.yaml`.
+
+## Interactive Mode
+
+`pino chat` is the natural-language interface for bounded local tools. It is designed as LLM-to-tools, not as a broad autonomous agent.
+
+The initial tool set is intentionally small:
+
+- `memory.add`
+- `memory.list`
+- `records.list`
+- `digest.create`
+- `sources.check`
+
+The committed example config uses the local `echo` provider so the chat loop can be tested without network access. Set `llm.provider` to `infercom` or `ollama` in local config to test real providers.
+
 ## Development Notes For Codex
 
 When working on this repository:
@@ -203,8 +225,9 @@ Useful commands:
 UV_CACHE_DIR=/tmp/uv-cache uv sync --all-packages
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest
 UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .
-UV_CACHE_DIR=/tmp/uv-cache uv run pino check --source samples/fake-source.yaml
+UV_CACHE_DIR=/tmp/uv-cache uv run pino check
 UV_CACHE_DIR=/tmp/uv-cache uv run pino digest
+UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --message "show memory"
 ```
 
 ## Open Questions

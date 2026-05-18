@@ -1,0 +1,23 @@
+storage:
+  path: .pino/pino.sqlite
+
+llm:
+  provider: echo
+  model: echo
+  infercom:
+    base_url: https://api.infercom.ai/v1
+    api_key_file: INFERCOM_API_KEY
+    default_model: MiniMax-M2.5
+  ollama:
+    base_url: http://localhost:11434
+    default_model: gpt-oss-20b
+
+chat:
+  history_limit: 20
+  max_tool_rounds: 2
+
+sources:
+  - name: sample
+    type: static_yaml
+    path: samples/fake-source.yaml
+
