@@ -93,6 +93,8 @@ Providers:
 
 The package should wrap request/response quirks and normalize provider errors. For example, providers that do not support raw `tool` role history should receive tool results as ordinary context rather than OpenAI tool-call protocol messages.
 
+The package also owns the simple JSON action protocol used by `pino chat`: model responses are parsed as either final text or a bounded tool request. Invalid JSON falls back to final text, and unavailable tools are handled by the chat layer instead of crashing.
+
 The application should still be partly useful without LLM calls. Fetching, storing, listing, simple filtering, and deterministic tests should not require a remote model.
 
 ## Interactive Agent Shape
@@ -119,6 +121,8 @@ Initial tools should be narrow and inspectable:
 Do not expose shell execution, arbitrary filesystem access, browser automation, or generic Python execution to the LLM. Add real-world tools one at a time after the bounded local loop works.
 
 `pino chat` is part of the product direction because Pino should handle user requests through a natural-language interface. It is also the first practical proof of Infercom and Ollama provider integration.
+
+Operational controls should include debug output, per-request history limits, and chat history reset so provider behavior can be inspected without manually editing the database.
 
 ## Integrations
 

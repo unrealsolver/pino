@@ -23,8 +23,10 @@ from pino_core import (
 )
 
 app = typer.Typer(no_args_is_help=True)
+chat_app = typer.Typer(no_args_is_help=False, invoke_without_command=True)
 memory_app = typer.Typer(no_args_is_help=True)
 sources_app = typer.Typer(no_args_is_help=True)
+app.add_typer(chat_app, name="chat")
 app.add_typer(memory_app, name="memory")
 app.add_typer(sources_app, name="sources")
 
@@ -66,13 +68,21 @@ def digest(
     console.print(artifact.body)
 
 
-@app.command()
-def chat(
+@chat_app.callback(invoke_without_command=True)
+def chat_main(
+    ctx: typer.Context,
     message: Annotated[str | None, typer.Option("--message", "-m")] = None,
     config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+    history_limit: Annotated[int | None, typer.Option("--history-limit", min=0)] = None,
 ) -> None:
     """Start interactive chat or send a single chat message."""
+    if ctx.invoked_subcommand is not None:
+        return
+
     config = get_config(config_path)
+    if history_limit is not None:
+        config.chat.history_limit = history_limit
     store = get_store(config)
     sources = build_sources(config.sources)
     agent = ChatAgent(
@@ -84,10 +94,14 @@ def chat(
 
     if message:
         result = respond_or_exit(agent, message)
+        if debug:
+            print_chat_debug(config, result)
         console.print(result.content)
         return
 
     console.print("Pino chat. Type /exit to quit.")
+    if debug:
+        print_chat_config_debug(config)
     while True:
         user_input = console.input("[bold]Boss[/bold]> ").strip()
         if user_input in {"/exit", "/quit"}:
@@ -95,7 +109,20 @@ def chat(
         if not user_input:
             continue
         result = respond_or_exit(agent, user_input)
+        if debug:
+            print_chat_debug(config, result)
         console.print(result.content)
+
+
+@chat_app.command("reset")
+def chat_reset(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Clear stored chat history."""
+    config = get_config(config_path)
+    store = get_store(config)
+    deleted = store.clear_chat_messages()
+    console.print(f"Deleted {deleted} chat message(s).")
 
 
 def respond_or_exit(agent: ChatAgent, user_input: str):
@@ -104,6 +131,25 @@ def respond_or_exit(agent: ChatAgent, user_input: str):
     except LLMError as exc:
         print_provider_error(exc)
         raise typer.Exit(code=1) from exc
+
+
+def print_chat_config_debug(config: PinoConfig) -> None:
+    table = Table("Field", "Value")
+    table.add_row("provider", config.llm.default_provider)
+    table.add_row("model", config.llm.selected_model())
+    table.add_row("history_limit", str(config.chat.history_limit))
+    table.add_row("max_tool_rounds", str(config.chat.max_tool_rounds))
+    console.print(Panel(table, title="Chat debug", border_style="blue"))
+
+
+def print_chat_debug(config: PinoConfig, result) -> None:
+    table = Table("Field", "Value")
+    table.add_row("provider", config.llm.default_provider)
+    table.add_row("model", config.llm.selected_model())
+    table.add_row("tool_calls", ", ".join(result.tool_calls) or "<none>")
+    for key, value in result.debug.items():
+        table.add_row(str(key), json_dumps(value))
+    console.print(Panel(table, title="Chat debug", border_style="blue"))
 
 
 def print_provider_error(exc: LLMError) -> None:

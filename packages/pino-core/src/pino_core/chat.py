@@ -1,10 +1,6 @@
-from __future__ import annotations
-
-import json
 from dataclasses import dataclass
-from typing import Any
 
-from pino_llm import LLMClient, LLMMessage
+from pino_llm import LLMClient, LLMMessage, parse_action
 
 from pino_core.config import ChatConfig
 from pino_core.models import ChatMessage
@@ -16,6 +12,7 @@ from pino_core.tools import Tool, describe_tools
 class ChatResult:
     content: str
     tool_calls: list[str]
+    debug: dict[str, object]
 
 
 class ChatAgent:
@@ -37,37 +34,44 @@ class ChatAgent:
 
         tool_calls: list[str] = []
         tool_context: list[LLMMessage] = []
+        debug: dict[str, object] = {}
 
         for _ in range(self.config.max_tool_rounds + 1):
             messages = self._build_messages(tool_context)
+            debug = {
+                "message_count": len(messages),
+                "message_roles": [message.role for message in messages],
+                "tool_context_count": len(tool_context),
+            }
             raw_response = self.provider.complete(messages)
-            parsed = self._parse_response(raw_response)
+            action = parse_action(raw_response)
 
-            if "final" in parsed:
-                final = str(parsed["final"])
+            if action.kind == "final":
+                final = action.content or ""
                 self.store.add_chat_message(ChatMessage(role="assistant", content=final))
-                return ChatResult(content=final, tool_calls=tool_calls)
+                return ChatResult(content=final, tool_calls=tool_calls, debug=debug)
 
-            tool_name = parsed.get("tool")
-            arguments = parsed.get("arguments", {})
-            if not isinstance(tool_name, str) or tool_name not in self.tools:
-                final = raw_response
+            if not action.tool_name or action.tool_name not in self.tools:
+                final = (
+                    "Boss, the model requested an unavailable tool: "
+                    f"{action.tool_name or '<missing>'}."
+                )
                 self.store.add_chat_message(ChatMessage(role="assistant", content=final))
-                return ChatResult(content=final, tool_calls=tool_calls)
-            if not isinstance(arguments, dict):
-                arguments = {}
+                return ChatResult(content=final, tool_calls=tool_calls, debug=debug)
 
-            result = self.tools[tool_name].run(arguments)
-            tool_calls.append(tool_name)
+            result = self.tools[action.tool_name].run(action.arguments)
+            tool_calls.append(action.tool_name)
             self.store.add_chat_message(
-                ChatMessage(role="tool", content=result, payload={"tool": tool_name}),
+                ChatMessage(role="tool", content=result, payload={"tool": action.tool_name}),
             )
             tool_context.append(LLMMessage(role="assistant", content=raw_response))
-            tool_context.append(LLMMessage(role="tool", content=f"{tool_name} result:\n{result}"))
+            tool_context.append(
+                LLMMessage(role="tool", content=f"{action.tool_name} result:\n{result}"),
+            )
 
         final = "Boss, I reached the configured tool-call limit."
         self.store.add_chat_message(ChatMessage(role="assistant", content=final))
-        return ChatResult(content=final, tool_calls=tool_calls)
+        return ChatResult(content=final, tool_calls=tool_calls, debug=debug)
 
     def _build_messages(self, tool_context: list[LLMMessage]) -> list[LLMMessage]:
         system = (
@@ -84,15 +88,3 @@ class ChatAgent:
         messages.extend(LLMMessage(role=message.role, content=message.content) for message in history)
         messages.extend(tool_context)
         return messages
-
-    def _parse_response(self, raw_response: str) -> dict[str, Any]:
-        stripped = raw_response.strip()
-        if stripped.startswith("```"):
-            stripped = stripped.strip("`")
-            if stripped.startswith("json"):
-                stripped = stripped[4:].strip()
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError:
-            return {"final": raw_response}
-        return parsed if isinstance(parsed, dict) else {"final": raw_response}

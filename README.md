@@ -201,6 +201,14 @@ The initial tool set is intentionally small:
 
 The committed example config uses the local `echo` provider so the chat loop can be tested without network access. Set `llm.default_provider` to `infercom` or `ollama` in local config to test real providers.
 
+Chat controls:
+
+- `pino chat --message "..."`: one-shot chat message.
+- `pino chat`: interactive chat.
+- `pino chat --debug --message "..."`: print provider/model/message/tool diagnostics.
+- `pino chat --history-limit 0 --message "..."`: ignore stored history for this request.
+- `pino chat reset`: clear stored chat history.
+
 ## Development Notes For Codex
 
 When working on this repository:
@@ -230,6 +238,8 @@ UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .
 UV_CACHE_DIR=/tmp/uv-cache uv run pino check
 UV_CACHE_DIR=/tmp/uv-cache uv run pino digest
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --message "show memory"
+UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --debug --message "hello"
+UV_CACHE_DIR=/tmp/uv-cache uv run pino chat reset
 ```
 
 ## Open Questions

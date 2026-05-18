@@ -8,6 +8,7 @@ from pino_llm.config import (
 from pino_llm.errors import LLMError
 from pino_llm.messages import LLMMessage
 from pino_llm.providers import LLMClient, build_llm_client
+from pino_llm.protocol import LLMAction, parse_action
 
 __all__ = [
     "EchoConfig",
@@ -19,5 +20,6 @@ __all__ = [
     "OllamaConfig",
     "ProviderConfigs",
     "build_llm_client",
+    "LLMAction",
+    "parse_action",
 ]
-

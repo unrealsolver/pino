@@ -3,7 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import JSON, Column, DateTime, MetaData, String, Table, Text, create_engine, insert, select
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    delete,
+    insert,
+    select,
+)
 from sqlalchemy.orm import Session
 
 from pino_core.models import Artifact, ChatMessage, MemoryEntry, Record
@@ -95,6 +107,12 @@ class SQLiteStore:
     def list_chat_messages(self, limit: int = 50) -> list[ChatMessage]:
         rows = self._select_latest(chat_messages_table, chat_messages_table.c.created_at, limit)
         return [ChatMessage.model_validate(dict(row)) for row in rows]
+
+    def clear_chat_messages(self) -> int:
+        with Session(self.engine) as session:
+            result = session.execute(delete(chat_messages_table))
+            session.commit()
+            return result.rowcount or 0
 
     def _insert_model(self, table: Table, model: Any) -> None:
         with Session(self.engine) as session:
