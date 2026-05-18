@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 import yaml
 
+from pino_core.config import SourceConfig
 from pino_core.models import Record
 
 
@@ -13,6 +14,32 @@ class SourceAdapter(Protocol):
 
     def fetch(self) -> list[Record]:
         """Fetch records from a source."""
+
+
+SourceFactory = Callable[[SourceConfig], SourceAdapter]
+
+
+class SourceRegistry:
+    """Resolve source config objects through registered factories."""
+
+    def __init__(self) -> None:
+        self._factories: dict[str, SourceFactory] = {}
+
+    def register(self, source_type: str, factory: SourceFactory) -> None:
+        """Register a factory for a source type."""
+        self._factories[source_type] = factory
+
+    def build(self, config: SourceConfig) -> SourceAdapter:
+        """Build one source adapter from config."""
+        try:
+            factory = self._factories[config.type]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported source type: {config.type}") from exc
+        return factory(config)
+
+    def build_many(self, configs: list[SourceConfig]) -> list[SourceAdapter]:
+        """Build enabled source adapters from config."""
+        return [self.build(config) for config in configs if config.enabled]
 
 
 class StaticYamlSource:
@@ -43,3 +70,10 @@ class StaticYamlSource:
             **raw["provenance"],
         }
         return Record.model_validate(raw)
+
+
+def build_static_yaml_source(config: SourceConfig) -> SourceAdapter:
+    """Build the static YAML source adapter from config."""
+    if config.path is None:
+        raise ValueError("static_yaml source requires path")
+    return StaticYamlSource(config.path, name=config.name)

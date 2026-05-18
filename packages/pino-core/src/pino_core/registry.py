@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from pino_core.config import SourceConfig
-from pino_core.sources import SourceAdapter, StaticYamlSource
+from pino_core.integrations.kaveikti import build_kaveikti_source
+from pino_core.sources import SourceAdapter, SourceRegistry, build_static_yaml_source
+
+
+def default_source_registry() -> SourceRegistry:
+    registry = SourceRegistry()
+    registry.register("static_yaml", build_static_yaml_source)
+    registry.register("kaveikti", build_kaveikti_source)
+    return registry
 
 
 def build_sources(configs: list[SourceConfig]) -> list[SourceAdapter]:
-    sources: list[SourceAdapter] = []
-    for source_config in configs:
-        if not source_config.enabled:
-            continue
-        if source_config.type == "static_yaml":
-            sources.append(StaticYamlSource(source_config.path, name=source_config.name))
-        else:
-            raise ValueError(f"Unsupported source type: {source_config.type}")
-    return sources
-
+    return default_source_registry().build_many(configs)

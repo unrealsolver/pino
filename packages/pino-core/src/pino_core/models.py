@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from hashlib import sha256
 import re
 from datetime import datetime, timezone
+from hashlib import sha256
 from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
@@ -19,6 +19,13 @@ def new_id() -> str:
 
 
 class Record(BaseModel):
+    """Persistable unit of captured or derived information.
+
+    Records are intentionally generic. Source adapters can provide structured
+    details in ``payload`` and identity hints in ``external_id`` without forcing
+    source-specific concepts into the core schema.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=new_id)
@@ -35,12 +42,15 @@ class Record(BaseModel):
     provenance: dict[str, Any] = Field(default_factory=dict)
 
     def with_fingerprint(self) -> Record:
+        """Return this record with a deterministic idempotency fingerprint."""
         if self.fingerprint:
             return self
         return self.model_copy(update={"fingerprint": compute_record_fingerprint(self)})
 
 
 class Artifact(BaseModel):
+    """Generated output derived from records, memory, or chat context."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=new_id)
@@ -53,6 +63,8 @@ class Artifact(BaseModel):
 
 
 class MemoryEntry(BaseModel):
+    """Long-lived active memory available to future Pino decisions."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=new_id)
@@ -64,6 +76,8 @@ class MemoryEntry(BaseModel):
 
 
 class ChatMessage(BaseModel):
+    """Durable chat history message exchanged by the user, Pino, or tools."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=new_id)
@@ -74,6 +88,8 @@ class ChatMessage(BaseModel):
 
 
 class Evaluation(BaseModel):
+    """Assessment of a record against current goals or preferences."""
+
     model_config = ConfigDict(extra="forbid")
 
     record_id: str
@@ -83,6 +99,12 @@ class Evaluation(BaseModel):
 
 
 def compute_record_fingerprint(record: Record) -> str:
+    """Compute deterministic storage identity for a record.
+
+    The fingerprint is deliberately non-semantic: prefer explicit source
+    identity, then URL identity, then normalized text. Semantic duplicate
+    detection belongs in a later evaluation/enrichment layer.
+    """
     if record.external_id:
         parts = [record.source, record.kind, record.external_id]
     elif record.url:
@@ -99,10 +121,12 @@ def compute_record_fingerprint(record: Record) -> str:
 
 
 def _normalize_text(value: str) -> str:
+    """Normalize text for deterministic identity comparisons."""
     return re.sub(r"\s+", " ", value.strip().lower())
 
 
 def _normalize_url(value: str) -> str:
+    """Normalize URLs enough for first-pass source idempotency."""
     split = urlsplit(value.strip())
     query = [
         (key, val)

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pino_llm import LLMConfig
 
 
@@ -25,9 +24,18 @@ class SourceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    type: Literal["static_yaml"]
-    path: Path
+    type: str
+    path: Path | None = None
+    url: str | None = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def validate_source_target(self) -> SourceConfig:
+        if self.type == "static_yaml" and self.path is None:
+            raise ValueError("static_yaml source requires path")
+        if self.type == "kaveikti" and self.url is None:
+            raise ValueError("kaveikti source requires url")
+        return self
 
 
 class PinoConfig(BaseModel):
@@ -60,7 +68,8 @@ def _resolve_paths(config: PinoConfig, base_dir: Path) -> PinoConfig:
         base_dir,
     )
     for source in data["sources"]:
-        source["path"] = _resolve_path(source["path"], base_dir)
+        if source.get("path") is not None:
+            source["path"] = _resolve_path(source["path"], base_dir)
     return PinoConfig.model_validate(data)
 
 

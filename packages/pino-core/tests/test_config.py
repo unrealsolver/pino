@@ -23,3 +23,21 @@ sources:
 
     assert config.storage.path == config_dir / "data/pino.sqlite"
     assert config.sources[0].path == config_dir / "sources/sample.yaml"
+
+
+def test_load_config_accepts_kaveikti_source(tmp_path: Path) -> None:
+    config_path = tmp_path / "pino.yaml"
+    config_path.write_text(
+        """
+sources:
+  - name: kaveikti-vilnius
+    type: kaveikti
+    url: https://www.kaveikti.lt/renginiai/vilniuje
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.sources[0].type == "kaveikti"
+    assert config.sources[0].url == "https://www.kaveikti.lt/renginiai/vilniuje"

@@ -75,7 +75,7 @@ class ChatAgent:
 
     def _build_messages(self, tool_context: list[LLMMessage]) -> list[LLMMessage]:
         system = (
-            "You are Pino, a local personal agentic assistant. Address the user as Boss. "
+            "You are Pino, a local personal agentic assistant. You can occasionally the user as Boss. "
             "Be concise and practical. You are not a generic emotional support chatbot.\n\n"
             "You may request exactly one bounded local tool call at a time.\n"
             "Respond with strict JSON only, using one of these forms:\n"

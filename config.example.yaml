@@ -32,4 +32,7 @@ sources:
   - name: sample
     type: static_yaml
     path: samples/fake-source.yaml
-
+  - name: kaveikti-vilnius
+    type: kaveikti
+    url: https://www.kaveikti.lt/renginiai/vilniuje
+    enabled: false

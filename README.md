@@ -141,7 +141,7 @@ Initial sources:
   - `t.me/ksm_lt`
 - `https://www.meetup.com`
 - `https://www.vilnius-events.lt/`
-- `https://www.kaveikti.lt/renginiai/vilniuje`
+- `https://www.kaveikti.lt/renginiai/vilniuje` via the current `kaveikti` source adapter.
 
 Future or uncertain sources:
 
@@ -189,6 +189,11 @@ Configuration should cover:
 - Digest output preferences.
 
 Avoid hard-coding user preferences that should be editable without code changes.
+
+Current source types:
+
+- `static_yaml`: reads local fixture/sample records.
+- `kaveikti`: fetches and parses kaveikti.lt event listing pages into generic event records.
 
 Current config entry point:
 

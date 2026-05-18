@@ -136,6 +136,8 @@ Operational controls should include debug output, per-request history limits, an
 
 Each source should be isolated behind a small interface. Integrations should fetch and parse source-specific data, then return generic records with payloads and provenance. Evaluation and digest decisions belong in the core.
 
+Source construction should use registered factories rather than a central `if/elif` chain. The registry owns source type resolution, and integrations provide small factory functions that build their adapters from config.
+
 Initial libraries:
 
 - Telethon for Telegram.
@@ -144,6 +146,10 @@ Initial libraries:
 - dateparser or explicit parser helpers for dates.
 
 Avoid browser automation until a source requires it.
+
+Current website source:
+
+- `kaveikti`: parses kaveikti.lt listing cards into generic `event` records with category, location, display time, start/end metadata, URL, and source-provided event-time ID when present.
 
 ## Core Pipeline
 
