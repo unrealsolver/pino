@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pino_core.models import Artifact, Record
 from pino_core.sources import SourceAdapter
 from pino_core.storage import SQLiteStore
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    fetched: int
+    inserted: int
+    duplicates: int
+    records: list[Record]
 
 
 class CheckPipeline:
@@ -10,15 +20,28 @@ class CheckPipeline:
         self.store = store
         self.sources = sources
 
-    def run(self) -> list[Record]:
+    def run(self) -> CheckResult:
         self.store.init_schema()
         records: list[Record] = []
+        fetched_count = 0
+        inserted_count = 0
+        duplicate_count = 0
         for source in self.sources:
             fetched = source.fetch()
+            fetched_count += len(fetched)
             for record in fetched:
-                self.store.add_record(record)
-            records.extend(fetched)
-        return records
+                result = self.store.add_record(record)
+                if result.inserted:
+                    inserted_count += 1
+                    records.append(result.record)
+                else:
+                    duplicate_count += 1
+        return CheckResult(
+            fetched=fetched_count,
+            inserted=inserted_count,
+            duplicates=duplicate_count,
+            records=records,
+        )
 
 
 class DigestService:
@@ -47,4 +70,3 @@ class DigestService:
         )
         self.store.add_artifact(artifact)
         return artifact
-

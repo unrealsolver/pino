@@ -162,6 +162,18 @@ Storage can be file-based, SQLite, PostgreSQL, Qdrant, or a combination. For the
 
 Memory must be user-reviewable. Avoid opaque storage that makes it hard to understand why Pino recommended something.
 
+## Record Identity
+
+Record idempotency is deterministic and belongs to the storage layer. It does not use LLM calls or vector search.
+
+Storage computes a unique fingerprint for each record:
+
+1. `source + kind + external_id` when available.
+2. `source + kind + normalized_url` when a URL is available.
+3. `source + kind + normalized_title + normalized_text` as fallback.
+
+Repeated `pino check` runs should report duplicates instead of appending the same source item repeatedly.
+
 ## Configuration
 
 Start with YAML configuration and local files for secrets.

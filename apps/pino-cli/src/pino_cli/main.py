@@ -51,8 +51,11 @@ def check(
     config = get_config(config_path)
     store = get_store(config)
     pipeline = CheckPipeline(store=store, sources=build_sources(config.sources))
-    records = pipeline.run()
-    console.print(f"Captured {len(records)} record(s).")
+    result = pipeline.run()
+    console.print(
+        f"Fetched {result.fetched}; inserted {result.inserted}; "
+        f"duplicates {result.duplicates}.",
+    )
 
 
 @app.command()

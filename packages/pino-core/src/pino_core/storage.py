@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from dataclasses import dataclass
 
 from sqlalchemy import (
     JSON,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     create_engine,
     delete,
     insert,
@@ -28,6 +30,8 @@ records_table = Table(
     Column("id", String, primary_key=True),
     Column("kind", String, nullable=False),
     Column("source", String, nullable=False),
+    Column("external_id", String),
+    Column("fingerprint", String, nullable=False),
     Column("title", String),
     Column("text", Text, nullable=False),
     Column("url", String),
@@ -35,6 +39,7 @@ records_table = Table(
     Column("captured_at", DateTime(timezone=True), nullable=False),
     Column("payload", JSON, nullable=False),
     Column("provenance", JSON, nullable=False),
+    UniqueConstraint("fingerprint", name="uq_records_fingerprint"),
 )
 
 artifacts_table = Table(
@@ -71,6 +76,12 @@ chat_messages_table = Table(
 )
 
 
+@dataclass(frozen=True)
+class InsertResult:
+    record: Record
+    inserted: bool
+
+
 class SQLiteStore:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
@@ -79,9 +90,19 @@ class SQLiteStore:
 
     def init_schema(self) -> None:
         metadata.create_all(self.engine)
+        self._migrate_records_table()
 
-    def add_record(self, record: Record) -> None:
-        self._insert_model(records_table, record)
+    def add_record(self, record: Record) -> InsertResult:
+        record = record.with_fingerprint()
+        with Session(self.engine) as session:
+            existing = session.execute(
+                select(records_table).where(records_table.c.fingerprint == record.fingerprint),
+            ).first()
+            if existing is not None:
+                return InsertResult(record=Record.model_validate(dict(existing._mapping)), inserted=False)
+            session.execute(insert(records_table).values(**record.model_dump(mode="python")))
+            session.commit()
+            return InsertResult(record=record, inserted=True)
 
     def list_records(self, limit: int = 50) -> list[Record]:
         rows = self._select_latest(records_table, records_table.c.captured_at, limit)
@@ -123,3 +144,32 @@ class SQLiteStore:
         with Session(self.engine) as session:
             result = session.execute(select(table).order_by(order_column.desc()).limit(limit))
             return [dict(row._mapping) for row in result]
+
+    def _migrate_records_table(self) -> None:
+        with self.engine.begin() as connection:
+            rows = connection.exec_driver_sql("PRAGMA table_info(records)").mappings().all()
+            columns = {row["name"] for row in rows}
+            if "external_id" not in columns:
+                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN external_id VARCHAR")
+            if "fingerprint" not in columns:
+                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN fingerprint VARCHAR")
+
+            existing = connection.execute(select(records_table)).mappings().all()
+            seen: set[str] = set()
+            for row in existing:
+                record = Record.model_validate(dict(row)).with_fingerprint()
+                fingerprint = record.fingerprint or ""
+                if fingerprint in seen:
+                    fingerprint = f"legacy-duplicate:{record.id}"
+                seen.add(fingerprint)
+                connection.exec_driver_sql(
+                    "UPDATE records SET fingerprint = ?, external_id = ? WHERE id = ?",
+                    (fingerprint, record.external_id, record.id),
+                )
+
+            index_rows = connection.exec_driver_sql("PRAGMA index_list(records)").mappings().all()
+            index_names = {row["name"] for row in index_rows}
+            if "uq_records_fingerprint" not in index_names:
+                connection.exec_driver_sql(
+                    "CREATE UNIQUE INDEX uq_records_fingerprint ON records(fingerprint)",
+                )

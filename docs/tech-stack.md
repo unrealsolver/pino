@@ -80,6 +80,14 @@ Better first-level storage concepts:
 
 Event candidates, dedup groups, ranking results, and source run details can be represented as record/artifact types until the system proves that they need dedicated tables.
 
+Record idempotency is a deterministic storage concern, not an LLM or vector-search concern. `Record` may carry optional identity hints, and storage enforces a unique fingerprint:
+
+1. Prefer `source + kind + external_id` when an integration provides `external_id`.
+2. Else use `source + kind + normalized_url` when a URL exists.
+3. Else use `source + kind + normalized_title + normalized_text`.
+
+This prevents repeated source checks from creating duplicate rows. Semantic duplicate detection across different sources can be added later as an evaluation/enrichment step if needed.
+
 Postpone vector storage. Add embeddings and Qdrant only after there is a concrete semantic-memory use case that SQLite search cannot cover.
 
 ## LLM Layer

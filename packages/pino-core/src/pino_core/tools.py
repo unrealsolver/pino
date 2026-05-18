@@ -47,8 +47,11 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
         return DigestService(store).create_digest(limit=limit).body
 
     def sources_check(arguments: dict[str, Any]) -> str:
-        records = CheckPipeline(store=store, sources=sources).run()
-        return f"Captured {len(records)} record(s)."
+        result = CheckPipeline(store=store, sources=sources).run()
+        return (
+            f"Fetched {result.fetched}; inserted {result.inserted}; "
+            f"duplicates {result.duplicates}."
+        )
 
     tools = [
         Tool("memory.add", "Add an active memory entry. Arguments: content, tags.", memory_add),
@@ -62,4 +65,3 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
 
 def describe_tools(tools: dict[str, Tool]) -> str:
     return "\n".join(f"- {tool.name}: {tool.description}" for tool in tools.values())
-
