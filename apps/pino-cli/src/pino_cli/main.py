@@ -5,16 +5,18 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from pino_core import (
     ChatAgent,
     CheckPipeline,
     DigestService,
+    LLMError,
     MemoryEntry,
     PinoConfig,
     SQLiteStore,
-    build_provider,
+    build_llm_client,
     build_sources,
     build_tools,
     load_config,
@@ -75,13 +77,13 @@ def chat(
     sources = build_sources(config.sources)
     agent = ChatAgent(
         store=store,
-        provider=build_provider(config.llm),
+        provider=build_llm_client(config.llm),
         tools=build_tools(store, sources),
         config=config.chat,
     )
 
     if message:
-        result = agent.respond(message)
+        result = respond_or_exit(agent, message)
         console.print(result.content)
         return
 
@@ -92,8 +94,37 @@ def chat(
             return
         if not user_input:
             continue
-        result = agent.respond(user_input)
+        result = respond_or_exit(agent, user_input)
         console.print(result.content)
+
+
+def respond_or_exit(agent: ChatAgent, user_input: str):
+    try:
+        return agent.respond(user_input)
+    except LLMError as exc:
+        print_provider_error(exc)
+        raise typer.Exit(code=1) from exc
+
+
+def print_provider_error(exc: LLMError) -> None:
+    table = Table("Field", "Value")
+    table.add_row("provider", exc.provider)
+    table.add_row("model", exc.model)
+    table.add_row("url", exc.url)
+    if exc.status_code is not None:
+        table.add_row("status", str(exc.status_code))
+    if exc.request:
+        table.add_row("request", json_dumps(exc.request))
+
+    console.print(Panel(table, title="LLM provider error", border_style="red"))
+    if exc.response_body:
+        console.print(Panel(exc.response_body, title="Response body", border_style="red"))
+
+
+def json_dumps(value: object) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False, indent=2)
 
 
 @memory_app.command("add")

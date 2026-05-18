@@ -2,15 +2,27 @@ storage:
   path: .pino/pino.sqlite
 
 llm:
-  provider: echo
-  model: echo
-  infercom:
-    base_url: https://api.infercom.ai/v1
-    api_key_file: INFERCOM_API_KEY
-    default_model: MiniMax-M2.5
-  ollama:
-    base_url: http://localhost:11434
-    default_model: gpt-oss-20b
+  default_provider: echo
+  model: null
+  temperature: 0.1
+  top_p: 0.1
+  providers:
+    infercom:
+      base_url: https://api.infercom.ai/v1
+      api_key_file: INFERCOM_API_KEY
+      models:
+        smart: MiniMax-M2.5
+        simple: gpt-oss-120b
+      default_model: smart
+    ollama:
+      base_url: http://localhost:11434
+      models:
+        smart: gpt-oss-20b
+        simple: gpt-oss-20b
+      default_model: smart
+    echo:
+      enabled: true
+      default_model: echo
 
 chat:
   history_limit: 20

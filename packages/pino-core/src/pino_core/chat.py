@@ -4,9 +4,10 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from pino_llm import LLMClient, LLMMessage
+
 from pino_core.config import ChatConfig
 from pino_core.models import ChatMessage
-from pino_core.providers import LLMMessage, LLMProvider
 from pino_core.storage import SQLiteStore
 from pino_core.tools import Tool, describe_tools
 
@@ -21,7 +22,7 @@ class ChatAgent:
     def __init__(
         self,
         store: SQLiteStore,
-        provider: LLMProvider,
+        provider: LLMClient,
         tools: dict[str, Tool],
         config: ChatConfig,
     ) -> None:
@@ -95,4 +96,3 @@ class ChatAgent:
         except json.JSONDecodeError:
             return {"final": raw_response}
         return parsed if isinstance(parsed, dict) else {"final": raw_response}
-

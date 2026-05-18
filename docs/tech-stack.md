@@ -25,11 +25,12 @@ Use a `uv` workspace if the repository is split into a small number of coarse pa
 Suggested starting shape:
 
 - `packages/pino-core`: generic records/artifacts, pipeline, memory abstractions, evaluation logic, provider interfaces.
+- `packages/pino-llm`: unified LLM interface, provider adapters, request/response normalization, and provider error wrapping.
 - `apps/pino-cli`: Typer CLI that calls `pino-core`.
 - `apps/pino-daemon`: future daemon process that calls the same `pino-core`.
 - `packages/pino-integrations`: optional later package if integrations become large enough to separate.
 
-Current scaffold starts with `packages/pino-core` and `apps/pino-cli`. The daemon package should be added after the batch workflow has enough real behavior to keep resident.
+Current scaffold starts with `packages/pino-core`, `packages/pino-llm`, and `apps/pino-cli`. The daemon package should be added after the batch workflow has enough real behavior to keep resident.
 
 Do not create one package per integration or per domain entity at the start. Keep most code inside `pino-core` until the boundaries prove they deserve separate packages.
 
@@ -83,12 +84,14 @@ Postpone vector storage. Add embeddings and Qdrant only after there is a concret
 
 ## LLM Layer
 
-Use one internal provider interface and keep provider-specific details out of core logic.
+Use `pino-llm` as the single internal provider interface and keep provider-specific details out of core logic.
 
 Providers:
 
 - Infercom as the primary remote provider.
 - Ollama as the local fallback and integration-test provider.
+
+The package should wrap request/response quirks and normalize provider errors. For example, providers that do not support raw `tool` role history should receive tool results as ordinary context rather than OpenAI tool-call protocol messages.
 
 The application should still be partly useful without LLM calls. Fetching, storing, listing, simple filtering, and deterministic tests should not require a remote model.
 

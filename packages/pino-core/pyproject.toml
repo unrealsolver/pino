@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "Core services and models for Pino."
 requires-python = ">=3.12"
 dependencies = [
-    "httpx>=0.28",
+    "pino-llm",
     "pydantic>=2.10",
     "pyyaml>=6.0",
     "sqlalchemy>=2.0",
 ]
+
+[tool.uv.sources]
+pino-llm = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

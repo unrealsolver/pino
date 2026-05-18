@@ -181,10 +181,11 @@ Avoid hard-coding user preferences that should be editable without code changes.
 Current config entry point:
 
 - `config.example.yaml` is the committed sample config.
-- `config.local.yaml` is the default local override and should not be committed.
+- `config.yaml` is the normal local project config.
+- `config.local.yaml` is an optional local override and should not be committed.
 - `INFERCOM_API_KEY` is a local secret file and should not be committed.
 
-Most CLI commands accept `--config/-c`. If omitted, Pino loads `config.local.yaml` when it exists, otherwise `config.example.yaml`.
+Most CLI commands accept `--config/-c`. If omitted, Pino loads `config.local.yaml` when it exists, then `config.yaml`, then `config.example.yaml`.
 
 ## Interactive Mode
 
@@ -198,7 +199,7 @@ The initial tool set is intentionally small:
 - `digest.create`
 - `sources.check`
 
-The committed example config uses the local `echo` provider so the chat loop can be tested without network access. Set `llm.provider` to `infercom` or `ollama` in local config to test real providers.
+The committed example config uses the local `echo` provider so the chat loop can be tested without network access. Set `llm.default_provider` to `infercom` or `ollama` in local config to test real providers.
 
 ## Development Notes For Codex
 
@@ -217,6 +218,7 @@ When working on this repository:
 The repository is a `uv` workspace with:
 
 - `packages/pino-core`: generic records/artifacts, storage, source adapter protocol, and batch pipeline.
+- `packages/pino-llm`: unified LLM client interface, provider adapters, request normalization, and provider diagnostics.
 - `apps/pino-cli`: Typer CLI using `pino-core`.
 
 Useful commands:

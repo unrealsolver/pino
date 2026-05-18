@@ -23,4 +23,3 @@ sources:
 
     assert config.storage.path == config_dir / "data/pino.sqlite"
     assert config.sources[0].path == config_dir / "sources/sample.yaml"
-
