@@ -41,3 +41,21 @@ sources:
 
     assert config.sources[0].type == "kaveikti"
     assert config.sources[0].url == "https://www.kaveikti.lt/renginiai/vilniuje"
+
+
+def test_load_config_accepts_vilnius_events_source(tmp_path: Path) -> None:
+    config_path = tmp_path / "pino.yaml"
+    config_path.write_text(
+        """
+sources:
+  - name: vilnius-events
+    type: vilnius_events
+    url: https://www.vilnius-events.lt/en/
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.sources[0].type == "vilnius_events"
+    assert config.sources[0].url == "https://www.vilnius-events.lt/en/"

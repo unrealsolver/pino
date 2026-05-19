@@ -51,3 +51,7 @@ sources:
     type: kaveikti
     url: https://www.kaveikti.lt/renginiai/vilniuje
     enabled: false
+  - name: vilnius-events
+    type: vilnius_events
+    url: https://www.vilnius-events.lt/en/
+    enabled: false

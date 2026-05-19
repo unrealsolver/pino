@@ -194,6 +194,7 @@ Current source types:
 
 - `static_yaml`: reads local fixture/sample records.
 - `kaveikti`: fetches and parses kaveikti.lt event listing pages into generic event records.
+- `vilnius_events`: fetches and parses vilnius-events.lt listing pages into generic event records.
 
 ## Evaluation
 
