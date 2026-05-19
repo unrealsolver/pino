@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pino_core.models import Artifact, Record
+from pino_core.models import Artifact, Evaluation, Record
 from pino_core.sources import SourceAdapter
 from pino_core.storage import SQLiteStore
 
@@ -50,23 +50,31 @@ class DigestService:
 
     def create_digest(self, limit: int = 20) -> Artifact:
         self.store.init_schema()
-        records = self.store.list_records(limit=limit)
+        records = self.store.list_records_with_evaluations(limit=limit)
 
         if not records:
             body = "No records captured yet."
         else:
             lines = []
-            for record in records:
+            for record, evaluation in records:
                 label = record.title or record.kind
                 source = f" ({record.source})" if record.source else ""
-                lines.append(f"- {label}{source}: {record.text}")
+                evaluation_text = _format_evaluation(evaluation)
+                lines.append(f"- {label}{source}{evaluation_text}: {record.text}")
             body = "\n".join(lines)
 
         artifact = Artifact(
             kind="digest",
             title="Latest digest",
             body=body,
-            record_ids=[record.id for record in records],
+            record_ids=[record.id for record, _evaluation in records],
         )
         self.store.add_artifact(artifact)
         return artifact
+
+
+def _format_evaluation(evaluation: Evaluation | None) -> str:
+    if evaluation is None:
+        return ""
+    matches = f" {'/'.join(evaluation.goal_matches)}" if evaluation.goal_matches else ""
+    return f" [score {evaluation.score:.2f}{matches}]"

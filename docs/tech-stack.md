@@ -105,6 +105,8 @@ The package also owns the simple JSON action protocol used by `pino chat`: model
 
 The application should still be partly useful without LLM calls. Fetching, storing, listing, simple filtering, and deterministic tests should not require a remote model.
 
+Record evaluation is LLM-assisted rather than keyword-only. Deterministic code controls batching, config, persistence, retries, and caching; the configured model performs multilingual semantic classification against explicit goals. The default evaluation model alias is `simple`, which resolves to Infercom `gpt-oss-120b` in the current config.
+
 ## Interactive Agent Shape
 
 Pino should use an LLM-to-tools design, not a kitchen-sink autonomous agent.
@@ -159,7 +161,7 @@ Keep the first pipeline batch-oriented and explicit:
 2. Store captured records with provenance.
 3. Normalize or enrich records where useful.
 4. Relate, merge, or suppress duplicates.
-5. Evaluate records against current goals.
+5. Evaluate records against current goals with cached structured evaluations.
 6. Generate concise artifacts such as digests.
 7. Store and print/output the digest.
 

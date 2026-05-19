@@ -195,6 +195,21 @@ Current source types:
 - `static_yaml`: reads local fixture/sample records.
 - `kaveikti`: fetches and parses kaveikti.lt event listing pages into generic event records.
 
+## Evaluation
+
+`pino evaluate` evaluates unevaluated records against configured goals with a bounded LLM classifier. The default local config uses the `simple` model alias, which resolves to Infercom `gpt-oss-120b`.
+
+Evaluation is cached by record ID, so records are not re-evaluated on every run. Digest output uses stored evaluation scores when available.
+
+Current evaluation output stores:
+
+- relevance score from `0.0` to `1.0`
+- matched goal names
+- detected language
+- short summary
+- reasons
+- risks/caveats
+
 Current config entry point:
 
 - `config.example.yaml` is the committed sample config.
@@ -253,6 +268,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv sync --all-packages
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest
 UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .
 UV_CACHE_DIR=/tmp/uv-cache uv run pino check
+UV_CACHE_DIR=/tmp/uv-cache uv run pino evaluate --limit 10 --debug
 UV_CACHE_DIR=/tmp/uv-cache uv run pino digest
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --message "show memory"
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --debug --message "hello"

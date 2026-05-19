@@ -8,6 +8,7 @@ from sqlalchemy import (
     JSON,
     Column,
     DateTime,
+    Float,
     MetaData,
     String,
     Table,
@@ -20,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
-from pino_core.models import Artifact, ChatMessage, MemoryEntry, Record
+from pino_core.models import Artifact, ChatMessage, Evaluation, MemoryEntry, Record
 
 metadata = MetaData()
 
@@ -75,6 +76,22 @@ chat_messages_table = Table(
     Column("payload", JSON, nullable=False),
 )
 
+evaluations_table = Table(
+    "evaluations",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("record_id", String, nullable=False),
+    Column("score", Float, nullable=False),
+    Column("goal_matches", JSON, nullable=False),
+    Column("language", String),
+    Column("summary", Text),
+    Column("reasons", JSON, nullable=False),
+    Column("risks", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("payload", JSON, nullable=False),
+    UniqueConstraint("record_id", name="uq_evaluations_record_id"),
+)
+
 
 @dataclass(frozen=True)
 class InsertResult:
@@ -107,6 +124,67 @@ class SQLiteStore:
     def list_records(self, limit: int = 50) -> list[Record]:
         rows = self._select_latest(records_table, records_table.c.captured_at, limit)
         return [Record.model_validate(dict(row)) for row in rows]
+
+    def list_unevaluated_records(self, limit: int = 20) -> list[Record]:
+        with Session(self.engine) as session:
+            result = session.execute(
+                select(records_table)
+                .outerjoin(
+                    evaluations_table,
+                    records_table.c.id == evaluations_table.c.record_id,
+                )
+                .where(evaluations_table.c.record_id.is_(None))
+                .order_by(records_table.c.captured_at.desc())
+                .limit(limit),
+            )
+            return [Record.model_validate(dict(row._mapping)) for row in result]
+
+    def list_records_with_evaluations(self, limit: int = 20) -> list[tuple[Record, Evaluation | None]]:
+        with Session(self.engine) as session:
+            result = session.execute(
+                select(records_table, evaluations_table)
+                .outerjoin(
+                    evaluations_table,
+                    records_table.c.id == evaluations_table.c.record_id,
+                )
+                .order_by(evaluations_table.c.score.desc().nulls_last(), records_table.c.captured_at.desc())
+                .limit(limit),
+            )
+            items: list[tuple[Record, Evaluation | None]] = []
+            for row in result:
+                mapping = row._mapping
+                record = Record.model_validate(
+                    {column.name: mapping[column] for column in records_table.columns},
+                )
+                evaluation_id = mapping[evaluations_table.c.id]
+                evaluation = None
+                if evaluation_id is not None:
+                    evaluation = Evaluation.model_validate(
+                        {column.name: mapping[column] for column in evaluations_table.columns},
+                    )
+                items.append((record, evaluation))
+            return items
+
+    def add_evaluation(self, evaluation: Evaluation) -> None:
+        with Session(self.engine) as session:
+            existing = session.execute(
+                select(evaluations_table.c.id).where(
+                    evaluations_table.c.record_id == evaluation.record_id,
+                ),
+            ).first()
+            if existing is not None:
+                return
+            session.execute(insert(evaluations_table).values(**evaluation.model_dump(mode="python")))
+            session.commit()
+
+    def get_evaluation(self, record_id: str) -> Evaluation | None:
+        with Session(self.engine) as session:
+            row = session.execute(
+                select(evaluations_table).where(evaluations_table.c.record_id == record_id),
+            ).first()
+            if row is None:
+                return None
+            return Evaluation.model_validate(dict(row._mapping))
 
     def add_artifact(self, artifact: Artifact) -> None:
         self._insert_model(artifacts_table, artifact)

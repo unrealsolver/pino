@@ -28,6 +28,21 @@ chat:
   history_limit: 20
   max_tool_rounds: 2
 
+evaluation:
+  model: simple
+  batch_size: 10
+  goals:
+    - name: meet_people
+      description: Social occasions in Vilnius where Boss could meet women or new people.
+    - name: metal_music
+      description: Metal music concerts, festivals, or meetups.
+    - name: electronic_music
+      description: Electronic music events, especially synth-related events.
+    - name: open_synth_jam
+      description: Open synth jam, participatory music jam, or similar events.
+    - name: volunteering_community
+      description: Volunteering, community work, initiatives, workshops, or gatherings.
+
 sources:
   - name: sample
     type: static_yaml

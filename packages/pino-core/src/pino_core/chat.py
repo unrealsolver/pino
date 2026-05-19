@@ -1,6 +1,7 @@
+import json
 from dataclasses import dataclass
 
-from pino_llm import LLMClient, LLMMessage, parse_action
+from pino_llm import LLMAction, LLMClient, LLMMessage, parse_action
 
 from pino_core.config import ChatConfig
 from pino_core.models import ChatMessage
@@ -30,21 +31,29 @@ class ChatAgent:
 
     def respond(self, user_input: str) -> ChatResult:
         self.store.init_schema()
-        self.store.add_chat_message(ChatMessage(role="user", content=user_input))
+        user_message = ChatMessage(role="user", content=user_input)
+        self.store.add_chat_message(user_message)
 
         tool_calls: list[str] = []
         tool_context: list[LLMMessage] = []
-        debug: dict[str, object] = {}
+        rounds: list[dict[str, object]] = []
+        tool_usage: list[dict[str, object]] = []
+        debug: dict[str, object] = {"rounds": rounds, "tool_usage": tool_usage}
 
-        for _ in range(self.config.max_tool_rounds + 1):
-            messages = self._build_messages(tool_context)
-            debug = {
+        for round_index in range(self.config.max_tool_rounds + 1):
+            messages = self._build_messages(tool_context, current_message=user_message)
+            round_debug: dict[str, object] = {
+                "round": round_index + 1,
                 "message_count": len(messages),
                 "message_roles": [message.role for message in messages],
                 "tool_context_count": len(tool_context),
             }
             raw_response = self.provider.complete(messages)
             action = parse_action(raw_response)
+            round_debug["action"] = action.kind
+            if action.tool_name is not None:
+                round_debug["tool"] = action.tool_name
+            rounds.append(round_debug)
 
             if action.kind == "final":
                 final = action.content or ""
@@ -61,19 +70,35 @@ class ChatAgent:
 
             result = self.tools[action.tool_name].run(action.arguments)
             tool_calls.append(action.tool_name)
+            tool_usage.append(
+                {
+                    "name": action.tool_name,
+                    "arguments": action.arguments,
+                    "result": result,
+                },
+            )
             self.store.add_chat_message(
                 ChatMessage(role="tool", content=result, payload={"tool": action.tool_name}),
             )
-            tool_context.append(LLMMessage(role="assistant", content=raw_response))
+            tool_context.append(LLMMessage(role="assistant", content=_tool_action_json(action)))
             tool_context.append(
                 LLMMessage(role="tool", content=f"{action.tool_name} result:\n{result}"),
             )
 
         final = "Boss, I reached the configured tool-call limit."
         self.store.add_chat_message(ChatMessage(role="assistant", content=final))
-        return ChatResult(content=final, tool_calls=tool_calls, debug=debug)
+        return ChatResult(
+            content=final,
+            tool_calls=tool_calls,
+            debug={"rounds": rounds, "tool_usage": tool_usage},
+        )
 
-    def _build_messages(self, tool_context: list[LLMMessage]) -> list[LLMMessage]:
+    def _build_messages(
+        self,
+        tool_context: list[LLMMessage],
+        *,
+        current_message: ChatMessage,
+    ) -> list[LLMMessage]:
         system = (
             "You are Pino, a local personal agentic assistant. You can occasionally the user as Boss. "
             "Be concise and practical. You are not a generic emotional support chatbot.\n\n"
@@ -85,6 +110,27 @@ class ChatAgent:
         )
         messages = [LLMMessage(role="system", content=system)]
         history = list(reversed(self.store.list_chat_messages(limit=self.config.history_limit)))
-        messages.extend(LLMMessage(role=message.role, content=message.content) for message in history)
+        history_ids = {message.id for message in history}
+        messages.extend(
+            LLMMessage(role=message.role, content=message.content)
+            for message in history
+            if not _is_raw_tool_call_message(message)
+        )
+        if current_message.id not in history_ids:
+            messages.append(LLMMessage(role=current_message.role, content=current_message.content))
         messages.extend(tool_context)
         return messages
+
+
+def _tool_action_json(action: LLMAction) -> str:
+    return json.dumps(
+        {"tool": action.tool_name, "arguments": action.arguments},
+        ensure_ascii=False,
+    )
+
+
+def _is_raw_tool_call_message(message: ChatMessage) -> bool:
+    if message.role != "assistant":
+        return False
+    content = message.content.strip()
+    return content.startswith(("[TOOL_CALL]", "[TOOL_CALLS]"))

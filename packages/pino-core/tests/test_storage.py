@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pino_core import ChatMessage, MemoryEntry, Record, SQLiteStore
+from pino_core import ChatMessage, Evaluation, MemoryEntry, Record, SQLiteStore
 
 
 def test_active_memory_round_trip(tmp_path: Path) -> None:
@@ -38,3 +38,25 @@ def test_add_record_skips_duplicate_fingerprint(tmp_path: Path) -> None:
     assert first.inserted is True
     assert second.inserted is False
     assert len(store.list_records()) == 1
+
+
+def test_evaluation_round_trip_and_unevaluated_records(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="A", text="A"))
+
+    assert [record.id for record in store.list_unevaluated_records()] == [inserted.record.id]
+
+    store.add_evaluation(
+        Evaluation(
+            record_id=inserted.record.id,
+            score=0.75,
+            goal_matches=["metal_music"],
+            reasons=["Looks relevant."],
+        ),
+    )
+
+    assert store.list_unevaluated_records() == []
+    evaluation = store.get_evaluation(inserted.record.id)
+    assert evaluation is not None
+    assert evaluation.score == 0.75

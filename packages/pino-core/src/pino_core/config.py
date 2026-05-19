@@ -20,6 +20,41 @@ class ChatConfig(BaseModel):
     max_tool_rounds: int = 2
 
 
+class GoalConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str
+
+
+class EvaluationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = "simple"
+    batch_size: int = 10
+    goals: list[GoalConfig] = Field(
+        default_factory=lambda: [
+            GoalConfig(
+                name="meet_people",
+                description="Social occasions in Vilnius where Boss could meet women or new people.",
+            ),
+            GoalConfig(name="metal_music", description="Metal music concerts, festivals, or meetups."),
+            GoalConfig(
+                name="electronic_music",
+                description="Electronic music events, especially synth-related events.",
+            ),
+            GoalConfig(
+                name="open_synth_jam",
+                description="Open synth jam, participatory music jam, or similar events.",
+            ),
+            GoalConfig(
+                name="volunteering_community",
+                description="Volunteering, community work, initiatives, workshops, or gatherings.",
+            ),
+        ],
+    )
+
+
 class SourceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -44,6 +79,7 @@ class PinoConfig(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     sources: list[SourceConfig] = Field(default_factory=list)
 
 

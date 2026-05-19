@@ -7,15 +7,18 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from pino_core import (
     ChatAgent,
     CheckPipeline,
     DigestService,
+    EvaluationService,
     LLMError,
     MemoryEntry,
     PinoConfig,
     SQLiteStore,
+    build_evaluation_llm_config,
     build_llm_client,
     build_sources,
     build_tools,
@@ -68,7 +71,36 @@ def digest(
     store = get_store(config)
     artifact = DigestService(store).create_digest(limit=limit)
     console.rule(artifact.title)
-    console.print(artifact.body)
+    console.print(artifact.body, markup=False)
+
+
+@app.command()
+def evaluate(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    limit: Annotated[int | None, typer.Option("--limit", "-n", min=1)] = None,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Evaluate unevaluated records against configured goals."""
+    config = get_config(config_path)
+    llm_config = build_evaluation_llm_config(config.llm, config.evaluation)
+    store = get_store(config)
+    service = EvaluationService(
+        store=store,
+        client=build_llm_client(llm_config),
+        config=config.evaluation,
+    )
+    result = service.evaluate_pending(limit=limit)
+    if debug:
+        table = Table("Field", "Value")
+        table.add_row("provider", plain_text(llm_config.default_provider))
+        table.add_row("model", plain_text(llm_config.selected_model()))
+        table.add_row("requested", plain_text(result.requested))
+        table.add_row("evaluated", plain_text(result.evaluated))
+        table.add_row("skipped", plain_text(result.skipped))
+        console.print(Panel(table, title="Evaluation debug", border_style="blue"))
+    console.print(
+        f"Requested {result.requested}; evaluated {result.evaluated}; skipped {result.skipped}.",
+    )
 
 
 @chat_app.callback(invoke_without_command=True)
@@ -99,7 +131,7 @@ def chat_main(
         result = respond_or_exit(agent, message)
         if debug:
             print_chat_debug(config, result)
-        console.print(result.content)
+        console.print(result.content, markup=False)
         return
 
     console.print("Pino chat. Type /exit to quit.")
@@ -114,7 +146,7 @@ def chat_main(
         result = respond_or_exit(agent, user_input)
         if debug:
             print_chat_debug(config, result)
-        console.print(result.content)
+        console.print(result.content, markup=False)
 
 
 @chat_app.command("reset")
@@ -138,42 +170,83 @@ def respond_or_exit(agent: ChatAgent, user_input: str):
 
 def print_chat_config_debug(config: PinoConfig) -> None:
     table = Table("Field", "Value")
-    table.add_row("provider", config.llm.default_provider)
-    table.add_row("model", config.llm.selected_model())
-    table.add_row("history_limit", str(config.chat.history_limit))
-    table.add_row("max_tool_rounds", str(config.chat.max_tool_rounds))
+    table.add_row("provider", plain_text(config.llm.default_provider))
+    table.add_row("model", plain_text(config.llm.selected_model()))
+    table.add_row("history_limit", plain_text(config.chat.history_limit))
+    table.add_row("max_tool_rounds", plain_text(config.chat.max_tool_rounds))
     console.print(Panel(table, title="Chat debug", border_style="blue"))
 
 
 def print_chat_debug(config: PinoConfig, result) -> None:
     table = Table("Field", "Value")
-    table.add_row("provider", config.llm.default_provider)
-    table.add_row("model", config.llm.selected_model())
-    table.add_row("tool_calls", ", ".join(result.tool_calls) or "<none>")
-    for key, value in result.debug.items():
-        table.add_row(str(key), json_dumps(value))
+    table.add_row("provider", plain_text(config.llm.default_provider))
+    table.add_row("model", plain_text(config.llm.selected_model()))
+    table.add_row("tool_calls", plain_text(", ".join(result.tool_calls) or "<none>"))
     console.print(Panel(table, title="Chat debug", border_style="blue"))
+
+    rounds = result.debug.get("rounds", [])
+    if isinstance(rounds, list) and rounds:
+        rounds_table = Table("Round", "Messages", "Roles", "Tool Context", "Action", "Tool")
+        for item in rounds:
+            if not isinstance(item, dict):
+                continue
+            rounds_table.add_row(
+                plain_text(item.get("round", "")),
+                plain_text(item.get("message_count", "")),
+                plain_text(summarize_roles(item.get("message_roles"))),
+                plain_text(item.get("tool_context_count", "")),
+                plain_text(item.get("action", "")),
+                plain_text(item.get("tool", "")),
+            )
+        console.print(Panel(rounds_table, title="LLM rounds", border_style="blue"))
+
+    tool_usage = result.debug.get("tool_usage", [])
+    if isinstance(tool_usage, list) and tool_usage:
+        usage_table = Table("Tool", "Arguments", "Result")
+        for item in tool_usage:
+            if not isinstance(item, dict):
+                continue
+            usage_table.add_row(
+                plain_text(item.get("name", "")),
+                plain_text(json_dumps(item.get("arguments", {}))),
+                plain_text(item.get("result", "")),
+            )
+        console.print(Panel(usage_table, title="Tool usage", border_style="blue"))
+
+
+def summarize_roles(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    counts: dict[str, int] = {}
+    for item in value:
+        role = str(item)
+        counts[role] = counts.get(role, 0) + 1
+    return ", ".join(f"{role}:{count}" for role, count in counts.items())
 
 
 def print_provider_error(exc: LLMError) -> None:
     table = Table("Field", "Value")
-    table.add_row("provider", exc.provider)
-    table.add_row("model", exc.model)
-    table.add_row("url", exc.url)
+    table.add_row("provider", plain_text(exc.provider))
+    table.add_row("model", plain_text(exc.model))
+    table.add_row("url", plain_text(exc.url))
     if exc.status_code is not None:
-        table.add_row("status", str(exc.status_code))
+        table.add_row("status", plain_text(exc.status_code))
     if exc.request:
-        table.add_row("request", json_dumps(exc.request))
+        table.add_row("request", plain_text(json_dumps(exc.request)))
 
     console.print(Panel(table, title="LLM provider error", border_style="red"))
     if exc.response_body:
-        console.print(Panel(exc.response_body, title="Response body", border_style="red"))
+        console.print(Panel(plain_text(exc.response_body), title="Response body", border_style="red"))
 
 
 def json_dumps(value: object) -> str:
     import json
 
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def plain_text(value: object) -> Text:
+    return Text(str(value))
 
 
 @memory_app.command("add")
@@ -201,7 +274,11 @@ def memory_list(
     rows = store.list_memory(limit=limit)
     table = Table("Created", "Tags", "Content")
     for row in rows:
-        table.add_row(row.created_at.isoformat(), ", ".join(row.tags), row.content)
+        table.add_row(
+            plain_text(row.created_at.isoformat()),
+            plain_text(", ".join(row.tags)),
+            plain_text(row.content),
+        )
     console.print(table)
 
 
@@ -213,5 +290,9 @@ def sources_list(
     config = get_config(config_path)
     table = Table("Name", "Type", "Status")
     for source in config.sources:
-        table.add_row(source.name, source.type, "enabled" if source.enabled else "disabled")
+        table.add_row(
+            plain_text(source.name),
+            plain_text(source.type),
+            plain_text("enabled" if source.enabled else "disabled"),
+        )
     console.print(table)

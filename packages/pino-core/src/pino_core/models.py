@@ -92,9 +92,15 @@ class Evaluation(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    id: str = Field(default_factory=new_id)
     record_id: str
     score: float
+    goal_matches: list[str] = Field(default_factory=list)
+    language: str | None = None
+    summary: str | None = None
     reasons: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

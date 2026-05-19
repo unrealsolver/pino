@@ -5,6 +5,7 @@ from pino_llm.providers import EchoClient
 
 from pino_core.chat import ChatAgent
 from pino_core.config import ChatConfig
+from pino_core.models import ChatMessage
 from pino_core.storage import SQLiteStore
 from pino_core.tools import build_tools
 
@@ -15,6 +16,19 @@ class StaticClient:
 
     def complete(self, messages: list[LLMMessage]) -> str:
         return self.response
+
+
+class SequenceClient:
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = responses
+        self.calls = 0
+        self.messages: list[list[LLMMessage]] = []
+
+    def complete(self, messages: list[LLMMessage]) -> str:
+        self.messages.append(messages)
+        response = self.responses[self.calls]
+        self.calls += 1
+        return response
 
 
 def test_chat_agent_can_call_memory_tool(tmp_path: Path) -> None:
@@ -30,6 +44,15 @@ def test_chat_agent_can_call_memory_tool(tmp_path: Path) -> None:
 
     assert "Added active memory" in result.content
     assert result.tool_calls == ["memory.add"]
+    assert result.debug["tool_usage"] == [
+        {
+            "name": "memory.add",
+            "arguments": {"content": "Boss likes short digests"},
+            "result": "Added active memory: Boss likes short digests",
+        },
+    ]
+    assert result.debug["rounds"][0]["action"] == "tool"
+    assert result.debug["rounds"][0]["tool"] == "memory.add"
     assert store.list_memory()[0].content == "Boss likes short digests"
 
 
@@ -62,3 +85,64 @@ def test_chat_agent_recovers_from_unknown_tool(tmp_path: Path) -> None:
 
     assert "unavailable tool" in result.content
     assert result.tool_calls == []
+
+
+def test_chat_agent_keeps_current_message_when_history_limit_is_zero(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    agent = ChatAgent(
+        store=store,
+        provider=EchoClient(),
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(history_limit=0),
+    )
+
+    result = agent.respond("remember Boss wants visible tool debug")
+
+    assert result.tool_calls == ["memory.add"]
+    assert store.list_memory()[0].content == "Boss wants visible tool debug"
+
+
+def test_chat_agent_handles_wrapped_tool_call_response(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    client = SequenceClient(
+        [
+            '[TOOL_CALL]\n{"name": "memory.add", "arguments": {"content": "Boss likes synths"}}\n[/TOOL_CALL]',
+            '{"final": "Saved."}',
+        ],
+    )
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(),
+    )
+
+    result = agent.respond("remember Boss likes synths")
+
+    assert result.content == "Saved."
+    assert result.tool_calls == ["memory.add"]
+    assert store.list_memory()[0].content == "Boss likes synths"
+    assert not any("[TOOL_CALL]" in message.content for message in client.messages[1])
+
+
+def test_chat_agent_omits_stored_raw_tool_call_messages_from_history(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_chat_message(
+        ChatMessage(
+            role="assistant",
+            content='[TOOL_CALL]\n{"name": "memory.list", "arguments": {}}\n[/TOOL_CALL]',
+        ),
+    )
+    client = SequenceClient(['{"final": "ok"}'])
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(),
+    )
+
+    result = agent.respond("hello")
+
+    assert result.content == "ok"
+    assert not any("[TOOL_CALL]" in message.content for message in client.messages[0])
