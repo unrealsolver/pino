@@ -7,7 +7,7 @@ from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def utc_now() -> datetime:
@@ -36,7 +36,8 @@ class Record(BaseModel):
     title: str | None = None
     text: str
     url: str | None = None
-    observed_at: datetime | None = None
+    relevant_from: datetime | None = None
+    relevant_to: datetime | None = None
     captured_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
@@ -46,6 +47,13 @@ class Record(BaseModel):
         if self.fingerprint:
             return self
         return self.model_copy(update={"fingerprint": compute_record_fingerprint(self)})
+
+    @field_validator("relevant_from", "relevant_to", "captured_at")
+    @classmethod
+    def _assume_utc_for_naive_datetimes(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class Artifact(BaseModel):

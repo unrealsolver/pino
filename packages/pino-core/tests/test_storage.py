@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pino_core import ChatMessage, Evaluation, MemoryEntry, Record, SQLiteStore
@@ -38,6 +39,28 @@ def test_add_record_skips_duplicate_fingerprint(tmp_path: Path) -> None:
     assert first.inserted is True
     assert second.inserted is False
     assert len(store.list_records()) == 1
+
+
+def test_record_relevance_window_round_trip(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    relevant_from = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+    relevant_to = datetime(2026, 5, 23, 14, 0, tzinfo=timezone.utc)
+
+    store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="A",
+            text="A",
+            relevant_from=relevant_from,
+            relevant_to=relevant_to,
+        ),
+    )
+
+    record = store.list_records()[0]
+    assert record.relevant_from == relevant_from
+    assert record.relevant_to == relevant_to
 
 
 def test_evaluation_round_trip_and_unevaluated_records(tmp_path: Path) -> None:

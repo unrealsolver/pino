@@ -6,6 +6,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from pino_core.config import SourceConfig
+from pino_core.dates import DEFAULT_SOURCE_TIMEZONE, parse_source_datetime, to_utc, utc_iso
 from pino_core.models import Record
 from pino_core.sources import SourceAdapter
 
@@ -60,6 +61,10 @@ def _parse_event_block(
     display_time = _display_time(block)
     start_at = _meta_content(block, "startDate")
     end_at = _meta_content(block, "endDate")
+    start_at_local = parse_source_datetime(start_at)
+    end_at_local = parse_source_datetime(end_at)
+    start_at_utc = to_utc(start_at_local)
+    end_at_utc = to_utc(end_at_local)
     image_url = _image_url(block, page_url)
     event_time_id = link_el.get("data-event-time-id")
 
@@ -78,12 +83,17 @@ def _parse_event_block(
         title=title,
         text=". ".join(details),
         url=url,
+        relevant_from=start_at_utc,
+        relevant_to=end_at_utc or start_at_utc,
         payload={
             "category": category,
             "location": location,
             "display_time": display_time,
             "start_at": start_at,
             "end_at": end_at,
+            "start_at_utc": utc_iso(start_at_local),
+            "end_at_utc": utc_iso(end_at_local),
+            "timezone": DEFAULT_SOURCE_TIMEZONE,
             "image_url": image_url,
         },
         provenance={

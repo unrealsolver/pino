@@ -80,6 +80,34 @@ Better first-level storage concepts:
 
 Event candidates, dedup groups, ranking results, and source run details can be represented as record/artifact types until the system proves that they need dedicated tables.
 
+### Record Normalization
+
+Keep the first storage model generic, but do not leave every source adapter to invent incompatible metadata shapes.
+
+Canonical record metadata should use English keys and stable machine-readable values. Source-native labels and text should remain available for inspection, but they should not be the only copy of critical fields used by evaluation, sorting, or digest generation.
+
+Recommended normalized fields for event-like records:
+
+- `payload.start_at_utc`: ISO 8601 UTC event start datetime.
+- `payload.end_at_utc`: ISO 8601 UTC event end datetime when known.
+- `payload.timezone`: source/event timezone used during normalization, usually `Europe/Vilnius`.
+- `payload.display_time`: source display text for humans/debugging.
+- `payload.category` and `payload.categories`: English canonical labels when available from the source.
+- `payload.location`: venue/location name in the most useful available language.
+- `payload.raw`: source-native values that were transformed or could be useful for debugging.
+
+Generic record timing should distinguish:
+
+- `captured_at`: when Pino ingested/stored the record.
+- `relevant_from` and `relevant_to`: the generic query window for when the record is useful to query or act on, for example "events relevant this week".
+- event/source-specific time details: exact start/end/publication metadata in payload.
+
+Point-like records may use the same timestamp for `relevant_from` and `relevant_to`. Range-like records should fill both sides when known. Event start/end should remain paired in payload as source-specific exact details, while the top-level relevance window remains generic.
+
+For Vilnius event sources that publish date/time without a timezone, interpret the source time as `Europe/Vilnius` before converting to UTC. Do not store naive datetimes as canonical fields.
+
+If a source provides only Lithuanian labels for critical metadata, store those labels in `payload.raw` and either keep the canonical field unset or fill it through an explicit normalization/enrichment function. Avoid silent best-effort translations inside ad hoc parser code.
+
 Record idempotency is a deterministic storage concern, not an LLM or vector-search concern. `Record` may carry optional identity hints, and storage enforces a unique fingerprint:
 
 1. Prefer `source + kind + external_id` when an integration provides `external_id`.
@@ -133,6 +161,8 @@ Do not expose shell execution, arbitrary filesystem access, browser automation, 
 `pino chat` is part of the product direction because Pino should handle user requests through a natural-language interface. It is also the first practical proof of Infercom and Ollama provider integration.
 
 Operational controls should include debug output, per-request history limits, and chat history reset so provider behavior can be inspected without manually editing the database.
+
+Chat language should be session-consistent. Infer the response language from the user's current session unless the user explicitly asks for another language. This especially matters for generated relative date wording: use `Tuesday`, `today`, and `tomorrow` in English sessions, and Lithuanian equivalents such as `antradienį` in Lithuanian sessions. Date reasoning should use the configured local timezone and convert stored UTC event times only at the final presentation layer.
 
 ## Integrations
 

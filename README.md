@@ -174,6 +174,23 @@ Storage computes a unique fingerprint for each record:
 
 Repeated `pino check` runs should report duplicates instead of appending the same source item repeatedly.
 
+## Record Normalization
+
+Source adapters may ingest mixed-language source pages, but records should expose critical metadata in a stable canonical form before evaluation and digest generation.
+
+Normalization rules:
+
+- Preserve source-native text in `payload.raw` or specific source payload fields when it may be useful for audit/debugging.
+- Store canonical metadata keys in English, for example `category`, `categories`, `location`, `display_time`, `start_at_utc`, `end_at_utc`, and `image_url`.
+- Prefer English category/location labels when the source provides them. If a source only provides Lithuanian or another language, keep the original value and add a later enrichment step rather than guessing silently.
+- Normalize event dates/times to timezone-aware ISO datetimes. For Vilnius-local sources without explicit timezone, interpret event times as `Europe/Vilnius`, then store canonical UTC ISO values such as `start_at_utc` and `end_at_utc`.
+- Keep the human-facing source display date in `display_time` only as presentation/debug context, not as the primary sortable date.
+- Keep ingestion time separate from relevance time. `captured_at` is when Pino stored the record. A separate relevance date/window should support queries like "what roughly happens this week?" without pretending every record has a single start timestamp.
+- Store the generic query window in top-level `relevant_from` and `relevant_to` fields. Point-like records may use the same timestamp for both fields.
+- For event-like records, keep exact start/end values together in payload fields such as `start_at_utc` and `end_at_utc`; do not promote only a single start timestamp without its matching end/range semantics.
+
+LLM-generated summaries, reasons, and chat responses should follow the user's language within a chat session. If the user writes English, use English labels such as `Tuesday`; if the user writes Lithuanian, use Lithuanian labels such as `antradienį`. Relative date wording like `today`, `tomorrow`, and weekdays should stay consistent for the session and should be grounded in the configured local timezone.
+
 ## Configuration
 
 Start with YAML configuration and local files for secrets.

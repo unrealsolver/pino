@@ -36,7 +36,8 @@ records_table = Table(
     Column("title", String),
     Column("text", Text, nullable=False),
     Column("url", String),
-    Column("observed_at", DateTime(timezone=True)),
+    Column("relevant_from", DateTime(timezone=True)),
+    Column("relevant_to", DateTime(timezone=True)),
     Column("captured_at", DateTime(timezone=True), nullable=False),
     Column("payload", JSON, nullable=False),
     Column("provenance", JSON, nullable=False),
@@ -231,6 +232,10 @@ class SQLiteStore:
                 connection.exec_driver_sql("ALTER TABLE records ADD COLUMN external_id VARCHAR")
             if "fingerprint" not in columns:
                 connection.exec_driver_sql("ALTER TABLE records ADD COLUMN fingerprint VARCHAR")
+            if "relevant_from" not in columns:
+                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN relevant_from DATETIME")
+            if "relevant_to" not in columns:
+                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN relevant_to DATETIME")
 
             existing = connection.execute(select(records_table)).mappings().all()
             seen: set[str] = set()
