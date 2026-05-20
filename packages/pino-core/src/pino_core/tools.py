@@ -44,7 +44,8 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
 
     def digest_create(arguments: dict[str, Any]) -> str:
         limit = int(arguments.get("limit", 20))
-        return DigestService(store).create_digest(limit=limit).body
+        window_days = int(arguments.get("days", arguments.get("window_days", 14)))
+        return DigestService(store).create_digest(limit=limit, window_days=window_days).body
 
     def sources_check(arguments: dict[str, Any]) -> str:
         result = CheckPipeline(store=store, sources=sources).run()
@@ -57,7 +58,11 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
         Tool("memory.add", "Add an active memory entry. Arguments: content, tags.", memory_add),
         Tool("memory.list", "List active memory entries. Arguments: limit.", memory_list),
         Tool("records.list", "List recent captured records. Arguments: limit.", records_list),
-        Tool("digest.create", "Create a digest from recent records. Arguments: limit.", digest_create),
+        Tool(
+            "digest.create",
+            "Create a digest from relevant current/upcoming records. Arguments: limit, days.",
+            digest_create,
+        ),
         Tool("sources.check", "Fetch configured sources and store records.", sources_check),
     ]
     return {tool.name: tool for tool in tools}

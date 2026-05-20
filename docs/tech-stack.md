@@ -44,7 +44,7 @@ Pino should eventually run as a daemon.
 For the MVP, the core workflow can still be exposed as explicit CLI commands because that makes development, debugging, and testing simpler:
 
 - `pino check`
-- `pino digest`
+- `pino digest`: create a relevance-windowed digest, defaulting to current/upcoming records in the next 14 days.
 - `pino memory add`
 - `pino memory list`
 - `pino sources list`

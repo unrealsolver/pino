@@ -1,6 +1,7 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
-from pino_core import CheckPipeline, DigestService, SQLiteStore
+from pino_core import CheckPipeline, DigestService, Evaluation, Record, SQLiteStore
 from pino_core.sources import StaticYamlSource
 
 
@@ -69,3 +70,49 @@ records:
 
     assert artifact.kind == "digest"
     assert "Test record" in artifact.body
+
+
+def test_digest_service_uses_relevance_window(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    window_start = datetime(2026, 5, 21, 0, 0, tzinfo=timezone.utc)
+    old = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Old event",
+            text="Old event text",
+            relevant_from=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+            relevant_to=datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc),
+        ),
+    )
+    upcoming = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Upcoming event",
+            text="Upcoming event text",
+            relevant_from=datetime(2026, 5, 22, 15, 0, tzinfo=timezone.utc),
+            relevant_to=datetime(2026, 5, 22, 17, 0, tzinfo=timezone.utc),
+            payload={"location": "Loftas"},
+        ),
+    )
+    store.add_evaluation(Evaluation(record_id=old.record.id, score=1.0, summary="Old summary"))
+    store.add_evaluation(
+        Evaluation(
+            record_id=upcoming.record.id,
+            score=0.9,
+            goal_matches=["electronic_music"],
+            summary="Upcoming summary",
+        ),
+    )
+
+    artifact = DigestService(store).create_digest(window_start=window_start, window_days=7)
+
+    assert "Upcoming event" in artifact.body
+    assert "Old event" not in artifact.body
+    assert "score 0.90 electronic_music" in artifact.body
+    assert "2026-05-22 18:00-20:00" in artifact.body
+    assert "@ Loftas" in artifact.body
+    assert artifact.record_ids == [upcoming.record.id]
+    assert artifact.payload["window_days"] == 7

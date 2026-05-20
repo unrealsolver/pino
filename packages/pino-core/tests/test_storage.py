@@ -83,3 +83,56 @@ def test_evaluation_round_trip_and_unevaluated_records(tmp_path: Path) -> None:
     evaluation = store.get_evaluation(inserted.record.id)
     assert evaluation is not None
     assert evaluation.score == 0.75
+
+
+def test_list_relevant_records_with_evaluations_filters_by_overlap(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    window_start = datetime(2026, 5, 21, 0, 0, tzinfo=timezone.utc)
+    window_end = datetime(2026, 5, 28, 0, 0, tzinfo=timezone.utc)
+
+    past = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Past",
+            text="Past event",
+            relevant_from=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+            relevant_to=datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc),
+        ),
+    )
+    current = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Current",
+            text="Current event",
+            relevant_from=datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc),
+            relevant_to=datetime(2026, 5, 21, 13, 0, tzinfo=timezone.utc),
+        ),
+    )
+    future = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Future",
+            text="Future event",
+            relevant_from=datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc),
+            relevant_to=datetime(2026, 5, 22, 13, 0, tzinfo=timezone.utc),
+        ),
+    )
+    undated = store.add_record(Record(kind="note", source="test", title="Undated", text="Note"))
+    store.add_evaluation(Evaluation(record_id=past.record.id, score=1.0))
+    store.add_evaluation(Evaluation(record_id=current.record.id, score=0.8))
+    store.add_evaluation(Evaluation(record_id=future.record.id, score=0.9))
+
+    rows = store.list_relevant_records_with_evaluations(
+        window_start=window_start,
+        window_end=window_end,
+    )
+
+    assert [record.id for record, _evaluation in rows] == [
+        future.record.id,
+        current.record.id,
+        undated.record.id,
+    ]

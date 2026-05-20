@@ -66,11 +66,12 @@ def check(
 def digest(
     config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     limit: Annotated[int, typer.Option("--limit", "-n", min=1)] = 20,
+    days: Annotated[int, typer.Option("--days", min=1)] = 14,
 ) -> None:
-    """Create and print a digest from recent records."""
+    """Create and print a digest from current/upcoming relevant records."""
     config = get_config(config_path)
     store = get_store(config)
-    artifact = DigestService(store).create_digest(limit=limit)
+    artifact = DigestService(store).create_digest(limit=limit, window_days=days)
     console.rule(artifact.title)
     console.print(artifact.body, markup=False)
 

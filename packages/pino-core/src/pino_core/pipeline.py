@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from pino_core.models import Artifact, Evaluation, Record
+from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
+from pino_core.models import Artifact, Evaluation, Record, utc_now
 from pino_core.sources import SourceAdapter
 from pino_core.storage import SQLiteStore
+
+
+DEFAULT_DIGEST_WINDOW_DAYS = 14
 
 
 @dataclass(frozen=True)
@@ -48,19 +54,38 @@ class DigestService:
     def __init__(self, store: SQLiteStore) -> None:
         self.store = store
 
-    def create_digest(self, limit: int = 20) -> Artifact:
+    def create_digest(
+        self,
+        limit: int = 20,
+        *,
+        window_start: datetime | None = None,
+        window_days: int = DEFAULT_DIGEST_WINDOW_DAYS,
+    ) -> Artifact:
         self.store.init_schema()
-        records = self.store.list_records_with_evaluations(limit=limit)
+        if window_days < 1:
+            raise ValueError("window_days must be at least 1")
+        window_start = window_start or utc_now()
+        window_end = window_start + timedelta(days=window_days)
+        records = self.store.list_relevant_records_with_evaluations(
+            window_start=window_start,
+            window_end=window_end,
+            limit=limit,
+        )
 
         if not records:
-            body = "No records captured yet."
+            body = f"No relevant records found for the next {window_days} day(s)."
         else:
             lines = []
             for record, evaluation in records:
                 label = record.title or record.kind
                 source = f" ({record.source})" if record.source else ""
                 evaluation_text = _format_evaluation(evaluation)
-                lines.append(f"- {label}{source}{evaluation_text}: {record.text}")
+                relevance_text = _format_relevance_window(record)
+                location_text = _format_location(record)
+                summary = evaluation.summary if evaluation and evaluation.summary else record.text
+                lines.append(
+                    f"- {label}{source}{evaluation_text}{relevance_text}{location_text}: {summary}",
+                )
             body = "\n".join(lines)
 
         artifact = Artifact(
@@ -68,6 +93,11 @@ class DigestService:
             title="Latest digest",
             body=body,
             record_ids=[record.id for record, _evaluation in records],
+            payload={
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
+                "window_days": window_days,
+            },
         )
         self.store.add_artifact(artifact)
         return artifact
@@ -78,3 +108,32 @@ def _format_evaluation(evaluation: Evaluation | None) -> str:
         return ""
     matches = f" {'/'.join(evaluation.goal_matches)}" if evaluation.goal_matches else ""
     return f" [score {evaluation.score:.2f}{matches}]"
+
+
+def _format_relevance_window(record: Record) -> str:
+    start = _local_datetime(record.relevant_from)
+    end = _local_datetime(record.relevant_to)
+    if start is None and end is None:
+        return ""
+    if start is not None and end is not None:
+        if start == end:
+            return f" [{start:%Y-%m-%d %H:%M}]"
+        if start.date() == end.date():
+            return f" [{start:%Y-%m-%d %H:%M}-{end:%H:%M}]"
+        return f" [{start:%Y-%m-%d %H:%M} - {end:%Y-%m-%d %H:%M}]"
+    if start is not None:
+        return f" [from {start:%Y-%m-%d %H:%M}]"
+    return f" [until {end:%Y-%m-%d %H:%M}]"
+
+
+def _format_location(record: Record) -> str:
+    location = record.payload.get("location")
+    if not isinstance(location, str) or not location.strip():
+        return ""
+    return f" @ {location.strip()}"
+
+
+def _local_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value.astimezone(ZoneInfo(DEFAULT_SOURCE_TIMEZONE))

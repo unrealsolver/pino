@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-21 00:09 Europe/Vilnius - Codex
+
+- Before: Make digests use `relevant_from`/`relevant_to` so output favors current and upcoming actionable records.
+- Areas: Storage query helpers, digest service, CLI options, tests, docs, progress log.
+- After: Added relevance-window overlap queries, made digest default to the next 14 days, added `pino digest --days`, included local time/location/summary in digest lines, and covered filtering with tests.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `PREK_HOME=/tmp/prek-cache UV_CACHE_DIR=/tmp/uv-cache uv run prek run --all-files`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino digest --help`; `git diff --check`.
+- Follow-up: Decide whether digest should exclude undated records once real event sources are the default.
+
 ## 2026-05-20 23:28 Europe/Vilnius - Codex
 
 - Before: Add `prek` pre-commit tooling for the workspace.

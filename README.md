@@ -217,7 +217,7 @@ Current source types:
 
 `pino evaluate` evaluates unevaluated records against configured goals with a bounded LLM classifier. The default local config uses the `simple` model alias, which resolves to Infercom `gpt-oss-120b`.
 
-Evaluation is cached by record ID, so records are not re-evaluated on every run. Digest output uses stored evaluation scores when available.
+Evaluation is cached by record ID, so records are not re-evaluated on every run. Digest output uses stored evaluation scores when available and defaults to records relevant in the next 14 days.
 
 Current evaluation output stores:
 
@@ -289,7 +289,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run pytest
 UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .
 UV_CACHE_DIR=/tmp/uv-cache uv run pino check
 UV_CACHE_DIR=/tmp/uv-cache uv run pino evaluate --limit 10 --debug
-UV_CACHE_DIR=/tmp/uv-cache uv run pino digest
+UV_CACHE_DIR=/tmp/uv-cache uv run pino digest --days 14
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --message "show memory"
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --debug --message "hello"
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat reset

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from dataclasses import dataclass
 
 from sqlalchemy import (
     JSON,
@@ -14,9 +15,11 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    and_,
     create_engine,
     delete,
     insert,
+    or_,
     select,
 )
 from sqlalchemy.orm import Session
@@ -151,20 +154,42 @@ class SQLiteStore:
                 .order_by(evaluations_table.c.score.desc().nulls_last(), records_table.c.captured_at.desc())
                 .limit(limit),
             )
-            items: list[tuple[Record, Evaluation | None]] = []
-            for row in result:
-                mapping = row._mapping
-                record = Record.model_validate(
-                    {column.name: mapping[column] for column in records_table.columns},
+            return [_record_with_evaluation_from_row(row) for row in result]
+
+    def list_relevant_records_with_evaluations(
+        self,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int = 20,
+    ) -> list[tuple[Record, Evaluation | None]]:
+        with Session(self.engine) as session:
+            result = session.execute(
+                select(records_table, evaluations_table)
+                .outerjoin(
+                    evaluations_table,
+                    records_table.c.id == evaluations_table.c.record_id,
                 )
-                evaluation_id = mapping[evaluations_table.c.id]
-                evaluation = None
-                if evaluation_id is not None:
-                    evaluation = Evaluation.model_validate(
-                        {column.name: mapping[column] for column in evaluations_table.columns},
-                    )
-                items.append((record, evaluation))
-            return items
+                .where(
+                    and_(
+                        or_(
+                            records_table.c.relevant_to.is_(None),
+                            records_table.c.relevant_to >= window_start,
+                        ),
+                        or_(
+                            records_table.c.relevant_from.is_(None),
+                            records_table.c.relevant_from <= window_end,
+                        ),
+                    ),
+                )
+                .order_by(
+                    evaluations_table.c.score.desc().nulls_last(),
+                    records_table.c.relevant_from.asc().nulls_last(),
+                    records_table.c.captured_at.desc(),
+                )
+                .limit(limit),
+            )
+            return [_record_with_evaluation_from_row(row) for row in result]
 
     def add_evaluation(self, evaluation: Evaluation) -> None:
         with Session(self.engine) as session:
@@ -256,3 +281,17 @@ class SQLiteStore:
                 connection.exec_driver_sql(
                     "CREATE UNIQUE INDEX uq_records_fingerprint ON records(fingerprint)",
                 )
+
+
+def _record_with_evaluation_from_row(row: Any) -> tuple[Record, Evaluation | None]:
+    mapping = row._mapping
+    record = Record.model_validate(
+        {column.name: mapping[column] for column in records_table.columns},
+    )
+    evaluation_id = mapping[evaluations_table.c.id]
+    evaluation = None
+    if evaluation_id is not None:
+        evaluation = Evaluation.model_validate(
+            {column.name: mapping[column] for column in evaluations_table.columns},
+        )
+    return record, evaluation
