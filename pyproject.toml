@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 
 [dependency-groups]
 dev = [
+    "prek>=0.4.1",
     "pytest>=8.3",
     "ruff>=0.8",
 ]

@@ -14,6 +14,7 @@ Use a small Python stack with inspectable local storage and explicit module boun
 - SQLite as the first storage backend
 - SQLAlchemy or SQLModel for persistence
 - pytest for tests
+- prek for Git hook management
 - Rich for readable terminal output
 
 Do not start with PostgreSQL, Qdrant, Docker Compose, or LangGraph unless the first useful workflows clearly need them.

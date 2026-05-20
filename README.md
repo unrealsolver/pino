@@ -283,6 +283,8 @@ Useful commands:
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv sync --all-packages
+UV_CACHE_DIR=/tmp/uv-cache uv run prek install
+UV_CACHE_DIR=/tmp/uv-cache uv run prek run --all-files
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest
 UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .
 UV_CACHE_DIR=/tmp/uv-cache uv run pino check

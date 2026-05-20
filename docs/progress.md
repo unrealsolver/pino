@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-20 23:28 Europe/Vilnius - Codex
+
+- Before: Add `prek` pre-commit tooling for the workspace.
+- Areas: Tooling config, README, progress log, lockfile if dependency resolution is needed.
+- After: Added `prek` as a dev dependency, created local hooks for `ruff check .` and `pytest`, and documented install/run commands.
+- Verification: `PREK_HOME=/tmp/prek-cache UV_CACHE_DIR=/tmp/uv-cache uv run prek validate-config .pre-commit-config.yaml`; `PREK_HOME=/tmp/prek-cache UV_CACHE_DIR=/tmp/uv-cache uv run prek run --all-files`; `git diff --check`.
+- Follow-up: None.
+
 ## 2026-05-20 03:36 Europe/Vilnius - Codex
 
 - Before: Make interactive CLI history render like a chat transcript instead of a table with raw roles/tool calls.
