@@ -254,7 +254,7 @@ The committed example config uses the local `echo` provider so the chat loop can
 Chat controls:
 
 - `pino chat --message "..."`: one-shot chat message.
-- `pino chat`: interactive chat.
+- `pino chat`: interactive chat; prints the latest `chat.history_limit` stored messages before the prompt.
 - `pino chat --debug --message "..."`: print provider/model/message/tool diagnostics.
 - `pino chat --history-limit 0 --message "..."`: ignore stored history for this request.
 - `pino chat reset`: clear stored chat history.

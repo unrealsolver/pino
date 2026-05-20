@@ -160,7 +160,7 @@ Do not expose shell execution, arbitrary filesystem access, browser automation, 
 
 `pino chat` is part of the product direction because Pino should handle user requests through a natural-language interface. It is also the first practical proof of Infercom and Ollama provider integration.
 
-Operational controls should include debug output, per-request history limits, and chat history reset so provider behavior can be inspected without manually editing the database.
+Operational controls should include debug output, per-request history limits, visible recent chat history in interactive mode, and chat history reset so provider behavior can be inspected without manually editing the database.
 
 Chat language should be session-consistent. Infer the response language from the user's current session unless the user explicitly asks for another language. This especially matters for generated relative date wording: use `Tuesday`, `today`, and `tomorrow` in English sessions, and Lithuanian equivalents such as `antradienį` in Lithuanian sessions. Date reasoning should use the configured local timezone and convert stored UTC event times only at the final presentation layer.
 

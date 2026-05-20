@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pino_llm import LLMMessage
@@ -100,6 +101,63 @@ def test_chat_agent_keeps_current_message_when_history_limit_is_zero(tmp_path: P
 
     assert result.tool_calls == ["memory.add"]
     assert store.list_memory()[0].content == "Boss wants visible tool debug"
+
+
+def test_chat_agent_receives_history_limit_previous_messages(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_chat_message(
+        ChatMessage(
+            role="user",
+            content="old user",
+            created_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+        ),
+    )
+    store.add_chat_message(
+        ChatMessage(
+            role="assistant",
+            content="old assistant",
+            created_at=datetime(2026, 1, 1, 10, 1, tzinfo=timezone.utc),
+        ),
+    )
+    store.add_chat_message(
+        ChatMessage(
+            role="user",
+            content="recent user",
+            created_at=datetime(2026, 1, 1, 10, 2, tzinfo=timezone.utc),
+        ),
+    )
+    store.add_chat_message(
+        ChatMessage(
+            role="assistant",
+            content="recent assistant",
+            created_at=datetime(2026, 1, 1, 10, 3, tzinfo=timezone.utc),
+        ),
+    )
+    client = SequenceClient(['{"final": "ok"}'])
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(history_limit=2),
+    )
+
+    result = agent.respond("current user")
+
+    assert result.content == "ok"
+    assert [message.content for message in client.messages[0][1:]] == [
+        "recent user",
+        "recent assistant",
+        "current user",
+    ]
+    assert [message.role for message in client.messages[0]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert all(message.content != "old user" for message in client.messages[0])
+    assert all(message.content != "old assistant" for message in client.messages[0])
 
 
 def test_chat_agent_handles_wrapped_tool_call_response(tmp_path: Path) -> None:

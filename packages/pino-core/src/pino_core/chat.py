@@ -33,6 +33,7 @@ class ChatAgent:
         self.store.init_schema()
         user_message = ChatMessage(role="user", content=user_input)
         self.store.add_chat_message(user_message)
+        current_turn_message_ids = {user_message.id}
 
         tool_calls: list[str] = []
         tool_context: list[LLMMessage] = []
@@ -41,7 +42,11 @@ class ChatAgent:
         debug: dict[str, object] = {"rounds": rounds, "tool_usage": tool_usage}
 
         for round_index in range(self.config.max_tool_rounds + 1):
-            messages = self._build_messages(tool_context, current_message=user_message)
+            messages = self._build_messages(
+                tool_context,
+                current_message=user_message,
+                current_turn_message_ids=current_turn_message_ids,
+            )
             round_debug: dict[str, object] = {
                 "round": round_index + 1,
                 "message_count": len(messages),
@@ -77,9 +82,9 @@ class ChatAgent:
                     "result": result,
                 },
             )
-            self.store.add_chat_message(
-                ChatMessage(role="tool", content=result, payload={"tool": action.tool_name}),
-            )
+            tool_message = ChatMessage(role="tool", content=result, payload={"tool": action.tool_name})
+            self.store.add_chat_message(tool_message)
+            current_turn_message_ids.add(tool_message.id)
             tool_context.append(LLMMessage(role="assistant", content=_tool_action_json(action)))
             tool_context.append(
                 LLMMessage(role="tool", content=f"{action.tool_name} result:\n{result}"),
@@ -98,6 +103,7 @@ class ChatAgent:
         tool_context: list[LLMMessage],
         *,
         current_message: ChatMessage,
+        current_turn_message_ids: set[str],
     ) -> list[LLMMessage]:
         system = (
             "You are Pino, a local personal agentic assistant. You can occasionally the user as Boss. "
@@ -109,17 +115,35 @@ class ChatAgent:
             f"Available tools:\n{describe_tools(self.tools)}"
         )
         messages = [LLMMessage(role="system", content=system)]
-        history = list(reversed(self.store.list_chat_messages(limit=self.config.history_limit)))
-        history_ids = {message.id for message in history}
-        messages.extend(
-            LLMMessage(role=message.role, content=message.content)
-            for message in history
-            if not _is_raw_tool_call_message(message)
+        history = recent_chat_history(
+            self.store,
+            self.config.history_limit,
+            exclude_ids=current_turn_message_ids,
         )
-        if current_message.id not in history_ids:
-            messages.append(LLMMessage(role=current_message.role, content=current_message.content))
+        messages.extend(LLMMessage(role=message.role, content=message.content) for message in history)
+        messages.append(LLMMessage(role=current_message.role, content=current_message.content))
         messages.extend(tool_context)
         return messages
+
+
+def recent_chat_history(
+    store: SQLiteStore,
+    limit: int,
+    *,
+    exclude_ids: set[str] | None = None,
+) -> list[ChatMessage]:
+    """Return previous chat messages in chronological order for context/display."""
+    if limit <= 0:
+        return []
+    excluded = exclude_ids or set()
+    fetch_limit = limit + len(excluded)
+    latest = store.list_chat_messages(limit=fetch_limit)
+    filtered = [
+        message
+        for message in latest
+        if message.id not in excluded and not _is_raw_tool_call_message(message)
+    ]
+    return list(reversed(filtered[:limit]))
 
 
 def _tool_action_json(action: LLMAction) -> str:

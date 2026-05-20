@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-05-20 03:36 Europe/Vilnius - Codex
+
+- Before: Make interactive CLI history render like a chat transcript instead of a table with raw roles/tool calls.
+- Areas: CLI history display, tests, progress log.
+- After: Changed interactive history display to `Boss>`/`Pino>` transcript lines and filtered tool messages from normal-mode display.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-05-20 02:39 Europe/Vilnius - Codex
+
+- Before: Use existing chat `history_limit` for both agent context and interactive CLI history display, with tests proving the agent receives N previous messages.
+- Areas: Chat agent, CLI display, tests, progress log.
+- After: Updated chat context assembly so `history_limit` means N previous messages plus the current user message, added interactive CLI recent-history display, and covered both paths with tests.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Consider whether normal CLI display should hide `tool` messages while keeping them in agent context.
+
 ## 2026-05-20 01:25 Europe/Vilnius - Codex
 
 - Before: Implement record timing schema change by replacing ambiguous `observed_at` with generic relevance window fields.

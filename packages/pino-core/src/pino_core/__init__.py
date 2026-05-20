@@ -1,6 +1,6 @@
 from pino_llm import LLMError, build_llm_client
 
-from pino_core.chat import ChatAgent
+from pino_core.chat import ChatAgent, recent_chat_history
 from pino_core.config import PinoConfig, load_config
 from pino_core.evaluation import EvaluationService, build_evaluation_llm_config
 from pino_core.models import Artifact, ChatMessage, Evaluation, MemoryEntry, Record
@@ -28,4 +28,5 @@ __all__ = [
     "build_sources",
     "build_tools",
     "load_config",
+    "recent_chat_history",
 ]

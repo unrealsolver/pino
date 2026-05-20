@@ -23,6 +23,7 @@ from pino_core import (
     build_sources,
     build_tools,
     load_config,
+    recent_chat_history,
 )
 
 app = typer.Typer(no_args_is_help=True)
@@ -135,6 +136,7 @@ def chat_main(
         return
 
     console.print("Pino chat. Type /exit to quit.")
+    print_recent_chat_history(store, config.chat.history_limit)
     if debug:
         print_chat_config_debug(config)
     while True:
@@ -212,6 +214,27 @@ def print_chat_debug(config: PinoConfig, result) -> None:
                 plain_text(item.get("result", "")),
             )
         console.print(Panel(usage_table, title="Tool usage", border_style="blue"))
+
+
+def print_recent_chat_history(store: SQLiteStore, limit: int) -> None:
+    history = [
+        message
+        for message in recent_chat_history(store, limit)
+        if message.role in {"user", "assistant"}
+    ]
+    if not history:
+        return
+
+    for message in history:
+        console.print(plain_text(f"{chat_display_name(message.role)}> {message.content}"))
+
+
+def chat_display_name(role: str) -> str:
+    if role == "user":
+        return "Boss"
+    if role == "assistant":
+        return "Pino"
+    return role
 
 
 def summarize_roles(value: object) -> str:
