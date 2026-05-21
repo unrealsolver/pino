@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -62,6 +63,7 @@ class SourceConfig(BaseModel):
     type: str
     path: Path | None = None
     url: str | None = None
+    settings: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
 
     @model_validator(mode="after")

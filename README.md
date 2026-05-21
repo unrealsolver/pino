@@ -211,7 +211,10 @@ Current source types:
 
 - `static_yaml`: reads local fixture/sample records.
 - `kaveikti`: fetches and parses kaveikti.lt event listing pages into generic event records.
+- `telegram_channel`: fetches recent Telegram channel messages through Telethon using configured API credentials.
 - `vilnius_events`: fetches and parses vilnius-events.lt listing pages into generic event records.
+
+Telegram sources read `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` by default. The first enabled run may prompt Telethon to create a local session file.
 
 ## Evaluation
 

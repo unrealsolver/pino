@@ -180,9 +180,10 @@ Initial libraries:
 
 Avoid browser automation until a source requires it.
 
-Current website source:
+Current source types:
 
 - `kaveikti`: parses kaveikti.lt listing cards into generic `event` records with category, location, display time, start/end metadata, URL, and source-provided event-time ID when present.
+- `telegram_channel`: fetches recent Telegram channel messages into generic `telegram_message` records with message identity, post URL, posted time, and engagement metadata when available.
 - `vilnius_events`: parses vilnius-events.lt listing cards into generic `event` records with category, location, display time, URL slug identity, image URL, and listing provenance.
 
 ## Core Pipeline

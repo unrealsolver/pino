@@ -55,3 +55,12 @@ sources:
     type: vilnius_events
     url: https://www.vilnius-events.lt/en/
     enabled: false
+  - name: afisha-vilnius
+    type: telegram_channel
+    url: https://t.me/afishavilnius
+    settings:
+      api_id_env: TELEGRAM_API_ID
+      api_hash_env: TELEGRAM_API_HASH
+      session_path: .pino/telegram
+      limit: 50
+    enabled: false
