@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pino_core.integrations.kaveikti import parse_kaveikti_records
+from pino_integration.kaveikti import parse_kaveikti_records
 
 
 def test_parse_kaveikti_records_from_listing_fixture() -> None:

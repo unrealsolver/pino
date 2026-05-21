@@ -68,10 +68,6 @@ class SourceConfig(BaseModel):
     def validate_source_target(self) -> SourceConfig:
         if self.type == "static_yaml" and self.path is None:
             raise ValueError("static_yaml source requires path")
-        if self.type == "kaveikti" and self.url is None:
-            raise ValueError("kaveikti source requires url")
-        if self.type == "vilnius_events" and self.url is None:
-            raise ValueError("vilnius_events source requires url")
         return self
 
 

@@ -20,11 +20,11 @@ from pino_core import (
     SQLiteStore,
     build_evaluation_llm_config,
     build_llm_client,
-    build_sources,
     build_tools,
     load_config,
     recent_chat_history,
 )
+from pino_integration import build_sources
 
 app = typer.Typer(no_args_is_help=True)
 chat_app = typer.Typer(no_args_is_help=False, invoke_without_command=True)

@@ -27,13 +27,13 @@ Suggested starting shape:
 
 - `packages/pino-core`: generic records/artifacts, pipeline, memory abstractions, evaluation logic, provider interfaces.
 - `packages/pino-llm`: unified LLM interface, provider adapters, request/response normalization, and provider error wrapping.
+- `packages/pino-integration`: third-party source adapters and their parser dependencies.
 - `apps/pino-cli`: Typer CLI that calls `pino-core`.
 - `apps/pino-daemon`: future daemon process that calls the same `pino-core`.
-- `packages/pino-integrations`: optional later package if integrations become large enough to separate.
 
-Current scaffold starts with `packages/pino-core`, `packages/pino-llm`, and `apps/pino-cli`. The daemon package should be added after the batch workflow has enough real behavior to keep resident.
+Current scaffold starts with `packages/pino-core`, `packages/pino-integration`, `packages/pino-llm`, and `apps/pino-cli`. The daemon package should be added after the batch workflow has enough real behavior to keep resident.
 
-Do not create one package per integration or per domain entity at the start. Keep most code inside `pino-core` until the boundaries prove they deserve separate packages.
+Do not create one package per integration or per domain entity at the start. Keep third-party integration code in `pino-integration` and generic records, storage, pipeline, and evaluation code in `pino-core`.
 
 The root should own workspace-level settings, shared tooling, and the lockfile. Individual packages should own only their package metadata and direct dependencies.
 
@@ -205,7 +205,6 @@ Suggested internal layout for `pino-core`:
 
 - `pino/config`
 - `pino/core`
-- `pino/integrations`
 - `pino/providers`
 - `pino/storage`
 - `tests`

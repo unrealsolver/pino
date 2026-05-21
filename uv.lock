@@ -6,8 +6,21 @@ requires-python = ">=3.12"
 members = [
     "pino-cli",
     "pino-core",
+    "pino-integration",
     "pino-llm",
     "pino-workspace",
+]
+constraints = [
+    { name = "beautifulsoup4", specifier = "==4.14.3" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "prek", specifier = "==0.4.1" },
+    { name = "pydantic", specifier = "==2.13.4" },
+    { name = "pytest", specifier = "==9.0.3" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "rich", specifier = "==15.0.0" },
+    { name = "ruff", specifier = "==0.15.13" },
+    { name = "sqlalchemy", specifier = "==2.0.49" },
+    { name = "typer", specifier = "==0.25.1" },
 ]
 
 [[package]]
@@ -214,6 +227,7 @@ version = "0.1.0"
 source = { editable = "apps/pino-cli" }
 dependencies = [
     { name = "pino-core" },
+    { name = "pino-integration" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -221,8 +235,9 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pino-core", editable = "packages/pino-core" },
-    { name = "rich", specifier = ">=13.9" },
-    { name = "typer", specifier = ">=0.15" },
+    { name = "pino-integration", editable = "packages/pino-integration" },
+    { name = "rich" },
+    { name = "typer" },
 ]
 
 [[package]]
@@ -230,7 +245,6 @@ name = "pino-core"
 version = "0.1.0"
 source = { editable = "packages/pino-core" }
 dependencies = [
-    { name = "beautifulsoup4" },
     { name = "httpx" },
     { name = "pino-llm" },
     { name = "pydantic" },
@@ -240,12 +254,28 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.12" },
-    { name = "httpx", specifier = ">=0.28" },
+    { name = "httpx" },
     { name = "pino-llm", editable = "packages/pino-llm" },
-    { name = "pydantic", specifier = ">=2.10" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "sqlalchemy" },
+]
+
+[[package]]
+name = "pino-integration"
+version = "0.1.0"
+source = { editable = "packages/pino-integration" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "httpx" },
+    { name = "pino-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4" },
+    { name = "httpx" },
+    { name = "pino-core", editable = "packages/pino-core" },
 ]
 
 [[package]]
@@ -259,8 +289,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "pydantic", specifier = ">=2.10" },
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
 
 [[package]]
@@ -279,9 +309,9 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "prek", specifier = ">=0.4.1" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "ruff", specifier = ">=0.8" },
+    { name = "prek" },
+    { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [[package]]

@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "Unified LLM interface and provider adapters for Pino."
 requires-python = ">=3.12"
 dependencies = [
-    "httpx>=0.28",
-    "pydantic>=2.10",
+    "httpx",
+    "pydantic",
 ]
 
 [build-system]
@@ -14,4 +14,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pino_llm"]
-

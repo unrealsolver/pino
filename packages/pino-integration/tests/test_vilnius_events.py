@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pino_core.integrations.vilnius_events import parse_vilnius_events_records
+from pino_integration.vilnius_events import parse_vilnius_events_records
 
 
 def test_parse_vilnius_events_records_from_listing_fixture() -> None:

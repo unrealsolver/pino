@@ -62,7 +62,7 @@ Suggested boundaries:
 
 - `core`: scheduling-independent business logic, item models, memory APIs, ranking, deduplication, digest generation.
 - `providers`: LLM provider adapters, currently Infercom and Ollama.
-- `integrations`: one isolated module per external source.
+- `integrations`: source-specific adapters in `pino-integration`, kept out of `pino-core`.
 - `storage`: persistent memory and event/item storage.
 - `cli`: user-facing commands for running checks, viewing digests, and inspecting memory.
 - `config`: typed configuration loading and validation.
@@ -276,8 +276,9 @@ When working on this repository:
 The repository is a `uv` workspace with:
 
 - `packages/pino-core`: generic records/artifacts, storage, source adapter protocol, and batch pipeline.
+- `packages/pino-integration`: third-party source adapters for external websites and services.
 - `packages/pino-llm`: unified LLM client interface, provider adapters, request normalization, and provider diagnostics.
-- `apps/pino-cli`: Typer CLI using `pino-core`.
+- `apps/pino-cli`: Typer CLI using `pino-core` and `pino-integration`.
 
 Useful commands:
 

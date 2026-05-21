@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-21 23:56 Europe/Vilnius - Codex
+
+- Before: Move third-party source integrations out of `pino-core` into a new `pino-integration` workspace package and centralize exact dependency constraints.
+- Areas: Workspace/package metadata, integration modules and tests, registry wiring, docs/progress.
+- After: Added `packages/pino-integration`, moved `kaveikti` and `vilnius_events` adapters/tests/fixtures there, made the CLI use the integration registry, removed integration parser deps and source-specific registry wiring from `pino-core`, and moved direct dependency versions to exact workspace constraints.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv lock`; `UV_CACHE_DIR=/tmp/uv-cache uv sync --all-packages`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `git diff --check`; `PREK_HOME=/tmp/prek-cache UV_CACHE_DIR=/tmp/uv-cache uv run prek run --all-files`.
+- Follow-up: None.
+
 ## 2026-05-21 00:09 Europe/Vilnius - Codex
 
 - Before: Make digests use `relevant_from`/`relevant_to` so output favors current and upcoming actionable records.
