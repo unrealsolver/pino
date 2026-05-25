@@ -54,13 +54,55 @@ def _parse_json_object(raw_response: str) -> dict[str, Any] | None:
         try:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError:
-            return None
+            parsed = _parse_loose_tool_call(stripped)
+            if parsed is None:
+                return None
     if isinstance(parsed, dict):
         return parsed
     if isinstance(parsed, list):
         first = next((item for item in parsed if isinstance(item, dict)), None)
         return first
     return None
+
+
+def _parse_loose_tool_call(value: str) -> dict[str, Any] | None:
+    tool_match = re.search(r"\b(?:tool|name)\s*=>\s*['\"]([^'\"]+)['\"]", value)
+    if tool_match is None:
+        return None
+
+    arguments: dict[str, Any] = {}
+    arguments_match = re.search(r"\barguments\s*=>\s*\{(?P<body>.*?)\}", value, flags=re.DOTALL)
+    if arguments_match is not None:
+        arguments = _parse_loose_arguments(arguments_match.group("body"))
+    return {"tool": tool_match.group(1), "arguments": arguments}
+
+
+def _parse_loose_arguments(value: str) -> dict[str, Any]:
+    arguments: dict[str, Any] = {}
+    for key, raw_value in re.findall(
+        r"--([A-Za-z_][\w-]*)\s+('(?:[^']*)'|\"(?:[^\"]*)\"|[-+]?\d+|\S+)",
+        value,
+    ):
+        arguments[key.replace("-", "_")] = _parse_loose_value(raw_value)
+
+    for key, raw_value in re.findall(
+        r"\b([A-Za-z_][\w-]*)\s*(?:=>|:)\s*('(?:[^']*)'|\"(?:[^\"]*)\"|[-+]?\d+)",
+        value,
+    ):
+        arguments.setdefault(key, _parse_loose_value(raw_value))
+    return arguments
+
+
+def _parse_loose_value(value: str) -> Any:
+    stripped = value.strip()
+    if (stripped.startswith("'") and stripped.endswith("'")) or (
+        stripped.startswith('"') and stripped.endswith('"')
+    ):
+        return stripped[1:-1]
+    try:
+        return int(stripped)
+    except ValueError:
+        return stripped
 
 
 def _parse_arguments(value: Any) -> dict[str, Any] | None:

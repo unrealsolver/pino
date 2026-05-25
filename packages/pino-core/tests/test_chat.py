@@ -273,3 +273,22 @@ def test_chat_agent_omits_stored_raw_tool_call_messages_from_history(tmp_path: P
 
     assert result.content == "ok"
     assert not any("[TOOL_CALL]" in message.content for message in client.messages[0])
+
+
+def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    client = SequenceClient(['{"final": "ok"}'])
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(),
+    )
+
+    agent.respond("list events")
+
+    prompt = client.messages[0][0].content
+    assert "Output exactly one raw JSON object and nothing else." in prompt
+    assert "Do not use markdown fences, provider-specific tool-call wrappers" in prompt
+    assert "CLI-style flags" in prompt
+    assert '{"tool": "records.list", "arguments": {"limit": 50}}' in prompt

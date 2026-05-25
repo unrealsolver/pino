@@ -55,15 +55,15 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
         )
 
     tools = [
-        Tool("memory.add", "Add an active memory entry. Arguments: content, tags.", memory_add),
-        Tool("memory.list", "List active memory entries. Arguments: limit.", memory_list),
-        Tool("records.list", "List recent captured records. Arguments: limit.", records_list),
+        Tool("memory.add", "Add an active memory entry. Arguments JSON example: {\"content\": \"text\", \"tags\": [\"tag\"]}.", memory_add),
+        Tool("memory.list", "List active memory entries. Arguments JSON example: {\"limit\": 20}.", memory_list),
+        Tool("records.list", "List recent captured records. Arguments JSON example: {\"limit\": 50}.", records_list),
         Tool(
             "digest.create",
-            "Create a digest from relevant current/upcoming records. Arguments: limit, days.",
+            "Create a digest from relevant current/upcoming records. Arguments JSON example: {\"limit\": 20, \"days\": 14}.",
             digest_create,
         ),
-        Tool("sources.check", "Fetch configured sources and store records.", sources_check),
+        Tool("sources.check", "Fetch configured sources and store records. Arguments JSON example: {}.", sources_check),
     ]
     return {tool.name: tool for tool in tools}
 

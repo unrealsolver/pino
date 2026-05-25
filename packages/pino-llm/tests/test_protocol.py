@@ -54,3 +54,11 @@ def test_parse_action_extracts_json_from_extra_text() -> None:
 
     assert action.kind == "final"
     assert action.content == "done"
+
+
+def test_parse_action_reads_loose_provider_tool_call_with_cli_style_arguments() -> None:
+    action = parse_action("[TOOL_CALL] {tool => 'records.list', arguments => { --limit 50 }} [/TOOL_CALL]")
+
+    assert action.kind == "tool"
+    assert action.tool_name == "records.list"
+    assert action.arguments == {"limit": 50}
