@@ -73,9 +73,9 @@ def digest(
     """Create and print a digest from current/upcoming relevant records."""
     config = get_config(config_path)
     store = get_store(config)
-    artifact = DigestService(store).create_digest(limit=limit, window_days=days)
-    console.rule(artifact.title)
-    print_markdown(artifact.body)
+    digest_result = DigestService(store).create_digest(limit=limit, window_days=days)
+    console.rule(digest_result.title)
+    print_markdown(digest_result.body)
 
 
 @app.command()

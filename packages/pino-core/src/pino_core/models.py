@@ -56,20 +56,6 @@ class Record(BaseModel):
         return value
 
 
-class Artifact(BaseModel):
-    """Generated output derived from records, memory, or chat context."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(default_factory=new_id)
-    kind: str
-    title: str
-    body: str
-    created_at: datetime = Field(default_factory=utc_now)
-    record_ids: list[str] = Field(default_factory=list)
-    payload: dict[str, Any] = Field(default_factory=dict)
-
-
 class MemoryEntry(BaseModel):
     """Long-lived active memory available to future Pino decisions."""
 

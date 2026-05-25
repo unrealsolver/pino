@@ -24,7 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
-from pino_core.models import Artifact, ChatMessage, Evaluation, MemoryEntry, Record
+from pino_core.models import ChatMessage, Evaluation, MemoryEntry, Record
 
 metadata = MetaData()
 
@@ -47,17 +47,6 @@ records_table = Table(
     UniqueConstraint("fingerprint", name="uq_records_fingerprint"),
 )
 
-artifacts_table = Table(
-    "artifacts",
-    metadata,
-    Column("id", String, primary_key=True),
-    Column("kind", String, nullable=False),
-    Column("title", String, nullable=False),
-    Column("body", Text, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Column("record_ids", JSON, nullable=False),
-    Column("payload", JSON, nullable=False),
-)
 
 active_memory_table = Table(
     "active_memory",
@@ -212,12 +201,6 @@ class SQLiteStore:
                 return None
             return Evaluation.model_validate(dict(row._mapping))
 
-    def add_artifact(self, artifact: Artifact) -> None:
-        self._insert_model(artifacts_table, artifact)
-
-    def list_artifacts(self, limit: int = 20) -> list[Artifact]:
-        rows = self._select_latest(artifacts_table, artifacts_table.c.created_at, limit)
-        return [Artifact.model_validate(dict(row)) for row in rows]
 
     def add_memory(self, memory: MemoryEntry) -> None:
         self._insert_model(active_memory_table, memory)

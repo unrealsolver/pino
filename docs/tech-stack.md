@@ -25,7 +25,7 @@ Use a `uv` workspace if the repository is split into a small number of coarse pa
 
 Suggested starting shape:
 
-- `packages/pino-core`: generic records/artifacts, pipeline, memory abstractions, evaluation logic, provider interfaces.
+- `packages/pino-core`: generic records, pipeline, memory abstractions, evaluation logic, provider interfaces.
 - `packages/pino-llm`: unified LLM interface, provider adapters, request/response normalization, and provider error wrapping.
 - `packages/pino-integration`: third-party source adapters and their parser dependencies.
 - `apps/pino-cli`: Typer CLI that calls `pino-core`.
@@ -65,7 +65,7 @@ Reasons:
 
 - Local-only.
 - Easy to inspect and back up.
-- Good enough for generic records, generated artifacts, chat history, and active memory.
+- Good enough for generic records, evaluations, chat history, and active memory.
 - Can support simple full-text search.
 - Leaves a clear migration path to PostgreSQL if needed.
 
@@ -74,12 +74,11 @@ Avoid making the storage schema mirror the first event-ingestion pipeline too cl
 Better first-level storage concepts:
 
 - `records`: generic captured or derived facts/items with type, source, timestamps, payload, and provenance.
-- `artifacts`: generated outputs such as digests, reports, summaries, or exports.
 - `chat_messages`: durable conversation history.
 - `active_memory`: explicit long-lived facts and preferences.
 - `tasks`: optional later, for daemon-managed recurring or interrupting work.
 
-Event candidates, dedup groups, ranking results, and source run details can be represented as record/artifact types until the system proves that they need dedicated tables.
+Event candidates, dedup groups, ranking results, and source run details can be represented as record payloads or evaluation data until the system proves that they need dedicated tables.
 
 ### Record Normalization
 
@@ -195,8 +194,7 @@ Keep the first pipeline batch-oriented and explicit:
 3. Normalize or enrich records where useful.
 4. Relate, merge, or suppress duplicates.
 5. Evaluate records against current goals with cached structured evaluations.
-6. Generate concise artifacts such as digests.
-7. Store and print/output the digest.
+6. Generate and print/output concise digests.
 
 This pipeline should be callable from both CLI commands and the future daemon.
 
@@ -213,7 +211,6 @@ Suggested internal layout for `pino-core`:
 Important core concepts:
 
 - `Record`
-- `Artifact`
 - `SourceAdapter`
 - `MemoryEntry`
 - `ChatMessage`

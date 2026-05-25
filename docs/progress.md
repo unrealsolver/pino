@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-25 20:01 Europe/Vilnius - Codex
+
+- Before: Remove stored digest artifacts because artifacts are not a current product goal.
+- Areas: `packages/pino-core/src/pino_core/models.py`, `packages/pino-core/src/pino_core/storage.py`, `packages/pino-core/src/pino_core/pipeline.py`, `packages/pino-core/tests/test_pipeline.py`, CLI/docs/progress.
+- After: Removed the `Artifact` model/export/table/store API; digest generation now returns an in-memory `DigestResult` and no longer writes digest output to storage.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_pipeline.py packages/pino-core/tests/test_storage.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: Existing local SQLite files may still contain an unused legacy `artifacts` table; no cleanup migration was added.
+
 ## 2026-05-25 01:50 Europe/Vilnius - Codex
 
 - Before: Exclude persisted tool messages from chat context and inject active memory into chat prompts.

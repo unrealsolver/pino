@@ -51,7 +51,7 @@ records:
     assert len(store.list_records()) == 1
 
 
-def test_digest_service_creates_artifact(tmp_path: Path) -> None:
+def test_digest_service_creates_digest_result(tmp_path: Path) -> None:
     source_path = tmp_path / "source.yaml"
     source_path.write_text(
         """
@@ -66,10 +66,10 @@ records:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     CheckPipeline(store, [StaticYamlSource(source_path)]).run()
 
-    artifact = DigestService(store).create_digest()
+    digest = DigestService(store).create_digest()
 
-    assert artifact.kind == "digest"
-    assert "Test record" in artifact.body
+    assert digest.title == "Latest digest"
+    assert "Test record" in digest.body
 
 
 def test_digest_service_uses_relevance_window(tmp_path: Path) -> None:
@@ -107,12 +107,10 @@ def test_digest_service_uses_relevance_window(tmp_path: Path) -> None:
         ),
     )
 
-    artifact = DigestService(store).create_digest(window_start=window_start, window_days=7)
+    digest = DigestService(store).create_digest(window_start=window_start, window_days=7)
 
-    assert "Upcoming event" in artifact.body
-    assert "Old event" not in artifact.body
-    assert "score 0.90 electronic_music" in artifact.body
-    assert "2026-05-22 18:00-20:00" in artifact.body
-    assert "@ Loftas" in artifact.body
-    assert artifact.record_ids == [upcoming.record.id]
-    assert artifact.payload["window_days"] == 7
+    assert "Upcoming event" in digest.body
+    assert "Old event" not in digest.body
+    assert "score 0.90 electronic_music" in digest.body
+    assert "2026-05-22 18:00-20:00" in digest.body
+    assert "@ Loftas" in digest.body

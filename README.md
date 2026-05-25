@@ -268,7 +268,7 @@ When working on this repository:
 
 - Preserve the local-only deployment assumption.
 - Keep integrations isolated; do not let source-specific parsing leak into core ranking or digest logic.
-- Prefer typed data models for observations, events, memory entries, and digest results.
+- Prefer typed data models for observations, events, memory entries, evaluations, and digest results.
 - Make CLI flows useful before adding an admin panel.
 - Keep storage inspectable and migration-friendly.
 - Add tests around deduplication, ranking, config loading, and provider adapters.
@@ -278,7 +278,7 @@ When working on this repository:
 
 The repository is a `uv` workspace with:
 
-- `packages/pino-core`: generic records/artifacts, storage, source adapter protocol, and batch pipeline.
+- `packages/pino-core`: generic records, storage, source adapter protocol, evaluation, memory, and batch pipeline.
 - `packages/pino-integration`: third-party source adapters for external websites and services.
 - `packages/pino-llm`: unified LLM client interface, provider adapters, request normalization, and provider diagnostics.
 - `apps/pino-cli`: Typer CLI using `pino-core` and `pino-integration`.

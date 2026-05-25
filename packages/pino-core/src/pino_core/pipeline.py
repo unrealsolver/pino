@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
-from pino_core.models import Artifact, Evaluation, Record, utc_now
+from pino_core.models import Evaluation, Record, utc_now
 from pino_core.sources import SourceAdapter
 from pino_core.storage import SQLiteStore
 
@@ -19,6 +19,12 @@ class CheckResult:
     inserted: int
     duplicates: int
     records: list[Record]
+
+
+@dataclass(frozen=True)
+class DigestResult:
+    title: str
+    body: str
 
 
 class CheckPipeline:
@@ -60,7 +66,7 @@ class DigestService:
         *,
         window_start: datetime | None = None,
         window_days: int = DEFAULT_DIGEST_WINDOW_DAYS,
-    ) -> Artifact:
+    ) -> DigestResult:
         self.store.init_schema()
         if window_days < 1:
             raise ValueError("window_days must be at least 1")
@@ -88,19 +94,7 @@ class DigestService:
                 )
             body = "\n".join(lines)
 
-        artifact = Artifact(
-            kind="digest",
-            title="Latest digest",
-            body=body,
-            record_ids=[record.id for record, _evaluation in records],
-            payload={
-                "window_start": window_start.isoformat(),
-                "window_end": window_end.isoformat(),
-                "window_days": window_days,
-            },
-        )
-        self.store.add_artifact(artifact)
-        return artifact
+        return DigestResult(title="Latest digest", body=body)
 
 
 def _format_evaluation(evaluation: Evaluation | None) -> str:
