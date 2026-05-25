@@ -41,6 +41,63 @@ def test_chat_debug_prints_tool_markup_as_plain_text(monkeypatch) -> None:
     assert "[/TOOL_CALL]" in output.getvalue()
 
 
+def test_chat_result_renders_markdown(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=100))
+    result = SimpleNamespace(content="**Important** note", tool_calls=[], debug={})
+
+    main.print_chat_result(result)
+
+    rendered = output.getvalue()
+    assert "Important note" in rendered
+    assert "**Important**" not in rendered
+
+
+def test_chat_result_prints_compact_tool_usage(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=100))
+    result = SimpleNamespace(
+        content="Done",
+        tool_calls=["records.list"],
+        debug={
+            "tool_usage": [
+                {
+                    "name": "records.list",
+                    "arguments": {"limit": 2},
+                    "result": "hidden from compact output",
+                },
+            ],
+        },
+    )
+
+    main.print_chat_result(result)
+
+    rendered = output.getvalue()
+    assert "-> records.list {\"limit\":2}" in rendered
+    assert "hidden from compact output" not in rendered
+    assert "Done" in rendered
+
+
+def test_recent_chat_history_formats_stored_markdown(tmp_path, monkeypatch) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_chat_message(
+        ChatMessage(
+            role="assistant",
+            content="**recent assistant**",
+            created_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+        ),
+    )
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+
+    main.print_recent_chat_history(store, limit=1)
+
+    rendered = output.getvalue()
+    assert "Pino> recent assistant" in rendered
+    assert "**recent assistant**" not in rendered
+
+
 def test_recent_chat_history_prints_chat_transcript_without_tools(tmp_path, monkeypatch) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()

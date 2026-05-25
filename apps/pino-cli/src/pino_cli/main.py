@@ -5,12 +5,14 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from pino_core import (
     ChatAgent,
+    ChatMessage,
     CheckPipeline,
     DigestService,
     EvaluationService,
@@ -73,7 +75,7 @@ def digest(
     store = get_store(config)
     artifact = DigestService(store).create_digest(limit=limit, window_days=days)
     console.rule(artifact.title)
-    console.print(artifact.body, markup=False)
+    print_markdown(artifact.body)
 
 
 @app.command()
@@ -133,7 +135,7 @@ def chat_main(
         result = respond_or_exit(agent, message)
         if debug:
             print_chat_debug(config, result)
-        console.print(result.content, markup=False)
+        print_chat_result(result, show_tool_calls=not debug)
         return
 
     console.print("Pino chat. Type /exit to quit.")
@@ -149,7 +151,7 @@ def chat_main(
         result = respond_or_exit(agent, user_input)
         if debug:
             print_chat_debug(config, result)
-        console.print(result.content, markup=False)
+        print_chat_result(result, show_tool_calls=not debug)
 
 
 @chat_app.command("reset")
@@ -171,11 +173,43 @@ def respond_or_exit(agent: ChatAgent, user_input: str):
         raise typer.Exit(code=1) from exc
 
 
+def print_chat_result(result, *, show_tool_calls: bool = True) -> None:
+    if show_tool_calls:
+        print_chat_tool_calls(result)
+    print_markdown(result.content)
+
+
+def print_markdown(content: str) -> None:
+    console.print(Markdown(content))
+
+
+def print_chat_tool_calls(result) -> None:
+    tool_usage = result.debug.get("tool_usage", []) if isinstance(result.debug, dict) else []
+    printed = False
+    if isinstance(tool_usage, list):
+        for item in tool_usage:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            arguments = json_dumps_compact(item.get("arguments", {}))
+            console.print(Text(f"  -> {name} {arguments}", style="dim"))
+            printed = True
+
+    if printed:
+        return
+
+    for name in result.tool_calls:
+        console.print(Text(f"  -> {name}", style="dim"))
+
+
 def print_chat_config_debug(config: PinoConfig) -> None:
     table = Table("Field", "Value")
     table.add_row("provider", plain_text(config.llm.default_provider))
     table.add_row("model", plain_text(config.llm.selected_model()))
     table.add_row("history_limit", plain_text(config.chat.history_limit))
+    table.add_row("active_memory_limit", plain_text(config.chat.active_memory_limit))
     table.add_row("max_tool_rounds", plain_text(config.chat.max_tool_rounds))
     console.print(Panel(table, title="Chat debug", border_style="blue"))
 
@@ -227,7 +261,11 @@ def print_recent_chat_history(store: SQLiteStore, limit: int) -> None:
         return
 
     for message in history:
-        console.print(plain_text(f"{chat_display_name(message.role)}> {message.content}"))
+        print_chat_history_message(message)
+
+
+def print_chat_history_message(message: ChatMessage) -> None:
+    print_markdown(f"{chat_display_name(message.role)}> {message.content}")
 
 
 def chat_display_name(role: str) -> str:
@@ -267,6 +305,12 @@ def json_dumps(value: object) -> str:
     import json
 
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def json_dumps_compact(value: object) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def plain_text(value: object) -> Text:

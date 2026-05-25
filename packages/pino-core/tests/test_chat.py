@@ -6,7 +6,7 @@ from pino_llm.providers import EchoClient
 
 from pino_core.chat import ChatAgent
 from pino_core.config import ChatConfig
-from pino_core.models import ChatMessage
+from pino_core.models import ChatMessage, MemoryEntry
 from pino_core.storage import SQLiteStore
 from pino_core.tools import build_tools
 
@@ -158,6 +158,75 @@ def test_chat_agent_receives_history_limit_previous_messages(tmp_path: Path) -> 
     ]
     assert all(message.content != "old user" for message in client.messages[0])
     assert all(message.content != "old assistant" for message in client.messages[0])
+
+
+def test_chat_agent_omits_stored_tool_messages_from_history(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_chat_message(
+        ChatMessage(
+            role="tool",
+            content="old persisted tool result",
+            created_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+        ),
+    )
+    client = SequenceClient(['{"final": "ok"}'])
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(),
+    )
+
+    result = agent.respond("hello")
+
+    assert result.content == "ok"
+    assert all(message.role != "tool" for message in client.messages[0])
+    assert all(message.content != "old persisted tool result" for message in client.messages[0])
+
+
+def test_chat_agent_includes_active_memory_in_system_prompt(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_memory(MemoryEntry(content="Boss prefers evaluated event recommendations."))
+    client = SequenceClient(['{"final": "ok"}'])
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(),
+    )
+
+    result = agent.respond("what should I do this week?")
+
+    assert result.content == "ok"
+    system_message = client.messages[0][0]
+    assert system_message.role == "system"
+    assert "Active memory:" in system_message.content
+    assert "- Boss prefers evaluated event recommendations." in system_message.content
+
+
+def test_chat_agent_keeps_current_turn_tool_context(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    client = SequenceClient(
+        [
+            '{"tool": "memory.list", "arguments": {}}',
+            '{"final": "Done."}',
+        ],
+    )
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(),
+    )
+
+    result = agent.respond("show memory")
+
+    assert result.content == "Done."
+    assert result.tool_calls == ["memory.list"]
+    assert any(message.role == "tool" for message in client.messages[1])
+    assert any("memory.list result:" in message.content for message in client.messages[1])
 
 
 def test_chat_agent_handles_wrapped_tool_call_response(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pino_llm import LLMAction, LLMClient, LLMMessage, parse_action
 
 from pino_core.config import ChatConfig
-from pino_core.models import ChatMessage
+from pino_core.models import ChatMessage, MemoryEntry
 from pino_core.storage import SQLiteStore
 from pino_core.tools import Tool, describe_tools
 
@@ -114,6 +114,11 @@ class ChatAgent:
             '{"tool": "tool.name", "arguments": {}}\n\n'
             f"Available tools:\n{describe_tools(self.tools)}"
         )
+        active_memory = _format_active_memory(
+            self.store.list_memory(limit=self.config.active_memory_limit),
+        )
+        if active_memory:
+            system = f"{system}\n\nActive memory:\n{active_memory}"
         messages = [LLMMessage(role="system", content=system)]
         history = recent_chat_history(
             self.store,
@@ -141,9 +146,13 @@ def recent_chat_history(
     filtered = [
         message
         for message in latest
-        if message.id not in excluded and not _is_raw_tool_call_message(message)
+        if message.id not in excluded and message.role != "tool" and not _is_raw_tool_call_message(message)
     ]
     return list(reversed(filtered[:limit]))
+
+
+def _format_active_memory(memories: list[MemoryEntry]) -> str:
+    return "\n".join(f"- {memory.content}" for memory in memories)
 
 
 def _tool_action_json(action: LLMAction) -> str:

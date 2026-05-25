@@ -18,6 +18,7 @@ class ChatConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     history_limit: int = 20
+    active_memory_limit: int = 20
     max_tool_rounds: int = 2
 
 

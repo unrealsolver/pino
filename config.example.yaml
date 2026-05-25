@@ -26,6 +26,7 @@ llm:
 
 chat:
   history_limit: 20
+  active_memory_limit: 20
   max_tool_rounds: 2
 
 evaluation:
