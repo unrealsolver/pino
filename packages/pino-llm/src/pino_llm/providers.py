@@ -37,7 +37,7 @@ class EchoClient:
         if "check" in lower or "source" in lower:
             return '{"tool": "sources.check", "arguments": {}}'
         if "record" in lower:
-            return '{"tool": "records.list", "arguments": {}}'
+            return '{"tool": "records.relevant", "arguments": {}}'
 
         return '{"final": "Boss, echo provider is configured. I can test local tools, but not real language reasoning."}'
 

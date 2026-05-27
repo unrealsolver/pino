@@ -5,7 +5,7 @@ from pino_llm import LLMMessage
 from pino_llm.providers import EchoClient
 
 from pino_core.chat import ChatAgent
-from pino_core.config import ChatConfig
+from pino_core.config import ChatConfig, GoalConfig
 from pino_core.models import ChatMessage, MemoryEntry
 from pino_core.storage import SQLiteStore
 from pino_core.tools import build_tools
@@ -291,4 +291,29 @@ def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> N
     assert "Output exactly one raw JSON object and nothing else." in prompt
     assert "Do not use markdown fences, provider-specific tool-call wrappers" in prompt
     assert "CLI-style flags" in prompt
-    assert '{"tool": "records.list", "arguments": {"limit": 50}}' in prompt
+    assert '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}' in prompt
+
+
+def test_chat_agent_includes_goals_and_current_time_in_system_prompt(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    client = SequenceClient(['{"final": "ok"}'])
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools=build_tools(store, sources=[]),
+        config=ChatConfig(),
+        goals=[
+            GoalConfig(name="metal_music", description="Metal concerts and related events."),
+            GoalConfig(name="synth_music", description="Synth, IDM, and participatory electronic music."),
+        ],
+        now=lambda: datetime(2026, 5, 25, 17, 38, tzinfo=timezone.utc),
+    )
+
+    agent.respond("Any events this week?")
+
+    prompt = client.messages[0][0].content
+    assert "Current time:" in prompt
+    assert "2026-05-25 20:38 EEST (Europe/Vilnius)" in prompt
+    assert "Goals:" in prompt
+    assert "- metal_music: Metal concerts and related events." in prompt
+    assert "- synth_music: Synth, IDM, and participatory electronic music." in prompt

@@ -248,9 +248,12 @@ The initial tool set is intentionally small:
 
 - `memory.add`
 - `memory.list`
-- `records.list`
+- `records.relevant`: preferred for upcoming/current event recommendations; returns relevance-windowed records with evaluation score, goal matches, time, location, URL, and evaluation summary or raw text fallback. V1 arguments: `limit`, `days`, `min_score`, and `goals`.
+- `records.list`: raw recent records for inspection/debug, not the primary recommendation path.
 - `digest.create`
 - `sources.check`
+
+For v1, `records.relevant` should return enough detail for conversational follow-up without a targeted record lookup tool. A later `records.get` by id can be added if users often ask for deeper detail about a specific result.
 
 The committed example config uses the local `echo` provider so the chat loop can be tested without network access. Set `llm.default_provider` to `infercom` or `ollama` in local config to test real providers.
 

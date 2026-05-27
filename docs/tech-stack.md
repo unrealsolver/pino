@@ -143,7 +143,7 @@ The interactive path should look like this:
 
 1. Accept a natural-language user request.
 2. Store the user message.
-3. Assemble recent chat history, active memory, and available tool descriptions.
+3. Assemble recent chat history, current local time, configured goals, active memory, and available tool descriptions.
 4. Ask the configured LLM for either a normal response or a bounded tool request.
 5. Execute only explicit local tools.
 6. Store tool results and the assistant response.
@@ -152,9 +152,12 @@ Initial tools should be narrow and inspectable:
 
 - `memory.add`
 - `memory.list`
-- `records.list`
+- `records.relevant`: preferred retrieval path for event/recommendation questions. It should query relevance-windowed records joined with evaluations and return title, source, score, goal matches, local time window, location, URL, and evaluation summary with raw text fallback. V1 arguments: `limit`, `days`, `min_score`, and `goals`.
+- `records.list`: raw recent record inspection/debug only.
 - `digest.create`
 - `sources.check`
+
+Do not add targeted `records.get` in v1. `records.relevant` should return enough detail for normal conversational recommendations; add lookup-by-id later only if follow-up questions need deeper record payloads.
 
 Do not expose shell execution, arbitrary filesystem access, browser automation, or generic Python execution to the LLM. Add real-world tools one at a time after the bounded local loop works.
 
@@ -194,7 +197,8 @@ Keep the first pipeline batch-oriented and explicit:
 3. Normalize or enrich records where useful.
 4. Relate, merge, or suppress duplicates.
 5. Evaluate records against current goals with cached structured evaluations.
-6. Generate and print/output concise digests.
+6. Serve evaluated, relevance-windowed records to chat through `records.relevant`.
+7. Generate and print/output concise digests.
 
 This pipeline should be callable from both CLI commands and the future daemon.
 

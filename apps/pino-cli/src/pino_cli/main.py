@@ -129,6 +129,7 @@ def chat_main(
         provider=build_llm_client(config.llm),
         tools=build_tools(store, sources),
         config=config.chat,
+        goals=config.evaluation.goals,
     )
 
     if message:

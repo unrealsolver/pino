@@ -1,10 +1,14 @@
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from pino_llm import LLMAction, LLMClient, LLMMessage, parse_action
 
-from pino_core.config import ChatConfig
-from pino_core.models import ChatMessage, MemoryEntry
+from pino_core.config import ChatConfig, GoalConfig
+from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
+from pino_core.models import ChatMessage, MemoryEntry, utc_now
 from pino_core.storage import SQLiteStore
 from pino_core.tools import Tool, describe_tools
 
@@ -23,11 +27,15 @@ class ChatAgent:
         provider: LLMClient,
         tools: dict[str, Tool],
         config: ChatConfig,
+        goals: list[GoalConfig] | None = None,
+        now: Callable[[], datetime] = utc_now,
     ) -> None:
         self.store = store
         self.provider = provider
         self.tools = tools
         self.config = config
+        self.goals = goals or []
+        self.now = now
 
     def respond(self, user_input: str) -> ChatResult:
         self.store.init_schema()
@@ -115,9 +123,15 @@ class ChatAgent:
             "Use one of these forms:\n"
             '{"final": "message"}\n'
             '{"tool": "tool.name", "arguments": {}}\n'
-            '{"tool": "records.list", "arguments": {"limit": 50}}\n\n'
+            '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}\n\n'
             f"Available tools:\n{describe_tools(self.tools)}"
         )
+        current_time = _format_current_time(self.now())
+        if current_time:
+            system = f"{system}\n\nCurrent time:\n{current_time}"
+        goals = _format_goals(self.goals)
+        if goals:
+            system = f"{system}\n\nGoals:\n{goals}"
         active_memory = _format_active_memory(
             self.store.list_memory(limit=self.config.active_memory_limit),
         )
@@ -153,6 +167,15 @@ def recent_chat_history(
         if message.id not in excluded and message.role != "tool" and not _is_raw_tool_call_message(message)
     ]
     return list(reversed(filtered[:limit]))
+
+
+def _format_current_time(value: datetime) -> str:
+    local = value.astimezone(ZoneInfo(DEFAULT_SOURCE_TIMEZONE))
+    return f"{local:%Y-%m-%d %H:%M %Z} ({DEFAULT_SOURCE_TIMEZONE})"
+
+
+def _format_goals(goals: list[GoalConfig]) -> str:
+    return "\n".join(f"- {goal.name}: {goal.description}" for goal in goals)
 
 
 def _format_active_memory(memories: list[MemoryEntry]) -> str:

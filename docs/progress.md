@@ -2,6 +2,30 @@
 
 Newest entries go first.
 
+## 2026-05-25 21:57 Europe/Vilnius - Codex
+
+- Before: Implement `records.relevant` so chat can actually see the documented evaluated-record retrieval tool.
+- Areas: `packages/pino-core/src/pino_core/tools.py`, `packages/pino-core/tests/test_tools.py`, `packages/pino-core/src/pino_core/chat.py`, `packages/pino-llm/src/pino_llm/providers.py`, `docs/progress.md`.
+- After: Implemented `records.relevant` with relevance-window, `min_score`, and `goals` filtering; updated the chat prompt example and Echo provider to use it.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_tools.py packages/pino-core/tests/test_chat.py packages/pino-llm/tests/test_llm_providers.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --config config.example.yaml --history-limit 0 --debug --message "list records"`. Full `uv run pytest` was not run because escalation was rejected by the environment usage limit.
+- Follow-up: Run full `UV_CACHE_DIR=/tmp/uv-cache uv run pytest` when escalation is available again.
+
+## 2026-05-25 21:48 Europe/Vilnius - Codex
+
+- Before: Document v1 evaluated record retrieval for chat recommendations without targeted record lookup.
+- Areas: `README.md`, `docs/tech-stack.md`, `docs/progress.md`.
+- After: Specified `records.relevant` as the preferred chat recommendation tool with `limit`, `days`, `min_score`, and `goals`; kept `records.list` as raw/debug; deferred targeted `records.get`.
+- Verification: `git diff --check`.
+- Follow-up: Implement `records.relevant` in `pino-core` tools and tests.
+
+## 2026-05-25 20:38 Europe/Vilnius - Codex
+
+- Before: Add configured goals and current local time to the chat system prompt.
+- Areas: `packages/pino-core/src/pino_core/chat.py`, `packages/pino-core/tests/test_chat.py`, `apps/pino-cli/src/pino_cli/main.py`, `docs/progress.md`.
+- After: Chat prompts now include current `Europe/Vilnius` time plus configured evaluation goals as a separate `Goals` section before active memory; CLI passes `config.evaluation.goals` into `ChatAgent`.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_chat.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: Make record retrieval evaluation-aware so chat can use the same goals when fetching event candidates.
+
 ## 2026-05-25 20:27 Europe/Vilnius - Codex
 
 - Before: Tighten chat tool-call prompt instructions after malformed `[TOOL_CALL]` text leaked to chat output.
