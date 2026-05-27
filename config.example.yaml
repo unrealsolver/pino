@@ -34,7 +34,7 @@ evaluation:
   batch_size: 10
   goals:
     - name: meet_people
-      description: Social occasions in Vilnius where Boss could meet women or new people.
+      description: Social occasions in Vilnius where Boss could meet women or interesting new people, including small workshops, tastings, cultural salons, lectures, niche gatherings, volunteering, community events, and other settings with natural conversation.
     - name: metal_music
       description: Metal music concerts, festivals, or meetups.
     - name: electronic_music

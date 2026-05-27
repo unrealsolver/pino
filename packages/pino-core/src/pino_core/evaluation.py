@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from pino_llm import LLMClient, LLMMessage
 
@@ -17,6 +18,16 @@ class EvaluationRunResult:
     requested: int
     evaluated: int
     skipped: int
+
+
+@dataclass(frozen=True)
+class EvaluationProgress:
+    status: Literal["selected", "evaluating", "evaluated", "skipped"]
+    total: int
+    index: int | None = None
+    record: Record | None = None
+    evaluation: Evaluation | None = None
+    reason: str | None = None
 
 
 class EvaluationResponseError(RuntimeError):
@@ -36,25 +47,66 @@ class EvaluationService:
         self.client = client
         self.config = config
 
-    def evaluate_pending(self, limit: int | None = None) -> EvaluationRunResult:
+    def evaluate_pending(
+        self,
+        limit: int | None = None,
+        *,
+        on_progress: Callable[[EvaluationProgress], None] | None = None,
+    ) -> EvaluationRunResult:
         self.store.init_schema()
         records = self.store.list_unevaluated_records(limit=limit or self.config.batch_size)
+        total = len(records)
+        _emit_progress(on_progress, EvaluationProgress(status="selected", total=total))
         evaluated = 0
         skipped = 0
 
-        for record in records:
+        for index, record in enumerate(records, start=1):
+            _emit_progress(
+                on_progress,
+                EvaluationProgress(status="evaluating", total=total, index=index, record=record),
+            )
             if self.store.get_evaluation(record.id) is not None:
                 skipped += 1
+                _emit_progress(
+                    on_progress,
+                    EvaluationProgress(
+                        status="skipped",
+                        total=total,
+                        index=index,
+                        record=record,
+                        reason="already evaluated",
+                    ),
+                )
                 continue
             try:
                 evaluation = self.evaluate_record(record)
             except EvaluationResponseError:
                 skipped += 1
+                _emit_progress(
+                    on_progress,
+                    EvaluationProgress(
+                        status="skipped",
+                        total=total,
+                        index=index,
+                        record=record,
+                        reason="unusable model response",
+                    ),
+                )
                 continue
             self.store.add_evaluation(evaluation)
             evaluated += 1
+            _emit_progress(
+                on_progress,
+                EvaluationProgress(
+                    status="evaluated",
+                    total=total,
+                    index=index,
+                    record=record,
+                    evaluation=evaluation,
+                ),
+            )
 
-        return EvaluationRunResult(requested=len(records), evaluated=evaluated, skipped=skipped)
+        return EvaluationRunResult(requested=total, evaluated=evaluated, skipped=skipped)
 
     def evaluate_record(self, record: Record) -> Evaluation:
         raw_response = self.client.complete(
@@ -170,3 +222,11 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _emit_progress(
+    on_progress: Callable[[EvaluationProgress], None] | None,
+    progress: EvaluationProgress,
+) -> None:
+    if on_progress is not None:
+        on_progress(progress)

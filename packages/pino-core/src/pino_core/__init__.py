@@ -2,7 +2,7 @@ from pino_llm import LLMError, build_llm_client
 
 from pino_core.chat import ChatAgent, recent_chat_history
 from pino_core.config import PinoConfig, load_config
-from pino_core.evaluation import EvaluationService, build_evaluation_llm_config
+from pino_core.evaluation import EvaluationProgress, EvaluationService, build_evaluation_llm_config
 from pino_core.models import ChatMessage, Evaluation, MemoryEntry, Record
 from pino_core.pipeline import CheckPipeline, CheckResult, DigestService
 from pino_core.registry import build_sources
@@ -16,6 +16,7 @@ __all__ = [
     "CheckResult",
     "DigestService",
     "Evaluation",
+    "EvaluationProgress",
     "EvaluationService",
     "LLMError",
     "MemoryEntry",

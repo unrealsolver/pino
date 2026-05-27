@@ -106,3 +106,25 @@ def test_build_evaluation_llm_config_selects_simple_model() -> None:
 
     assert llm_config.temperature == 0.0
     assert llm_config.selected_model() == "gpt-oss-120b"
+
+
+def test_evaluation_service_emits_progress_events(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_record(Record(kind="event", source="test", title="Synth jam", text="Open synth jam"))
+    client = StaticClient('{"relevance": 0.9, "goal_matches": ["open_synth_jam"]}')
+    events = []
+
+    result = EvaluationService(store, client, EvaluationConfig()).evaluate_pending(
+        limit=5,
+        on_progress=events.append,
+    )
+
+    assert result.evaluated == 1
+    assert [event.status for event in events] == ["selected", "evaluating", "evaluated"]
+    assert events[0].total == 1
+    assert events[1].index == 1
+    assert events[1].record is not None
+    assert events[1].record.title == "Synth jam"
+    assert events[2].evaluation is not None
+    assert events[2].evaluation.score == 0.9

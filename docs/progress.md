@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-05-27 15:50 Europe/Berlin - Codex
+
+- Before: Broaden the `meet_people` evaluation goal in example and real config to include niche workshops, salons, tastings, and cultural gatherings that attract interesting people.
+- Areas: `config.example.yaml`, local `config.yaml`, `docs/progress.md`.
+- After: Updated `meet_people` to include interesting new people plus small workshops, tastings, cultural salons, lectures, niche gatherings, volunteering, community events, and natural-conversation settings.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_config.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.yaml`; `git diff --check`.
+- Follow-up: Re-run evaluation for affected records if existing scores should reflect the broader goal.
+
+## 2026-05-27 15:07 Europe/Berlin - Codex
+
+- Before: Add simple visible progress messages to `pino evaluate` so long evaluation runs do not look idle.
+- Areas: `packages/pino-core/src/pino_core/evaluation.py`, `apps/pino-cli/src/pino_cli/main.py`, tests, progress log.
+- After: Added structured evaluation progress events and CLI forward-only messages for selected/evaluating/evaluated/skipped records.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_evaluation.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: None.
+
 ## 2026-05-25 21:57 Europe/Vilnius - Codex
 
 - Before: Implement `records.relevant` so chat can actually see the documented evaluated-record retrieval tool.

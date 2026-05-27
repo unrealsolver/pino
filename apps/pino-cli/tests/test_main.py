@@ -6,7 +6,8 @@ from rich.console import Console
 
 from pino_cli import main
 from pino_core.config import PinoConfig
-from pino_core.models import ChatMessage
+from pino_core.evaluation import EvaluationProgress
+from pino_core.models import ChatMessage, Evaluation, Record
 from pino_core.storage import SQLiteStore
 
 
@@ -139,3 +140,38 @@ def test_recent_chat_history_prints_chat_transcript_without_tools(tmp_path, monk
     assert "Pino> recent assistant" in rendered
     assert "tool implementation detail" not in rendered
     assert "old user" not in rendered
+
+
+def test_evaluation_progress_prints_forward_status(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    record = Record(kind="event", source="test", title="Synth jam", text="Open synth jam")
+    evaluation = Evaluation(record_id=record.id, score=0.9, goal_matches=["open_synth_jam"])
+
+    main.print_evaluation_progress(EvaluationProgress(status="selected", total=1))
+    main.print_evaluation_progress(
+        EvaluationProgress(status="evaluating", total=1, index=1, record=record),
+    )
+    main.print_evaluation_progress(
+        EvaluationProgress(
+            status="evaluated",
+            total=1,
+            index=1,
+            record=record,
+            evaluation=evaluation,
+        ),
+    )
+
+    rendered = output.getvalue()
+    assert "Evaluating 1 record(s)..." in rendered
+    assert "[1/1] Synth jam" in rendered
+    assert "evaluated score 0.90 (open_synth_jam)" in rendered
+
+
+def test_evaluation_progress_prints_empty_selection(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+
+    main.print_evaluation_progress(EvaluationProgress(status="selected", total=0))
+
+    assert "No unevaluated records found." in output.getvalue()

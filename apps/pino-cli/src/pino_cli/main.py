@@ -15,6 +15,7 @@ from pino_core import (
     ChatMessage,
     CheckPipeline,
     DigestService,
+    EvaluationProgress,
     EvaluationService,
     LLMError,
     MemoryEntry,
@@ -93,7 +94,7 @@ def evaluate(
         client=build_llm_client(llm_config),
         config=config.evaluation,
     )
-    result = service.evaluate_pending(limit=limit)
+    result = service.evaluate_pending(limit=limit, on_progress=print_evaluation_progress)
     if debug:
         table = Table("Field", "Value")
         table.add_row("provider", plain_text(llm_config.default_provider))
@@ -105,6 +106,29 @@ def evaluate(
     console.print(
         f"Requested {result.requested}; evaluated {result.evaluated}; skipped {result.skipped}.",
     )
+
+
+def print_evaluation_progress(progress: EvaluationProgress) -> None:
+    if progress.status == "selected":
+        if progress.total == 0:
+            console.print("No unevaluated records found.")
+        else:
+            console.print(f"Evaluating {progress.total} record(s)...")
+        return
+
+    label = progress.record.title or progress.record.kind if progress.record else "record"
+    prefix = f"[{progress.index}/{progress.total}]" if progress.index is not None else ""
+    if progress.status == "evaluating":
+        console.print(Text(f"  {prefix} {label}", style="dim"))
+        return
+
+    if progress.status == "evaluated" and progress.evaluation is not None:
+        goals = "/".join(progress.evaluation.goal_matches) or "no goals"
+        console.print(Text(f"    evaluated score {progress.evaluation.score:.2f} ({goals})", style="green"))
+        return
+
+    reason = progress.reason or "skipped"
+    console.print(Text(f"    skipped: {reason}", style="yellow"))
 
 
 @chat_app.callback(invoke_without_command=True)
