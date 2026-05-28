@@ -18,6 +18,7 @@ from sqlalchemy import (
     and_,
     create_engine,
     delete,
+    func,
     insert,
     or_,
     select,
@@ -92,6 +93,16 @@ class InsertResult:
     inserted: bool
 
 
+@dataclass(frozen=True)
+class RecordEvaluationStatus:
+    record: Record
+    evaluation: Evaluation | None
+
+    @property
+    def is_evaluated(self) -> bool:
+        return self.evaluation is not None
+
+
 class SQLiteStore:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
@@ -144,6 +155,40 @@ class SQLiteStore:
                 .limit(limit),
             )
             return [_record_with_evaluation_from_row(row) for row in result]
+
+    def list_records_with_evaluation_status(self, limit: int = 50) -> list[RecordEvaluationStatus]:
+        with Session(self.engine) as session:
+            result = session.execute(
+                select(records_table, evaluations_table)
+                .outerjoin(
+                    evaluations_table,
+                    records_table.c.id == evaluations_table.c.record_id,
+                )
+                .order_by(records_table.c.captured_at.desc())
+                .limit(limit),
+            )
+            return [
+                RecordEvaluationStatus(record=record, evaluation=evaluation)
+                for record, evaluation in (_record_with_evaluation_from_row(row) for row in result)
+            ]
+
+    def count_unevaluated_records(self, *, record_ids: list[str] | None = None) -> int:
+        with Session(self.engine) as session:
+            query = (
+                select(func.count())
+                .select_from(
+                    records_table.outerjoin(
+                        evaluations_table,
+                        records_table.c.id == evaluations_table.c.record_id,
+                    ),
+                )
+                .where(evaluations_table.c.record_id.is_(None))
+            )
+            if record_ids is not None:
+                if not record_ids:
+                    return 0
+                query = query.where(records_table.c.id.in_(record_ids))
+            return int(session.execute(query).scalar_one())
 
     def list_relevant_records_with_evaluations(
         self,

@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-05-29 02:13 Europe/Vilnius - Codex
+
+- Before: Streamline `pino check` with derived evaluation status/counts so new and pending unevaluated records are visible before evaluation.
+- Areas: `pino-core` storage/tools, CLI check output, tests, docs/progress.
+- After: Added derived record evaluation status/count helpers, included total/new pending evaluation counts in `CheckResult`, printed them from `pino check` and `sources.check`, and labeled unevaluated records in list/relevant tool output.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_storage.py packages/pino-core/tests/test_pipeline.py packages/pino-core/tests/test_tools.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino check --config config.example.yaml`; `git diff --check`.
+- Follow-up: Add an opt-in `pino check --evaluate` path that evaluates pending/new records after the fast check summary.
+
+## 2026-05-29 01:57 Europe/Vilnius - Codex
+
+- Before: Store missing integration recommendations in a new source planning document.
+- Areas: `docs/sources.md`, `docs/progress.md`.
+- After: Added a source integration backlog covering current source types, priority candidates, and implementation notes.
+- Verification: `git diff --check`.
+- Follow-up: Implement `meetup` first, then ticketing and Resident Advisor sources.
+
 ## 2026-05-27 15:50 Europe/Berlin - Codex
 
 - Before: Broaden the `meet_people` evaluation goal in example and real config to include niche workshops, salons, tastings, and cultural gatherings that attract interesting people.

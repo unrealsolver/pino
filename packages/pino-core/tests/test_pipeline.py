@@ -24,6 +24,8 @@ records:
     assert result.fetched == 1
     assert result.inserted == 1
     assert result.duplicates == 0
+    assert result.pending_evaluation_total == 1
+    assert result.pending_evaluation_new == 1
     assert store.list_records()[0].title == "Test record"
 
 
@@ -48,6 +50,8 @@ records:
     assert second.fetched == 1
     assert second.inserted == 0
     assert second.duplicates == 1
+    assert second.pending_evaluation_total == 1
+    assert second.pending_evaluation_new == 0
     assert len(store.list_records()) == 1
 
 

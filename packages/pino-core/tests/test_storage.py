@@ -85,6 +85,26 @@ def test_evaluation_round_trip_and_unevaluated_records(tmp_path: Path) -> None:
     assert evaluation.score == 0.75
 
 
+def test_evaluation_status_is_derived_from_left_join(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    evaluated = store.add_record(Record(kind="event", source="test", title="Evaluated", text="A"))
+    unevaluated = store.add_record(Record(kind="event", source="test", title="Unevaluated", text="B"))
+    store.add_evaluation(Evaluation(record_id=evaluated.record.id, score=0.8))
+
+    rows = store.list_records_with_evaluation_status()
+
+    by_id = {row.record.id: row for row in rows}
+    assert by_id[evaluated.record.id].is_evaluated is True
+    assert by_id[evaluated.record.id].evaluation is not None
+    assert by_id[unevaluated.record.id].is_evaluated is False
+    assert by_id[unevaluated.record.id].evaluation is None
+    assert store.count_unevaluated_records() == 1
+    assert store.count_unevaluated_records(record_ids=[evaluated.record.id, unevaluated.record.id]) == 1
+    assert store.count_unevaluated_records(record_ids=[evaluated.record.id]) == 0
+    assert store.count_unevaluated_records(record_ids=[]) == 0
+
+
 def test_list_relevant_records_with_evaluations_filters_by_overlap(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()

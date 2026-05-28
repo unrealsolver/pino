@@ -19,6 +19,8 @@ class CheckResult:
     inserted: int
     duplicates: int
     records: list[Record]
+    pending_evaluation_total: int = 0
+    pending_evaluation_new: int = 0
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,7 @@ class CheckPipeline:
         fetched_count = 0
         inserted_count = 0
         duplicate_count = 0
+        inserted_ids: list[str] = []
         for source in self.sources:
             fetched = source.fetch()
             fetched_count += len(fetched)
@@ -45,14 +48,19 @@ class CheckPipeline:
                 result = self.store.add_record(record)
                 if result.inserted:
                     inserted_count += 1
+                    inserted_ids.append(result.record.id)
                     records.append(result.record)
                 else:
                     duplicate_count += 1
+        pending_evaluation_total = self.store.count_unevaluated_records()
+        pending_evaluation_new = self.store.count_unevaluated_records(record_ids=inserted_ids)
         return CheckResult(
             fetched=fetched_count,
             inserted=inserted_count,
             duplicates=duplicate_count,
             records=records,
+            pending_evaluation_total=pending_evaluation_total,
+            pending_evaluation_new=pending_evaluation_new,
         )
 
 

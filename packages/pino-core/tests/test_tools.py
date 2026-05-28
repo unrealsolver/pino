@@ -85,8 +85,22 @@ def test_records_relevant_includes_unevaluated_records_only_without_filters(
     filtered = tool.run({"limit": 10, "days": 7, "min_score": 0.1})
 
     assert "Unevaluated event" in unfiltered
+    assert "[unevaluated]" in unfiltered
     assert "Raw unevaluated text" in unfiltered
     assert "Unevaluated event" not in filtered
+
+
+def test_records_list_labels_evaluation_status(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    evaluated = store.add_record(Record(kind="event", source="test", title="Evaluated", text="A"))
+    store.add_record(Record(kind="event", source="test", title="Unevaluated", text="B"))
+    store.add_evaluation(Evaluation(record_id=evaluated.record.id, score=0.8, goal_matches=["metal_music"]))
+
+    output = build_tools(store, sources=[])["records.list"].run({"limit": 10})
+
+    assert "Evaluated (test) [score 0.80 metal_music]" in output
+    assert "Unevaluated (test) [unevaluated]" in output
 
 
 def test_tool_descriptions_include_records_relevant_as_preferred_path(tmp_path: Path) -> None:

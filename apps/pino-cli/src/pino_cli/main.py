@@ -14,6 +14,7 @@ from pino_core import (
     ChatAgent,
     ChatMessage,
     CheckPipeline,
+    CheckResult,
     DigestService,
     EvaluationProgress,
     EvaluationService,
@@ -59,9 +60,17 @@ def check(
     store = get_store(config)
     pipeline = CheckPipeline(store=store, sources=build_sources(config.sources))
     result = pipeline.run()
+    print_check_result(result)
+
+
+def print_check_result(result: CheckResult) -> None:
+    console.print(f"Fetched {result.fetched} record(s).")
     console.print(
-        f"Fetched {result.fetched}; inserted {result.inserted}; "
-        f"duplicates {result.duplicates}.",
+        f"Inserted {result.inserted} new record(s), skipped {result.duplicates} duplicate(s).",
+    )
+    console.print(
+        f"Evaluation pending: {result.pending_evaluation_total} total, "
+        f"{result.pending_evaluation_new} new.",
     )
 
 

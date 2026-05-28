@@ -1,6 +1,6 @@
+from datetime import datetime, timezone
 from io import StringIO
 from types import SimpleNamespace
-from datetime import datetime, timezone
 
 from rich.console import Console
 
@@ -8,6 +8,7 @@ from pino_cli import main
 from pino_core.config import PinoConfig
 from pino_core.evaluation import EvaluationProgress
 from pino_core.models import ChatMessage, Evaluation, Record
+from pino_core.pipeline import CheckResult
 from pino_core.storage import SQLiteStore
 
 
@@ -77,6 +78,27 @@ def test_chat_result_prints_compact_tool_usage(monkeypatch) -> None:
     assert "-> records.list {\"limit\":2}" in rendered
     assert "hidden from compact output" not in rendered
     assert "Done" in rendered
+
+
+def test_check_result_prints_pending_evaluation_counts(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+
+    main.print_check_result(
+        CheckResult(
+            fetched=84,
+            inserted=12,
+            duplicates=72,
+            records=[],
+            pending_evaluation_total=37,
+            pending_evaluation_new=12,
+        ),
+    )
+
+    rendered = output.getvalue()
+    assert "Fetched 84 record(s)." in rendered
+    assert "Inserted 12 new record(s), skipped 72 duplicate(s)." in rendered
+    assert "Evaluation pending: 37 total, 12 new." in rendered
 
 
 def test_recent_chat_history_formats_stored_markdown(tmp_path, monkeypatch) -> None:

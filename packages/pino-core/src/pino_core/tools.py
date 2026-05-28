@@ -9,7 +9,7 @@ from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Evaluation, MemoryEntry, Record, utc_now
 from pino_core.pipeline import CheckPipeline, DigestService
 from pino_core.sources import SourceAdapter
-from pino_core.storage import SQLiteStore
+from pino_core.storage import RecordEvaluationStatus, SQLiteStore
 
 
 @dataclass(frozen=True)
@@ -40,10 +40,10 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
 
     def records_list(arguments: dict[str, Any]) -> str:
         limit = int(arguments.get("limit", 10))
-        records = store.list_records(limit=limit)
-        if not records:
+        rows = store.list_records_with_evaluation_status(limit=limit)
+        if not rows:
             return "No records captured yet."
-        return "\n".join(f"- {record.title or record.kind}: {record.text}" for record in records)
+        return "\n".join(_format_record_with_status(row) for row in rows)
 
     def records_relevant(arguments: dict[str, Any]) -> str:
         limit = int(arguments.get("limit", 20))
@@ -76,7 +76,9 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
         result = CheckPipeline(store=store, sources=sources).run()
         return (
             f"Fetched {result.fetched}; inserted {result.inserted}; "
-            f"duplicates {result.duplicates}."
+            f"duplicates {result.duplicates}. "
+            f"Evaluation pending: {result.pending_evaluation_total} total, "
+            f"{result.pending_evaluation_new} new."
         )
 
     tools = [
@@ -138,9 +140,17 @@ def _format_relevant_record(record: Record, evaluation: Evaluation | None) -> st
 
 def _format_relevant_evaluation(evaluation: Evaluation | None) -> str:
     if evaluation is None:
-        return ""
+        return " [unevaluated]"
     matches = f" {'/'.join(evaluation.goal_matches)}" if evaluation.goal_matches else ""
     return f" [score {evaluation.score:.2f}{matches}]"
+
+
+def _format_record_with_status(row: RecordEvaluationStatus) -> str:
+    record = row.record
+    label = record.title or record.kind
+    source = f" ({record.source})" if record.source else ""
+    evaluation_text = _format_relevant_evaluation(row.evaluation)
+    return f"- {label}{source}{evaluation_text}: {record.text}"
 
 
 def _format_relevance_window(record: Record) -> str:
