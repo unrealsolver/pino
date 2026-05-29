@@ -1,0 +1,183 @@
+# Source Adapter Spec
+
+This document is for humans or coding agents adding a new Pino source inside this repository. The MVP integration point is the repo itself, not an external plugin system.
+
+## Goal
+
+A source adapter fetches one configured source and returns generic `Record` objects. Once registered, the existing commands can use it:
+
+- `pino check` fetches and stores records.
+- `pino evaluate` scores unevaluated records against configured goals.
+- `pino digest` summarizes relevant records.
+- `pino chat` can retrieve records through tools.
+
+Keep source code source-specific. Keep ranking, evaluation, digest, memory, and chat logic in `pino-core`.
+
+## Least Ugly Repo-Local Path
+
+1. Add a module under `packages/pino-integration/src/pino_integration/`, for example `my_events.py`.
+2. Implement a class with `name: str` and `fetch(self) -> list[Record]`.
+3. Implement a factory `build_my_events_source(config: SourceConfig) -> SourceAdapter`.
+4. Register the factory in `packages/pino-integration/src/pino_integration/registry.py`.
+5. Add one source config entry in `config.yaml` or `config.local.yaml`.
+6. Add parser tests with local fixtures before relying on live fetches.
+
+This keeps custom integrations visible and easy to modify while avoiding premature plugin packaging.
+
+## Adapter Contract
+
+Every adapter must satisfy `pino_core.sources.SourceAdapter`:
+
+```python
+class SourceAdapter(Protocol):
+    name: str
+
+    def fetch(self) -> list[Record]:
+        """Fetch records from a source."""
+```
+
+Adapters should be deterministic for the same source contents. Network code belongs in `fetch`; HTML/JSON parsing should live in separate functions so tests can use fixtures without network.
+
+## Record Shape
+
+Return `pino_core.models.Record` objects. For event-like records, prefer this shape:
+
+```python
+Record(
+    kind="event",
+    source=source_name,
+    external_id=stable_source_id,
+    title=title,
+    text="Title. Category: ... Location: ... Time: ...",
+    url=url,
+    relevant_from=start_at_utc,
+    relevant_to=end_at_utc or start_at_utc,
+    payload={
+        "category": category,
+        "categories": categories,
+        "location": location,
+        "display_time": display_time,
+        "start_at_utc": utc_iso(start_at_local),
+        "end_at_utc": utc_iso(end_at_local),
+        "timezone": "Europe/Vilnius",
+        "image_url": image_url,
+        "raw": raw_source_data,
+    },
+    provenance={
+        "adapter": "my_events",
+        "page_url": page_url,
+        "index": index,
+    },
+)
+```
+
+Required fields are `kind`, `source`, and `text`; most useful event records should also include `title`, `url`, `relevant_from`, `relevant_to`, and normalized payload keys.
+
+## Field Rules
+
+- `kind`: generic type such as `event`, `telegram_message`, `article`, or `note`.
+- `source`: configured source name, not just adapter type.
+- `external_id`: stable ID from the source when available. Use URL slug, message ID, event ID, or canonical URL-derived ID.
+- `title`: short display title when available.
+- `text`: compact human-readable source summary. This is used by evaluation, so include the important facts.
+- `url`: canonical URL for the item when available.
+- `relevant_from` / `relevant_to`: top-level UTC datetimes for relevance-window queries.
+- `payload`: normalized metadata plus source-specific fields. Keep keys in English.
+- `provenance`: parser/debug context, including adapter name and source location.
+
+For Vilnius-local event times without an explicit timezone, parse as `Europe/Vilnius`, then store UTC datetimes.
+
+## Factory Shape
+
+Use `SourceConfig` fields consistently:
+
+- `config.name`: user-facing source name to store in records.
+- `config.url`: listing page, feed URL, API endpoint, or channel URL.
+- `config.path`: local fixture/file path for file-backed sources.
+- `config.settings`: source-specific options such as CSS selectors, limits, or credentials env var names.
+
+Example:
+
+```python
+from pino_core.config import SourceConfig
+from pino_core.sources import SourceAdapter
+
+
+def build_my_events_source(config: SourceConfig) -> SourceAdapter:
+    if config.url is None:
+        raise ValueError("my_events source requires url")
+    return MyEventsSource(
+        url=config.url,
+        name=config.name,
+        limit=int(config.settings.get("limit", 50)),
+    )
+```
+
+Register it in `pino_integration.registry`:
+
+```python
+from pino_integration.my_events import build_my_events_source
+
+
+def register_integrations(registry: SourceRegistry) -> SourceRegistry:
+    registry.register("my_events", build_my_events_source)
+    return registry
+```
+
+Then configure it:
+
+```yaml
+sources:
+  - name: my-events
+    type: my_events
+    url: https://example.test/events
+    enabled: true
+    settings:
+      limit: 50
+```
+
+## Parser Guidelines
+
+- Prefer source-provided structured data such as JSON-LD, meta tags, API JSON, or embedded data blobs before fragile CSS scraping.
+- Keep live HTTP requests small: set timeout, User-Agent, and reasonable limits.
+- Do not make one adapter crawl a whole website. Fetch the configured listing/feed/channel and, only when justified, specific detail pages linked from that listing.
+- Preserve useful raw source fragments in `payload.raw` when they help debug parser mistakes.
+- Tolerate empty pages and missing optional fields.
+- Deduplicate within the source by returning stable `external_id` and URL-derived identity where possible.
+
+## Test Checklist
+
+Add focused tests under `packages/pino-integration/tests/`:
+
+- Parser fixture test for one representative item.
+- Missing optional fields test if the source is messy.
+- Date/time parsing assertions for `relevant_from`, `relevant_to`, and payload UTC fields.
+- URL normalization assertion for relative links.
+- Factory validation test if required config is non-obvious.
+
+Live network tests should not be required for the normal test suite.
+
+## Coding Agent Prompt
+
+When asking a coding agent to add a source, include:
+
+```text
+Add a Pino source adapter named <type_name> for <source URL/channel>.
+Follow docs/source-spec.md.
+Keep parsing in packages/pino-integration/src/pino_integration/<type_name>.py.
+Register it in pino_integration.registry.
+Add fixture-based tests under packages/pino-integration/tests/.
+Return generic Record objects with event fields: title, text, url, relevant_from, relevant_to, location, display_time, start/end UTC payload fields, and provenance.
+Do not add broad plugin architecture.
+```
+
+## When To Abstract Further
+
+Do not add an external plugin system until repo-local adapters become painful. Signs it is time:
+
+- Friends need private integrations outside the repo.
+- Source adapters require optional dependencies that should not install by default.
+- There are multiple independently maintained integration packs.
+- Registration conflicts or config schema drift become common.
+
+Until then, one source module plus one registry line is the intended extension point.

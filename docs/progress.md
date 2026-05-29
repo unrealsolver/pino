@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-05-29 20:23 Europe/Vilnius - Codex
+
+- Before: Document a clear repo-local source adapter spec so a friend or coding agent can add custom web/Telegram parsers without a plugin system.
+- Areas: `docs/source-spec.md`, README source section, `docs/sources.md`, docs/progress.
+- After: Added a repo-local source adapter contract, record shape, registry/config steps, parser guidelines, test checklist, and coding-agent prompt.
+- Verification: `git diff --check`.
+- Follow-up: Consider adding a concrete adapter template only after the first friend-written source reveals missing pieces.
+
+## 2026-05-29 19:31 Europe/Vilnius - Codex
+
+- Before: Add a simple future-proof debug command that prints currently rendered prompts without extra arguments.
+- Areas: `pino-core` chat/evaluation prompt rendering, CLI debug command, tests, docs/progress.
+- After: Added `pino debug prompts`, backed by shared rendered chat and evaluation system prompt helpers.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_chat.py packages/pino-core/tests/test_evaluation.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino debug prompts --config config.example.yaml`; `git diff --check`.
+- Follow-up: Add selector flags only when there are enough prompt surfaces to justify them.
+
 ## 2026-05-29 02:13 Europe/Vilnius - Codex
 
 - Before: Streamline `pino check` with derived evaluation status/counts so new and pending unevaluated records are visible before evaluation.

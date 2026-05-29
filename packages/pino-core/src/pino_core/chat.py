@@ -106,6 +106,15 @@ class ChatAgent:
             debug={"rounds": rounds, "tool_usage": tool_usage},
         )
 
+    def render_system_prompt(self) -> str:
+        return render_chat_system_prompt(
+            store=self.store,
+            tools=self.tools,
+            config=self.config,
+            goals=self.goals,
+            now=self.now,
+        )
+
     def _build_messages(
         self,
         tool_context: list[LLMMessage],
@@ -113,31 +122,7 @@ class ChatAgent:
         current_message: ChatMessage,
         current_turn_message_ids: set[str],
     ) -> list[LLMMessage]:
-        system = (
-            "You are Pino, a local personal agentic assistant. You can occasionally the user as Boss. "
-            "Be concise and practical. You are not a generic emotional support chatbot.\n\n"
-            "You may request exactly one bounded local tool call at a time.\n"
-            "Output exactly one raw JSON object and nothing else.\n"
-            "Do not use markdown fences, provider-specific tool-call wrappers, => syntax, single quotes, "
-            "or CLI-style flags.\n"
-            "Use one of these forms:\n"
-            '{"final": "message"}\n'
-            '{"tool": "tool.name", "arguments": {}}\n'
-            '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}\n\n'
-            f"Available tools:\n{describe_tools(self.tools)}"
-        )
-        current_time = _format_current_time(self.now())
-        if current_time:
-            system = f"{system}\n\nCurrent time:\n{current_time}"
-        goals = _format_goals(self.goals)
-        if goals:
-            system = f"{system}\n\nGoals:\n{goals}"
-        active_memory = _format_active_memory(
-            self.store.list_memory(limit=self.config.active_memory_limit),
-        )
-        if active_memory:
-            system = f"{system}\n\nActive memory:\n{active_memory}"
-        messages = [LLMMessage(role="system", content=system)]
+        messages = [LLMMessage(role="system", content=self.render_system_prompt())]
         history = recent_chat_history(
             self.store,
             self.config.history_limit,
@@ -147,6 +132,41 @@ class ChatAgent:
         messages.append(LLMMessage(role=current_message.role, content=current_message.content))
         messages.extend(tool_context)
         return messages
+
+
+def render_chat_system_prompt(
+    *,
+    store: SQLiteStore,
+    tools: dict[str, Tool],
+    config: ChatConfig,
+    goals: list[GoalConfig] | None = None,
+    now: Callable[[], datetime] = utc_now,
+) -> str:
+    system = (
+        "You are Pino, a local personal agentic assistant. You can occasionally the user as Boss. "
+        "Be concise and practical. You are not a generic emotional support chatbot.\n\n"
+        "You may request exactly one bounded local tool call at a time.\n"
+        "Output exactly one raw JSON object and nothing else.\n"
+        "Do not use markdown fences, provider-specific tool-call wrappers, => syntax, single quotes, "
+        "or CLI-style flags.\n"
+        "Use one of these forms:\n"
+        '{"final": "message"}\n'
+        '{"tool": "tool.name", "arguments": {}}\n'
+        '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}\n\n'
+        f"Available tools:\n{describe_tools(tools)}"
+    )
+    current_time = _format_current_time(now())
+    if current_time:
+        system = f"{system}\n\nCurrent time:\n{current_time}"
+    goal_text = _format_goals(goals or [])
+    if goal_text:
+        system = f"{system}\n\nGoals:\n{goal_text}"
+    active_memory = _format_active_memory(
+        store.list_memory(limit=config.active_memory_limit),
+    )
+    if active_memory:
+        system = f"{system}\n\nActive memory:\n{active_memory}"
+    return system
 
 
 def recent_chat_history(

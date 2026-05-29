@@ -27,6 +27,8 @@ from pino_core import (
     build_tools,
     load_config,
     recent_chat_history,
+    render_chat_system_prompt,
+    render_evaluation_system_prompt,
 )
 from pino_integration import build_sources
 
@@ -34,9 +36,11 @@ app = typer.Typer(no_args_is_help=True)
 chat_app = typer.Typer(no_args_is_help=False, invoke_without_command=True)
 memory_app = typer.Typer(no_args_is_help=True)
 sources_app = typer.Typer(no_args_is_help=True)
+debug_app = typer.Typer(no_args_is_help=True)
 app.add_typer(chat_app, name="chat")
 app.add_typer(memory_app, name="memory")
 app.add_typer(sources_app, name="sources")
+app.add_typer(debug_app, name="debug")
 
 console = Console()
 
@@ -138,6 +142,31 @@ def print_evaluation_progress(progress: EvaluationProgress) -> None:
 
     reason = progress.reason or "skipped"
     console.print(Text(f"    skipped: {reason}", style="yellow"))
+
+
+@debug_app.command("prompts")
+def debug_prompts(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Print rendered prompts used by local LLM calls."""
+    config = get_config(config_path)
+    store = get_store(config)
+    sources = build_sources(config.sources)
+    tools = build_tools(store, sources)
+
+    console.rule("Chat system prompt")
+    console.print(
+        plain_text(
+            render_chat_system_prompt(
+                store=store,
+                tools=tools,
+                config=config.chat,
+                goals=config.evaluation.goals,
+            ),
+        ),
+    )
+    console.rule("Evaluation system prompt")
+    console.print(plain_text(render_evaluation_system_prompt(config.evaluation)))
 
 
 @chat_app.callback(invoke_without_command=True)

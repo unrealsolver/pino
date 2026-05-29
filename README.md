@@ -214,6 +214,8 @@ Current source types:
 - `telegram_channel`: fetches recent Telegram channel messages through Telethon using configured API credentials.
 - `vilnius_events`: fetches and parses vilnius-events.lt listing pages into generic event records.
 
+For custom sources, use this repository as the integration point: add an adapter under `packages/pino-integration`, register it in `pino_integration.registry`, and configure it in YAML. See [docs/source-spec.md](docs/source-spec.md) for the source adapter contract and checklist.
+
 Telegram sources read `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` by default. The first enabled run may prompt Telethon to create a local session file.
 
 ## Evaluation

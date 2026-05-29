@@ -133,25 +133,7 @@ class EvaluationService:
         )
 
     def _system_prompt(self) -> str:
-        goals = "\n".join(f"- {goal.name}: {goal.description}" for goal in self.config.goals)
-        return (
-            "You evaluate event/source records for Pino, a local personal assistant.\n"
-            "The user is Boss/Ruslan in Vilnius. He wants only useful, actionable items.\n"
-            "Evaluate multilingual text. Lithuanian, Russian, and English may appear.\n"
-            "Return strict JSON only. No markdown, no prose outside JSON.\n\n"
-            "Goals:\n"
-            f"{goals}\n\n"
-            "JSON schema:\n"
-            "{\n"
-            '  "relevance": 0.0,\n'
-            '  "goal_matches": ["goal_name"],\n'
-            '  "language": "lt|ru|en|mixed|unknown",\n'
-            '  "summary": "one concise English sentence",\n'
-            '  "reasons": ["short reason"],\n'
-            '  "risks": ["short caveat"]\n'
-            "}\n"
-            "Use relevance 0 for irrelevant records and 1 for highly actionable records."
-        )
+        return render_evaluation_system_prompt(self.config)
 
     def _record_prompt(self, record: Record) -> str:
         payload = {
@@ -164,6 +146,28 @@ class EvaluationService:
             "payload": record.payload,
         }
         return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def render_evaluation_system_prompt(config: EvaluationConfig) -> str:
+    goals = "\n".join(f"- {goal.name}: {goal.description}" for goal in config.goals)
+    return (
+        "You evaluate event/source records for Pino, a local personal assistant.\n"
+        "The user is Boss/Ruslan in Vilnius. He wants only useful, actionable items.\n"
+        "Evaluate multilingual text. Lithuanian, Russian, and English may appear.\n"
+        "Return strict JSON only. No markdown, no prose outside JSON.\n\n"
+        "Goals:\n"
+        f"{goals}\n\n"
+        "JSON schema:\n"
+        "{\n"
+        '  "relevance": 0.0,\n'
+        '  "goal_matches": ["goal_name"],\n'
+        '  "language": "lt|ru|en|mixed|unknown",\n'
+        '  "summary": "one concise English sentence",\n'
+        '  "reasons": ["short reason"],\n'
+        '  "risks": ["short caveat"]\n'
+        "}\n"
+        "Use relevance 0 for irrelevant records and 1 for highly actionable records."
+    )
 
 
 def build_evaluation_llm_config(config, evaluation_config: EvaluationConfig):

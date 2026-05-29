@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from rich.console import Console
 
 from pino_cli import main
-from pino_core.config import PinoConfig
+from pino_core.config import PinoConfig, StorageConfig
 from pino_core.evaluation import EvaluationProgress
 from pino_core.models import ChatMessage, Evaluation, Record
 from pino_core.pipeline import CheckResult
@@ -99,6 +99,24 @@ def test_check_result_prints_pending_evaluation_counts(monkeypatch) -> None:
     assert "Fetched 84 record(s)." in rendered
     assert "Inserted 12 new record(s), skipped 72 duplicate(s)." in rendered
     assert "Evaluation pending: 37 total, 12 new." in rendered
+
+
+def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    config = PinoConfig(storage=StorageConfig(path=tmp_path / "pino.sqlite"))
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+
+    main.debug_prompts()
+
+    rendered = output.getvalue()
+    assert "Chat system prompt" in rendered
+    assert "Available tools:" in rendered
+    assert "records.relevant" in rendered
+    assert "Current time:" in rendered
+    assert "Goals:" in rendered
+    assert "Evaluation system prompt" in rendered
+    assert "JSON schema:" in rendered
 
 
 def test_recent_chat_history_formats_stored_markdown(tmp_path, monkeypatch) -> None:
