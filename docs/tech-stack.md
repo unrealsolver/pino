@@ -154,6 +154,7 @@ Initial tools should be narrow and inspectable:
 - `memory.list`
 - `records.relevant`: preferred retrieval path for event/recommendation questions. It should query relevance-windowed records joined with evaluations and return title, source, score, goal matches, local time window, location, URL, and evaluation summary with raw text fallback. V1 arguments: `limit`, `days`, `min_score`, and `goals`.
 - `records.list`: raw recent record inspection/debug only.
+- `web.open`: bounded public HTTP(S) URL reader for checking event/detail pages referenced by records or user messages.
 - `digest.create`
 - `sources.check`
 

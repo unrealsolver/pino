@@ -3,7 +3,7 @@ from pathlib import Path
 
 from pino_core.models import Evaluation, Record
 from pino_core.storage import SQLiteStore
-from pino_core.tools import build_tools, describe_tools
+from pino_core.tools import WebPage, build_tools, describe_tools
 
 
 def test_records_relevant_returns_evaluated_recommendation_fields(tmp_path: Path, monkeypatch) -> None:
@@ -103,6 +103,69 @@ def test_records_list_labels_evaluation_status(tmp_path: Path) -> None:
     assert "Unevaluated (test) [unevaluated]" in output
 
 
+def test_web_open_returns_readable_page_text(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+
+    def fetcher(url: str) -> WebPage:
+        return WebPage(
+            url=url,
+            status_code=200,
+            content_type="text/html; charset=utf-8",
+            text="""
+<html>
+  <head>
+    <title>Noise Night</title>
+    <meta name="description" content="Experimental concert in Vilnius">
+    <script>secretTracker()</script>
+  </head>
+  <body>
+    <h1>Noise Night</h1>
+    <p>Doors at 19:00. Tickets at the venue.</p>
+  </body>
+</html>
+""",
+        )
+
+    output = build_tools(store, sources=[], web_fetcher=fetcher)["web.open"].run(
+        {"url": "https://example.com/event", "max_chars": 1000},
+    )
+
+    assert "URL: https://example.com/event" in output
+    assert "Status: 200" in output
+    assert "Content-Type: text/html" in output
+    assert "Title: Noise Night" in output
+    assert "Description: Experimental concert in Vilnius" in output
+    assert "Doors at 19:00. Tickets at the venue." in output
+    assert "secretTracker" not in output
+
+
+def test_web_open_rejects_non_public_urls(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    tool = build_tools(store, sources=[])["web.open"]
+
+    assert "only http and https" in tool.run({"url": "file:///etc/passwd"})
+    assert "local hostnames" in tool.run({"url": "http://localhost/event"})
+    assert "private, loopback" in tool.run({"url": "http://127.0.0.1/event"})
+
+
+def test_web_open_truncates_text(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+
+    def fetcher(url: str) -> WebPage:
+        return WebPage(
+            url=url,
+            status_code=200,
+            content_type="text/plain",
+            text="A" * 800,
+        )
+
+    output = build_tools(store, sources=[], web_fetcher=fetcher)["web.open"].run(
+        {"url": "https://example.com/event", "max_chars": 500},
+    )
+
+    assert "[truncated to 500 characters]" in output
+
+
 def test_tool_descriptions_include_records_relevant_as_preferred_path(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
 
@@ -112,3 +175,5 @@ def test_tool_descriptions_include_records_relevant_as_preferred_path(tmp_path: 
     assert "Preferred for event recommendations" in descriptions
     assert "records.list" in descriptions
     assert "inspection/debug only" in descriptions
+    assert "web.open" in descriptions
+    assert "Open one public http(s) URL" in descriptions

@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-05-31 00:00 Europe/Vilnius - Codex
+
+- Before: Recover the first valid tool call when a model emits multiple concatenated JSON/wrapped tool-call fragments instead of the required single call.
+- Areas: LLM action parser/tests, progress log.
+- After: Replaced greedy embedded JSON extraction with incremental decoding and recover the first valid bounded tool call from concatenated output; added regression coverage for the observed multi-`web.open` response and embedded-final-before-tool output.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-llm/tests/test_protocol.py packages/pino-core/tests/test_chat.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: Consider a retry/repair round only if models continue emitting malformed shapes that cannot be recovered deterministically.
+
+## 2026-05-30 19:51 Europe/Vilnius - Codex
+
+- Before: Add a bounded web tool so Pino can open event URLs and inspect page details through chat.
+- Areas: `pino-core` tools/tests, chat tool descriptions, docs/progress.
+- After: Added `web.open` for public HTTP(S) URLs with local/private URL rejection, compact HTML/plain-text extraction, output truncation, prompt/tool docs, and Echo URL tool-call support.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_tools.py packages/pino-core/tests/test_chat.py packages/pino-llm/tests/test_llm_providers.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino debug prompts --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: Consider source/domain allowlists or robots-aware fetching if this becomes more than an occasional event-detail lookup.
+
 ## 2026-05-30 19:28 Europe/Vilnius - Codex
 
 - Before: Let chat final answers be plain text while keeping JSON only for tool calls and backwards-compatible exact `{"final": ...}` responses.

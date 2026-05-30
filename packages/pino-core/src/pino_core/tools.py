@@ -2,14 +2,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
+from ipaddress import ip_address
 from typing import Any, Callable
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
+
+import httpx
 
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Evaluation, MemoryEntry, Record, utc_now
 from pino_core.pipeline import CheckPipeline, DigestService
 from pino_core.sources import SourceAdapter
 from pino_core.storage import RecordEvaluationStatus, SQLiteStore
+
+
+DEFAULT_WEB_OPEN_MAX_CHARS = 5000
+WEB_OPEN_USER_AGENT = "Pino/0.1 (+local personal assistant)"
 
 
 @dataclass(frozen=True)
@@ -19,7 +28,23 @@ class Tool:
     run: Callable[[dict[str, Any]], str]
 
 
-def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, Tool]:
+@dataclass(frozen=True)
+class WebPage:
+    url: str
+    status_code: int
+    content_type: str
+    text: str
+
+
+WebFetcher = Callable[[str], WebPage]
+
+
+def build_tools(
+    store: SQLiteStore,
+    sources: list[SourceAdapter],
+    *,
+    web_fetcher: WebFetcher | None = None,
+) -> dict[str, Tool]:
     def memory_add(arguments: dict[str, Any]) -> str:
         content = str(arguments.get("content", "")).strip()
         if not content:
@@ -81,6 +106,39 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
             f"{result.pending_evaluation_new} new."
         )
 
+    def web_open(arguments: dict[str, Any]) -> str:
+        url = str(arguments.get("url", "")).strip()
+        if not url:
+            return "web.open failed: url is required."
+        limit = _coerce_int(arguments.get("max_chars"), default=DEFAULT_WEB_OPEN_MAX_CHARS)
+        limit = max(500, min(limit, DEFAULT_WEB_OPEN_MAX_CHARS))
+        error = _validate_public_http_url(url)
+        if error is not None:
+            return f"web.open failed: {error}"
+        try:
+            page = (web_fetcher or _fetch_web_page)(url)
+        except httpx.HTTPError as exc:
+            return f"web.open failed: request error: {exc}"
+        except UnicodeError as exc:
+            return f"web.open failed: could not decode response: {exc}"
+
+        extracted = _extract_page_text(page.text)
+        body = _truncate_text(extracted.body, limit)
+        lines = [
+            f"URL: {page.url}",
+            f"Status: {page.status_code}",
+            f"Content-Type: {page.content_type or 'unknown'}",
+        ]
+        if extracted.title:
+            lines.append(f"Title: {extracted.title}")
+        if extracted.description:
+            lines.append(f"Description: {extracted.description}")
+        if body:
+            lines.append(f"Text:\n{body}")
+        else:
+            lines.append("Text: No readable page text found.")
+        return "\n".join(lines)
+
     tools = [
         Tool("memory.add", "Add an active memory entry. Arguments JSON example: {\"content\": \"text\", \"tags\": [\"tag\"]}.", memory_add),
         Tool("memory.list", "List active memory entries. Arguments JSON example: {\"limit\": 20}.", memory_list),
@@ -96,6 +154,11 @@ def build_tools(store: SQLiteStore, sources: list[SourceAdapter]) -> dict[str, T
             digest_create,
         ),
         Tool("sources.check", "Fetch configured sources and store records. Arguments JSON example: {}.", sources_check),
+        Tool(
+            "web.open",
+            "Open one public http(s) URL and return compact readable page text for event/detail checks. Arguments JSON example: {\"url\": \"https://example.com/event\", \"max_chars\": 3000}.",
+            web_open,
+        ),
     ]
     return {tool.name: tool for tool in tools}
 
@@ -110,6 +173,13 @@ def _coerce_goals(value: object) -> list[str]:
     if isinstance(value, str):
         return [item.strip() for item in value.split(",") if item.strip()]
     return []
+
+
+def _coerce_int(value: object, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _matches_relevant_filters(
@@ -180,3 +250,134 @@ def _local_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value.astimezone(ZoneInfo(DEFAULT_SOURCE_TIMEZONE))
+
+
+def _validate_public_http_url(url: str) -> str | None:
+    split = urlsplit(url)
+    if split.scheme not in {"http", "https"}:
+        return "only http and https URLs are supported."
+    if not split.hostname:
+        return "URL must include a hostname."
+    host = split.hostname.lower()
+    if host in {"localhost"} or host.endswith(".localhost") or host.endswith(".local"):
+        return "local hostnames are not allowed."
+    try:
+        parsed_ip = ip_address(host)
+    except ValueError:
+        return None
+    if parsed_ip.is_private or parsed_ip.is_loopback or parsed_ip.is_link_local:
+        return "private, loopback, and link-local addresses are not allowed."
+    return None
+
+
+def _fetch_web_page(url: str) -> WebPage:
+    response = httpx.get(
+        url,
+        headers={"User-Agent": WEB_OPEN_USER_AGENT},
+        follow_redirects=True,
+        timeout=20,
+    )
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "")
+    if not _is_text_content_type(content_type):
+        raise httpx.HTTPError(f"unsupported content type: {content_type or 'unknown'}")
+    return WebPage(
+        url=str(response.url),
+        status_code=response.status_code,
+        content_type=content_type,
+        text=response.text,
+    )
+
+
+def _is_text_content_type(content_type: str) -> bool:
+    normalized = content_type.lower()
+    return any(
+        item in normalized
+        for item in ("text/html", "text/plain", "application/xhtml+xml", "application/xml", "text/xml")
+    )
+
+
+@dataclass(frozen=True)
+class ExtractedPageText:
+    title: str
+    description: str
+    body: str
+
+
+class _ReadableHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.title_parts: list[str] = []
+        self.description = ""
+        self.body_parts: list[str] = []
+        self._ignored_depth = 0
+        self._in_title = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "svg"}:
+            self._ignored_depth += 1
+            return
+        if tag == "title":
+            self._in_title = True
+            return
+        if tag == "meta":
+            values = {name.lower(): value or "" for name, value in attrs}
+            if values.get("name", "").lower() == "description" and values.get("content"):
+                self.description = values["content"]
+            return
+        if tag in {"p", "div", "section", "article", "header", "footer", "li", "br", "tr", "h1", "h2", "h3"}:
+            self.body_parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "svg"} and self._ignored_depth > 0:
+            self._ignored_depth -= 1
+            return
+        if tag == "title":
+            self._in_title = False
+            return
+        if tag in {"p", "div", "section", "article", "li", "tr", "h1", "h2", "h3"}:
+            self.body_parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._ignored_depth > 0:
+            return
+        text = data.strip()
+        if not text:
+            return
+        if self._in_title:
+            self.title_parts.append(text)
+        else:
+            self.body_parts.append(text)
+            self.body_parts.append(" ")
+
+
+def _extract_page_text(text: str) -> ExtractedPageText:
+    stripped = text.lstrip()
+    if not stripped.startswith("<"):
+        body = _normalize_extracted_text(text)
+        return ExtractedPageText(title="", description="", body=body)
+
+    parser = _ReadableHTMLParser()
+    parser.feed(text)
+    return ExtractedPageText(
+        title=_normalize_extracted_text(" ".join(parser.title_parts)),
+        description=_normalize_extracted_text(parser.description),
+        body=_normalize_extracted_text("".join(parser.body_parts)),
+    )
+
+
+def _normalize_extracted_text(value: str) -> str:
+    lines = []
+    for line in value.splitlines():
+        line = " ".join(line.split())
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _truncate_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return f"{value[:limit].rstrip()}\n[truncated to {limit} characters]"

@@ -16,15 +16,15 @@ class LLMAction:
 
 
 def parse_action(raw_response: str) -> LLMAction:
-    parsed = _parse_json_object(raw_response, extract_embedded=False)
+    parsed = _parse_json_object(raw_response)
     action = _action_from_parsed(parsed, raw_response=raw_response, allow_final=True)
     if action is not None:
         return action
 
-    embedded = _parse_json_object(raw_response, extract_embedded=True)
-    action = _action_from_parsed(embedded, raw_response=raw_response, allow_final=False)
-    if action is not None:
-        return action
+    for embedded in _parse_embedded_json_objects(raw_response):
+        action = _action_from_parsed(embedded, raw_response=raw_response, allow_final=False)
+        if action is not None:
+            return action
     return LLMAction(kind="final", content=raw_response, raw_response=raw_response)
 
 
@@ -54,7 +54,7 @@ def _action_from_parsed(
     return None
 
 
-def _parse_json_object(raw_response: str, *, extract_embedded: bool) -> dict[str, Any] | None:
+def _parse_json_object(raw_response: str) -> dict[str, Any] | None:
     stripped = raw_response.strip()
     stripped = _strip_tool_call_wrappers(stripped)
     if stripped.startswith("```"):
@@ -64,20 +64,28 @@ def _parse_json_object(raw_response: str, *, extract_embedded: bool) -> dict[str
     try:
         parsed = json.loads(stripped)
     except json.JSONDecodeError:
-        if extract_embedded:
-            match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
-            if match is None:
-                return None
-            try:
-                parsed = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                parsed = _parse_loose_tool_call(stripped)
-                if parsed is None:
-                    return None
-        else:
-            parsed = _parse_loose_tool_call(stripped)
-            if parsed is None:
-                return None
+        parsed = _parse_loose_tool_call(stripped)
+        if parsed is None:
+            return None
+    return _first_json_object(parsed)
+
+
+def _parse_embedded_json_objects(raw_response: str) -> list[dict[str, Any]]:
+    stripped = _strip_tool_call_wrappers(raw_response.strip())
+    decoder = json.JSONDecoder()
+    objects: list[dict[str, Any]] = []
+    for match in re.finditer(r"[\{\[]", stripped):
+        try:
+            parsed, _end = decoder.raw_decode(stripped[match.start() :])
+        except json.JSONDecodeError:
+            continue
+        first = _first_json_object(parsed)
+        if first is not None:
+            objects.append(first)
+    return objects
+
+
+def _first_json_object(parsed: Any) -> dict[str, Any] | None:
     if isinstance(parsed, dict):
         return parsed
     if isinstance(parsed, list):

@@ -266,6 +266,7 @@ The initial tool set is intentionally small:
 - `memory.list`
 - `records.relevant`: preferred for upcoming/current event recommendations; returns relevance-windowed records with evaluation score, goal matches, time, location, URL, and evaluation summary or raw text fallback. V1 arguments: `limit`, `days`, `min_score`, and `goals`.
 - `records.list`: raw recent records for inspection/debug, not the primary recommendation path.
+- `web.open`: opens one public HTTP(S) URL and returns compact readable text for checking event details.
 - `digest.create`
 - `sources.check`
 

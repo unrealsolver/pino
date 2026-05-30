@@ -64,6 +64,32 @@ def test_parse_action_extracts_tool_json_from_extra_text() -> None:
     assert action.arguments == {"limit": 3}
 
 
+def test_parse_action_uses_first_tool_when_model_emits_multiple_calls() -> None:
+    action = parse_action(
+        '{"tool": "web.open", "arguments": {"url": "https://www.delfi.lt/pagrindinis/", '
+        '"max_chars": 3000}} [TOOL_CALL] {"tool": "web.open", "arguments": {"url": '
+        '"https://www.google.com/search?q=festivalis", "max_chars": 2000}} [/TOOL_CALL]',
+    )
+
+    assert action.kind == "tool"
+    assert action.tool_name == "web.open"
+    assert action.arguments == {
+        "url": "https://www.delfi.lt/pagrindinis/",
+        "max_chars": 3000,
+    }
+
+
+def test_parse_action_skips_embedded_final_json_before_tool_call() -> None:
+    action = parse_action(
+        'assistant note {"final": "not an exact final"} '
+        '{"tool": "memory.list", "arguments": {"limit": 3}}',
+    )
+
+    assert action.kind == "tool"
+    assert action.tool_name == "memory.list"
+    assert action.arguments == {"limit": 3}
+
+
 def test_parse_action_reads_loose_provider_tool_call_with_cli_style_arguments() -> None:
     action = parse_action("[TOOL_CALL] {tool => 'records.list', arguments => { --limit 50 }} [/TOOL_CALL]")
 

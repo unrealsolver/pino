@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Protocol
 
 import httpx
@@ -38,6 +39,9 @@ class EchoClient:
             return '{"tool": "sources.check", "arguments": {}}'
         if "record" in lower:
             return '{"tool": "records.relevant", "arguments": {}}'
+        url_match = re.search(r"https?://\S+", last_user)
+        if url_match is not None:
+            return json.dumps({"tool": "web.open", "arguments": {"url": url_match.group(0)}})
 
         return "Boss, echo provider is configured. I can test local tools, but not real language reasoning."
 
