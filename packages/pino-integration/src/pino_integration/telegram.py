@@ -29,6 +29,7 @@ class TelegramChannelSource:
         session_path: Path | str,
         name: str = "telegram-channel",
         limit: int = 50,
+        location_scopes: list[str] | None = None,
         client_factory: TelegramClientFactory = TelegramClient,
     ) -> None:
         self.channel = channel
@@ -37,6 +38,7 @@ class TelegramChannelSource:
         self.session_path = Path(session_path)
         self.name = name
         self.limit = limit
+        self.location_scopes = location_scopes or []
         self._client_factory = client_factory
 
     def fetch(self) -> list[Record]:
@@ -54,13 +56,20 @@ class TelegramChannelSource:
                     message,
                     source_name=self.name,
                     channel=self.channel,
+                    location_scopes=self.location_scopes,
                 )
                 if record is not None:
                     records.append(record)
         return records
 
 
-def parse_telegram_message(message: Any, *, source_name: str, channel: str) -> Record | None:
+def parse_telegram_message(
+    message: Any,
+    *,
+    source_name: str,
+    channel: str,
+    location_scopes: list[str] | None = None,
+) -> Record | None:
     text = _message_text(message)
     if not text:
         return None
@@ -68,6 +77,23 @@ def parse_telegram_message(message: Any, *, source_name: str, channel: str) -> R
     message_id = getattr(message, "id", None)
     posted_at = _to_utc(getattr(message, "date", None))
     channel_ref = _channel_ref(channel)
+    normalized_scopes = location_scopes or []
+    payload = {
+        "channel": channel,
+        "message_id": message_id,
+        "posted_at_utc": posted_at.isoformat() if posted_at is not None else None,
+        "sender_id": getattr(message, "sender_id", None),
+        "views": getattr(message, "views", None),
+        "forwards": getattr(message, "forwards", None),
+        "post_author": getattr(message, "post_author", None),
+    }
+    provenance = {
+        "adapter": "telegram_channel",
+        "channel": channel,
+    }
+    if normalized_scopes:
+        payload["location_scopes"] = normalized_scopes
+        provenance["location_scope_source"] = "channel_config"
 
     return Record(
         kind="telegram_message",
@@ -78,19 +104,8 @@ def parse_telegram_message(message: Any, *, source_name: str, channel: str) -> R
         url=_message_url(channel_ref, message_id),
         relevant_from=posted_at,
         relevant_to=posted_at,
-        payload={
-            "channel": channel,
-            "message_id": message_id,
-            "posted_at_utc": posted_at.isoformat() if posted_at is not None else None,
-            "sender_id": getattr(message, "sender_id", None),
-            "views": getattr(message, "views", None),
-            "forwards": getattr(message, "forwards", None),
-            "post_author": getattr(message, "post_author", None),
-        },
-        provenance={
-            "adapter": "telegram_channel",
-            "channel": channel,
-        },
+        payload=payload,
+        provenance=provenance,
     )
 
 
@@ -106,6 +121,7 @@ def build_telegram_channel_source(config: SourceConfig) -> SourceAdapter:
         session_path=_string_setting(config, "session_path") or ".pino/telegram",
         name=config.name,
         limit=_int_setting(config, "limit", default=50),
+        location_scopes=_string_list_setting(config, "location_scopes"),
     )
 
 
@@ -176,6 +192,13 @@ def _string_setting(config: SourceConfig, key: str) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _string_list_setting(config: SourceConfig, key: str) -> list[str]:
+    value = config.settings.get(key, [])
+    if not isinstance(value, list):
+        raise ValueError(f"telegram_channel settings.{key} must be a list")
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def _int_setting(config: SourceConfig, key: str, *, default: int) -> int:

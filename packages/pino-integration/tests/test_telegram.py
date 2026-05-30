@@ -33,6 +33,7 @@ def test_parse_telegram_message_builds_generic_record() -> None:
     assert record.relevant_from.isoformat() == "2026-05-22T09:30:00+00:00"
     assert record.payload["message_id"] == 123
     assert record.payload["views"] == 99
+    assert "location_scopes" not in record.payload
     assert record.provenance["adapter"] == "telegram_channel"
 
 
@@ -57,6 +58,7 @@ def test_telegram_channel_source_fetch_uses_client_factory() -> None:
         session_path=".pino/test-telegram",
         name="afisha-vilnius",
         limit=10,
+        location_scopes=["LT/vilnius"],
         client_factory=factory,
     )
 
@@ -64,6 +66,8 @@ def test_telegram_channel_source_fetch_uses_client_factory() -> None:
 
     assert len(records) == 1
     assert records[0].external_id == "afishavilnius:1"
+    assert records[0].payload["location_scopes"] == ["LT/vilnius"]
+    assert records[0].provenance["location_scope_source"] == "channel_config"
     assert factory.calls == [(".pino/test-telegram", 12345, "hash")]
     assert factory.clients[0].iter_calls == [("@afishavilnius", 10)]
 

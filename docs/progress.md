@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-31 02:08 Europe/Vilnius - Codex
+
+- Before: Add `t.me/reforumspace` as a Vilnius Telegram source and carry its trustworthy channel-level `LT/vilnius` scope into captured message payload/provenance.
+- Areas: Telegram adapter/tests, example and local source config, progress log.
+- After: Added disabled committed and enabled local `reforumspace-vilnius` Telegram sources, added optional Telegram `settings.location_scopes`, and copy configured channel scopes into message payload with `location_scope_source: channel_config` provenance.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-integration/tests/test_telegram.py packages/pino-integration/tests/test_registry.py packages/pino-core/tests/test_config.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: Run an intentional live Telegram fetch when desired; it contacts Telegram and may update the local session file.
+
 ## 2026-05-31 01:36 Europe/Vilnius - Codex
 
 - Before: Document optional source-derived location scopes for event records without adding config defaults or required schema fields.

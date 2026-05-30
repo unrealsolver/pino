@@ -28,6 +28,7 @@ def test_build_sources_registers_current_integrations() -> None:
                     "api_id": 12345,
                     "api_hash": "hash",
                     "limit": 25,
+                    "location_scopes": ["LT/vilnius"],
                 },
             ),
         ],
@@ -38,6 +39,7 @@ def test_build_sources_registers_current_integrations() -> None:
         VilniusEventsSource,
         TelegramChannelSource,
     ]
+    assert sources[2].location_scopes == ["LT/vilnius"]
 
 
 def test_integration_factories_validate_required_url() -> None:
