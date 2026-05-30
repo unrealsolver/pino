@@ -9,7 +9,7 @@ llm:
   providers:
     infercom:
       base_url: https://api.infercom.ai/v1
-      api_key_file: INFERCOM_API_KEY
+      api_key: env:INFERCOM_API_KEY
       models:
         smart: MiniMax-M2.5
         simple: gpt-oss-120b
@@ -60,8 +60,8 @@ sources:
     type: telegram_channel
     url: https://t.me/afishavilnius
     settings:
-      api_id_env: TELEGRAM_API_ID
-      api_hash_env: TELEGRAM_API_HASH
+      api_id: env:TELEGRAM_API_ID
+      api_hash: env:TELEGRAM_API_HASH
       session_path: .pino/telegram
       limit: 50
     enabled: false

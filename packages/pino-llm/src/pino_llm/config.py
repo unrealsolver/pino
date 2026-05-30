@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -10,7 +9,7 @@ class InfercomConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     base_url: str = "https://api.infercom.ai/v1"
-    api_key_file: Path = Path("INFERCOM_API_KEY")
+    api_key: str | None = None
     models: dict[str, str] = Field(
         default_factory=lambda: {
             "smart": "MiniMax-M2.5",
@@ -73,4 +72,3 @@ class LLMConfig(BaseModel):
 
 def _resolve_model_alias(models: dict[str, str], value: str) -> str:
     return models.get(value, value)
-

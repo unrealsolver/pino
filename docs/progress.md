@@ -2,6 +2,30 @@
 
 Newest entries go first.
 
+## 2026-05-30 02:14 Europe/Vilnius - Codex
+
+- Before: Warn when an explicit `env:NAME` secret reference is unresolved, while allowing explicit `null` to stay silent.
+- Areas: Config env resolution, docs/tests, progress log.
+- After: Added a config logger warning for unresolved `env:NAME` references that includes the env name, config path, and explicit `null` suppression guidance; explicit YAML `null` remains silent.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_config.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --config config.example.yaml --history-limit 0 --message hello`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-05-30 02:11 Europe/Vilnius - Codex
+
+- Before: Make missing `env:NAME` references lazy so `config.example.yaml` can document real secret refs without requiring inactive secrets.
+- Areas: Config env resolution, sample config, docs/tests, progress log.
+- After: Missing `env:NAME` references now resolve to `None`, `config.example.yaml` contains real `env:` references for Infercom and Telegram secrets, docs describe lazy failure, and Infercom has an explicit selected-provider missing-key error.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_config.py packages/pino-llm/tests/test_llm_providers.py packages/pino-integration/tests/test_registry.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --config config.example.yaml --history-limit 0 --message hello`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.yaml`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-05-30 01:56 Europe/Vilnius - Codex
+
+- Before: Refactor secret handling to explicit `env:NAME` config references resolved from process environment or `.env`, with clear missing-secret errors and committed `.env.example`.
+- Areas: Config loading, LLM provider config, Telegram source settings, sample config/docs/tests, progress log.
+- After: Added explicit `env:NAME` resolution with process-env-over-`.env` priority, moved Infercom to `api_key`, made Telegram use resolved `settings.api_id`/`settings.api_hash`, added `.env.example`, updated docs/sample/local config, and migrated the existing ignored Infercom key file into ignored `.env`.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_config.py packages/pino-integration/tests/test_registry.py packages/pino-integration/tests/test_telegram.py packages/pino-llm/tests/test_llm_config.py packages/pino-llm/tests/test_llm_providers.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: Remove the legacy ignored `INFERCOM_API_KEY` file later after confirming no scripts still read it.
+
 ## 2026-05-29 20:23 Europe/Vilnius - Codex
 
 - Before: Document a clear repo-local source adapter spec so a friend or coding agent can add custom web/Telegram parsers without a plugin system.

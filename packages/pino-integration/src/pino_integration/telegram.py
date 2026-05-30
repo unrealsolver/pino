@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -155,9 +154,9 @@ def _message_url(channel_ref: str, message_id: Any) -> str | None:
 
 
 def _api_id(config: SourceConfig) -> int:
-    value = _setting_or_env(config, key="api_id", env_key="api_id_env", default_env="TELEGRAM_API_ID")
+    value = config.settings.get("api_id")
     if value is None:
-        raise ValueError("telegram_channel source requires settings.api_id or TELEGRAM_API_ID")
+        raise ValueError("telegram_channel source requires settings.api_id")
     try:
         return int(value)
     except (TypeError, ValueError) as exc:
@@ -165,40 +164,10 @@ def _api_id(config: SourceConfig) -> int:
 
 
 def _api_hash(config: SourceConfig) -> str:
-    value = _setting_or_env(
-        config,
-        key="api_hash",
-        env_key="api_hash_env",
-        default_env="TELEGRAM_API_HASH",
-    )
+    value = config.settings.get("api_hash")
     if value is None:
-        value = _file_setting(config, "api_hash_file")
-    if value is None:
-        raise ValueError("telegram_channel source requires settings.api_hash or TELEGRAM_API_HASH")
+        raise ValueError("telegram_channel source requires settings.api_hash")
     return str(value)
-
-
-def _setting_or_env(
-    config: SourceConfig,
-    *,
-    key: str,
-    env_key: str,
-    default_env: str,
-) -> Any:
-    value = config.settings.get(key)
-    if value is not None:
-        return value
-
-    env_name = _string_setting(config, env_key) or default_env
-    return os.environ.get(env_name)
-
-
-def _file_setting(config: SourceConfig, key: str) -> str | None:
-    value = _string_setting(config, key)
-    if value is None:
-        return None
-    text = Path(value).read_text(encoding="utf-8").strip()
-    return text or None
 
 
 def _string_setting(config: SourceConfig, key: str) -> str | None:

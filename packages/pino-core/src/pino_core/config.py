@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import logging
+import os
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pino_llm import LLMConfig
+
+logger = logging.getLogger(__name__)
 
 
 class StorageConfig(BaseModel):
@@ -93,6 +98,8 @@ def load_config(path: Path | str | None = None) -> PinoConfig:
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    env_values = _load_env_file(config_path.parent / ".env")
+    raw = _resolve_env_refs(raw, env_values=env_values)
     config = PinoConfig.model_validate(raw)
     return _resolve_paths(config, config_path.parent)
 
@@ -100,10 +107,6 @@ def load_config(path: Path | str | None = None) -> PinoConfig:
 def _resolve_paths(config: PinoConfig, base_dir: Path) -> PinoConfig:
     data = config.model_dump(mode="python")
     data["storage"]["path"] = _resolve_path(config.storage.path, base_dir)
-    data["llm"]["providers"]["infercom"]["api_key_file"] = _resolve_path(
-        config.llm.providers.infercom.api_key_file,
-        base_dir,
-    )
     for source in data["sources"]:
         if source.get("path") is not None:
             source["path"] = _resolve_path(source["path"], base_dir)
@@ -119,3 +122,70 @@ def _default_config_path() -> Path:
         if path.exists():
             return path
     return Path("config.example.yaml")
+
+
+_ENV_REF_PATTERN = re.compile(r"^env:([A-Za-z_][A-Za-z0-9_]*)$")
+
+
+def _resolve_env_refs(value: Any, *, env_values: dict[str, str], path: str = "") -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _resolve_env_refs(
+                item,
+                env_values=env_values,
+                path=f"{path}.{key}" if path else str(key),
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _resolve_env_refs(item, env_values=env_values, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, str):
+        match = _ENV_REF_PATTERN.match(value.strip())
+        if match is None:
+            return value
+        env_name = match.group(1)
+        resolved = os.environ.get(env_name)
+        if resolved is None:
+            resolved = env_values.get(env_name)
+        if resolved is None or resolved == "":
+            logger.warning(
+                "Environment variable %s referenced by config path %s is missing; "
+                "using null. Set the config value to null to silence this warning.",
+                env_name,
+                path,
+            )
+            return None
+        return resolved
+    return value
+
+
+def _load_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+
+    values: dict[str, str] = {}
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        if "=" not in line:
+            raise ValueError(f"Invalid .env line {line_number}: expected NAME=value")
+        name, raw_value = line.split("=", maxsplit=1)
+        name = name.strip()
+        if not _ENV_REF_PATTERN.match(f"env:{name}"):
+            raise ValueError(f"Invalid .env variable name on line {line_number}: {name!r}")
+        values[name] = _parse_env_value(raw_value.strip())
+    return values
+
+
+def _parse_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    if " #" in value:
+        value = value.split(" #", maxsplit=1)[0].rstrip()
+    return value

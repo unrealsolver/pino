@@ -119,7 +119,8 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-The API key is stored locally in `INFERCOM_API_KEY`.
+The API key should be referenced from local config with `api_key: env:INFERCOM_API_KEY`
+and stored in `.env` or the process environment.
 
 ### Ollama
 
@@ -193,7 +194,7 @@ LLM-generated summaries, reasons, and chat responses should follow the user's la
 
 ## Configuration
 
-Start with YAML configuration and local files for secrets.
+Start with YAML configuration and `.env`-backed local secrets.
 
 Configuration should cover:
 
@@ -207,6 +208,16 @@ Configuration should cover:
 
 Avoid hard-coding user preferences that should be editable without code changes.
 
+Secrets are referenced explicitly from YAML with `env:NAME`, for example
+`llm.providers.infercom.api_key: env:INFERCOM_API_KEY`. Pino loads `.env`
+from the config directory during startup, but real process environment variables
+take priority over `.env` values. Only exact `env:NAME` strings are resolved;
+ordinary strings are left unchanged. Missing referenced variables resolve to
+`null` with a warning that names the missing variable and config path. Set the
+config value to explicit `null` to silence the warning for an intentionally
+unset secret. Inactive providers and disabled sources do not block startup; the
+provider or source factory fails when that secret is actually required.
+
 Current source types:
 
 - `static_yaml`: reads local fixture/sample records.
@@ -216,7 +227,9 @@ Current source types:
 
 For custom sources, use this repository as the integration point: add an adapter under `packages/pino-integration`, register it in `pino_integration.registry`, and configure it in YAML. See [docs/source-spec.md](docs/source-spec.md) for the source adapter contract and checklist.
 
-Telegram sources read `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` by default. The first enabled run may prompt Telethon to create a local session file.
+Telegram sources should set `settings.api_id: env:TELEGRAM_API_ID` and
+`settings.api_hash: env:TELEGRAM_API_HASH` in local config. The first enabled
+run may prompt Telethon to create a local session file.
 
 ## Evaluation
 
@@ -238,7 +251,8 @@ Current config entry point:
 - `config.example.yaml` is the committed sample config.
 - `config.yaml` is the normal local project config.
 - `config.local.yaml` is an optional local override and should not be committed.
-- `INFERCOM_API_KEY` is a local secret file and should not be committed.
+- `.env.example` is the committed list of supported secret variable names.
+- `.env` stores local secret values and should not be committed.
 
 Most CLI commands accept `--config/-c`. If omitted, Pino loads `config.local.yaml` when it exists, then `config.yaml`, then `config.example.yaml`.
 

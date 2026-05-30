@@ -94,7 +94,9 @@ Use `SourceConfig` fields consistently:
 - `config.name`: user-facing source name to store in records.
 - `config.url`: listing page, feed URL, API endpoint, or channel URL.
 - `config.path`: local fixture/file path for file-backed sources.
-- `config.settings`: source-specific options such as CSS selectors, limits, or credentials env var names.
+- `config.settings`: source-specific options such as CSS selectors, limits, or resolved credentials.
+
+Secrets must be referenced explicitly in YAML as `env:NAME`; config loading resolves those strings from the process environment or `.env` before source factories receive `SourceConfig`.
 
 Example:
 

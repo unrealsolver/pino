@@ -49,7 +49,14 @@ class InfercomClient:
         self.base_url = infercom.base_url.rstrip("/")
         self.temperature = config.temperature
         self.top_p = config.top_p
-        self.api_key = infercom.api_key_file.read_text(encoding="utf-8").strip()
+        if not infercom.api_key:
+            raise LLMError(
+                "infercom provider requires llm.providers.infercom.api_key",
+                provider="infercom",
+                model=self.model,
+                url=f"{self.base_url}/chat/completions",
+            )
+        self.api_key = infercom.api_key
 
     def complete(self, messages: list[LLMMessage]) -> str:
         url = f"{self.base_url}/chat/completions"
@@ -197,4 +204,3 @@ def _diagnostic_request(request_body: dict[str, Any]) -> dict[str, Any]:
             if isinstance(message, dict)
         ]
     return diagnostic
-

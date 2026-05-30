@@ -1,8 +1,10 @@
 import httpx
+import pytest
 
+from pino_llm.config import LLMConfig
 from pino_llm.errors import LLMError
 from pino_llm.messages import LLMMessage
-from pino_llm.providers import _openai_messages, _provider_http_error
+from pino_llm.providers import build_llm_client, _openai_messages, _provider_http_error
 
 
 def test_openai_messages_convert_tool_roles_to_user_context() -> None:
@@ -54,3 +56,7 @@ def test_provider_http_error_contains_sanitized_request_diagnostics() -> None:
         "message_roles": ["system", "user"],
     }
 
+
+def test_infercom_client_requires_api_key_when_selected() -> None:
+    with pytest.raises(LLMError, match="api_key"):
+        build_llm_client(LLMConfig(default_provider="infercom"))
