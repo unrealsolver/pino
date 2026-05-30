@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-31 01:36 Europe/Vilnius - Codex
+
+- Before: Document optional source-derived location scopes for event records without adding config defaults or required schema fields.
+- Areas: `docs/source-spec.md`, `README.md`, `docs/tech-stack.md`, progress log.
+- After: Documented optional `payload.location_scopes` with `LT/vilnius`, multi-city, and explicit `LT/*` examples; kept human-facing `payload.location`, scope evidence in provenance when useful, and no config defaults or required top-level schema fields.
+- Verification: `git diff --check`.
+- Follow-up: Add scopes to individual adapters only when each source provides trustworthy evidence.
+
 ## 2026-05-31 00:12 Europe/Vilnius - Codex
 
 - Before: Add first-class bounded multi-tool chat rounds for MiniMax-style batched tool requests, with parallel execution limited to safe read-only tools.

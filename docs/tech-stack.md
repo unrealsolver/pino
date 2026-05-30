@@ -94,6 +94,7 @@ Recommended normalized fields for event-like records:
 - `payload.display_time`: source display text for humans/debugging.
 - `payload.category` and `payload.categories`: English canonical labels when available from the source.
 - `payload.location`: venue/location name in the most useful available language.
+- `payload.location_scopes`: optional source-derived machine-readable scopes such as `["LT/vilnius"]`, multiple city scopes, or explicit country-wide `["LT/*"]`. Omit when source evidence is insufficient.
 - `payload.raw`: source-native values that were transformed or could be useful for debugging.
 
 Generic record timing should distinguish:
@@ -107,6 +108,8 @@ Point-like records may use the same timestamp for `relevant_from` and `relevant_
 For Vilnius event sources that publish date/time without a timezone, interpret the source time as `Europe/Vilnius` before converting to UTC. Do not store naive datetimes as canonical fields.
 
 If a source provides only Lithuanian labels for critical metadata, store those labels in `payload.raw` and either keep the canonical field unset or fill it through an explicit normalization/enrichment function. Avoid silent best-effort translations inside ad hoc parser code.
+
+Keep location scopes optional and source-derived. Do not infer `LT/vilnius` from Pino's usual target city, do not treat an empty scope as `LT/*`, and do not add config defaults until real source integrations need them.
 
 Record idempotency is a deterministic storage concern, not an LLM or vector-search concern. `Record` may carry optional identity hints, and storage enforces a unique fingerprint:
 

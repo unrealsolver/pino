@@ -56,6 +56,7 @@ Record(
         "category": category,
         "categories": categories,
         "location": location,
+        "location_scopes": location_scopes,
         "display_time": display_time,
         "start_at_utc": utc_iso(start_at_local),
         "end_at_utc": utc_iso(end_at_local),
@@ -86,6 +87,37 @@ Required fields are `kind`, `source`, and `text`; most useful event records shou
 - `provenance`: parser/debug context, including adapter name and source location.
 
 For Vilnius-local event times without an explicit timezone, parse as `Europe/Vilnius`, then store UTC datetimes.
+
+### Optional Location Scopes
+
+`payload.location` remains the human-facing venue, address, or source label. When the source item also provides trustworthy geographic specificity, adapters may add optional machine-readable `payload.location_scopes`.
+
+```python
+payload={
+    "location": "MO muziejus",
+    "location_scopes": ["LT/vilnius"],
+}
+```
+
+Use an array because one item may apply to several places:
+
+```python
+"location_scopes": ["LT/vilnius", "LT/kaunas"]
+```
+
+Use an ISO 3166-1 alpha-2 country code plus a lowercase ASCII city/region slug. Use `*` only when the source item explicitly applies country-wide:
+
+```python
+"location_scopes": ["LT/*"]
+```
+
+Rules:
+
+- `location_scopes` is optional. Omit it or use an empty list when the source does not provide enough evidence.
+- Do not infer `LT/vilnius` merely because Pino usually targets Vilnius.
+- Do not treat a missing or empty scope as `LT/*`.
+- Preserve the source evidence in provenance when useful, for example `"location_scope_source": "listing_page"`.
+- Keep this in payload for now. Do not promote scopes to required top-level `Record` fields.
 
 ## Factory Shape
 
@@ -169,7 +201,7 @@ Follow docs/source-spec.md.
 Keep parsing in packages/pino-integration/src/pino_integration/<type_name>.py.
 Register it in pino_integration.registry.
 Add fixture-based tests under packages/pino-integration/tests/.
-Return generic Record objects with event fields: title, text, url, relevant_from, relevant_to, location, display_time, start/end UTC payload fields, and provenance.
+Return generic Record objects with event fields: title, text, url, relevant_from, relevant_to, location, optional source-derived location_scopes, display_time, start/end UTC payload fields, and provenance.
 Do not add broad plugin architecture.
 ```
 

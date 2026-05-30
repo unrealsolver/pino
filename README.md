@@ -182,8 +182,9 @@ Source adapters may ingest mixed-language source pages, but records should expos
 Normalization rules:
 
 - Preserve source-native text in `payload.raw` or specific source payload fields when it may be useful for audit/debugging.
-- Store canonical metadata keys in English, for example `category`, `categories`, `location`, `display_time`, `start_at_utc`, `end_at_utc`, and `image_url`.
+- Store canonical metadata keys in English, for example `category`, `categories`, `location`, `location_scopes`, `display_time`, `start_at_utc`, `end_at_utc`, and `image_url`.
 - Prefer English category/location labels when the source provides them. If a source only provides Lithuanian or another language, keep the original value and add a later enrichment step rather than guessing silently.
+- Keep `payload.location` for human-facing venue/address text. When the source item provides trustworthy geographic specificity, optionally add machine-readable `payload.location_scopes`, for example `["LT/vilnius"]`, `["LT/vilnius", "LT/kaunas"]`, or explicitly nationwide `["LT/*"]`. Omit it when the source does not provide enough evidence.
 - Normalize event dates/times to timezone-aware ISO datetimes. For Vilnius-local sources without explicit timezone, interpret event times as `Europe/Vilnius`, then store canonical UTC ISO values such as `start_at_utc` and `end_at_utc`.
 - Keep the human-facing source display date in `display_time` only as presentation/debug context, not as the primary sortable date.
 - Keep ingestion time separate from relevance time. `captured_at` is when Pino stored the record. A separate relevance date/window should support queries like "what roughly happens this week?" without pretending every record has a single start timestamp.
