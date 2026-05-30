@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-30 19:28 Europe/Vilnius - Codex
+
+- Before: Let chat final answers be plain text while keeping JSON only for tool calls and backwards-compatible exact `{"final": ...}` responses.
+- Areas: Chat prompt, LLM action parser, echo provider, protocol/chat tests, progress log.
+- After: Updated the chat prompt to ask for plain text final answers and raw JSON only for tool calls, made the parser avoid extracting embedded `{"final": ...}` from prose, kept exact `{"final": ...}` compatibility, and changed Echo final responses to plain text.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-llm/tests/test_protocol.py packages/pino-core/tests/test_chat.py packages/pino-llm/tests/test_llm_providers.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --config config.example.yaml --history-limit 0 --message hello`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: None.
+
 ## 2026-05-30 02:14 Europe/Vilnius - Codex
 
 - Before: Warn when an explicit `env:NAME` secret reference is unresolved, while allowing explicit `null` to stay silent.

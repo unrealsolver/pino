@@ -16,7 +16,7 @@ def test_parse_action_reads_tool_request() -> None:
     assert action.arguments == {"limit": 3}
 
 
-def test_parse_action_reads_json_fenced_final() -> None:
+def test_parse_action_still_accepts_exact_json_fenced_final() -> None:
     action = parse_action('```json\n{"final": "done"}\n```')
 
     assert action.kind == "final"
@@ -49,11 +49,19 @@ def test_parse_action_reads_first_wrapped_tool_call_list_item() -> None:
     assert action.arguments == {}
 
 
-def test_parse_action_extracts_json_from_extra_text() -> None:
+def test_parse_action_does_not_extract_final_json_from_extra_text() -> None:
     action = parse_action('assistant note\n{"final": "done"}\n')
 
     assert action.kind == "final"
-    assert action.content == "done"
+    assert action.content == 'assistant note\n{"final": "done"}\n'
+
+
+def test_parse_action_extracts_tool_json_from_extra_text() -> None:
+    action = parse_action('assistant note\n{"tool": "memory.list", "arguments": {"limit": 3}}\n')
+
+    assert action.kind == "tool"
+    assert action.tool_name == "memory.list"
+    assert action.arguments == {"limit": 3}
 
 
 def test_parse_action_reads_loose_provider_tool_call_with_cli_style_arguments() -> None:

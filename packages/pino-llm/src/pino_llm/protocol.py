@@ -16,11 +16,28 @@ class LLMAction:
 
 
 def parse_action(raw_response: str) -> LLMAction:
-    parsed = _parse_json_object(raw_response)
-    if parsed is None:
-        return LLMAction(kind="final", content=raw_response, raw_response=raw_response)
+    parsed = _parse_json_object(raw_response, extract_embedded=False)
+    action = _action_from_parsed(parsed, raw_response=raw_response, allow_final=True)
+    if action is not None:
+        return action
 
-    if "final" in parsed:
+    embedded = _parse_json_object(raw_response, extract_embedded=True)
+    action = _action_from_parsed(embedded, raw_response=raw_response, allow_final=False)
+    if action is not None:
+        return action
+    return LLMAction(kind="final", content=raw_response, raw_response=raw_response)
+
+
+def _action_from_parsed(
+    parsed: dict[str, Any] | None,
+    *,
+    raw_response: str,
+    allow_final: bool,
+) -> LLMAction | None:
+    if parsed is None:
+        return None
+
+    if allow_final and "final" in parsed:
         return LLMAction(kind="final", content=str(parsed["final"]), raw_response=raw_response)
 
     tool_name = parsed.get("tool", parsed.get("name"))
@@ -34,11 +51,10 @@ def parse_action(raw_response: str) -> LLMAction:
             arguments=arguments,
             raw_response=raw_response,
         )
+    return None
 
-    return LLMAction(kind="final", content=raw_response, raw_response=raw_response)
 
-
-def _parse_json_object(raw_response: str) -> dict[str, Any] | None:
+def _parse_json_object(raw_response: str, *, extract_embedded: bool) -> dict[str, Any] | None:
     stripped = raw_response.strip()
     stripped = _strip_tool_call_wrappers(stripped)
     if stripped.startswith("```"):
@@ -48,12 +64,17 @@ def _parse_json_object(raw_response: str) -> dict[str, Any] | None:
     try:
         parsed = json.loads(stripped)
     except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
-        if match is None:
-            return None
-        try:
-            parsed = json.loads(match.group(0))
-        except json.JSONDecodeError:
+        if extract_embedded:
+            match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
+            if match is None:
+                return None
+            try:
+                parsed = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                parsed = _parse_loose_tool_call(stripped)
+                if parsed is None:
+                    return None
+        else:
             parsed = _parse_loose_tool_call(stripped)
             if parsed is None:
                 return None

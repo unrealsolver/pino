@@ -22,7 +22,7 @@ class EchoClient:
         if last_tool_index is not None and (
             last_user_index is None or last_tool_index > last_user_index
         ):
-            return json.dumps({"final": f"Boss, tool result:\n{messages[last_tool_index].content}"})
+            return f"Boss, tool result:\n{messages[last_tool_index].content}"
 
         last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
         lower = last_user.lower()
@@ -39,7 +39,7 @@ class EchoClient:
         if "record" in lower:
             return '{"tool": "records.relevant", "arguments": {}}'
 
-        return '{"final": "Boss, echo provider is configured. I can test local tools, but not real language reasoning."}'
+        return "Boss, echo provider is configured. I can test local tools, but not real language reasoning."
 
 
 class InfercomClient:

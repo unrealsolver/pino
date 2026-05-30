@@ -134,7 +134,7 @@ def test_chat_agent_receives_history_limit_previous_messages(tmp_path: Path) -> 
             created_at=datetime(2026, 1, 1, 10, 3, tzinfo=timezone.utc),
         ),
     )
-    client = SequenceClient(['{"final": "ok"}'])
+    client = SequenceClient(['ok'])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -170,7 +170,7 @@ def test_chat_agent_omits_stored_tool_messages_from_history(tmp_path: Path) -> N
             created_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
         ),
     )
-    client = SequenceClient(['{"final": "ok"}'])
+    client = SequenceClient(['ok'])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -189,7 +189,7 @@ def test_chat_agent_includes_active_memory_in_system_prompt(tmp_path: Path) -> N
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     store.add_memory(MemoryEntry(content="Boss prefers evaluated event recommendations."))
-    client = SequenceClient(['{"final": "ok"}'])
+    client = SequenceClient(['ok'])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -211,7 +211,7 @@ def test_chat_agent_keeps_current_turn_tool_context(tmp_path: Path) -> None:
     client = SequenceClient(
         [
             '{"tool": "memory.list", "arguments": {}}',
-            '{"final": "Done."}',
+            'Done.',
         ],
     )
     agent = ChatAgent(
@@ -234,7 +234,7 @@ def test_chat_agent_handles_wrapped_tool_call_response(tmp_path: Path) -> None:
     client = SequenceClient(
         [
             '[TOOL_CALL]\n{"name": "memory.add", "arguments": {"content": "Boss likes synths"}}\n[/TOOL_CALL]',
-            '{"final": "Saved."}',
+            'Saved.',
         ],
     )
     agent = ChatAgent(
@@ -261,7 +261,7 @@ def test_chat_agent_omits_stored_raw_tool_call_messages_from_history(tmp_path: P
             content='[TOOL_CALL]\n{"name": "memory.list", "arguments": {}}\n[/TOOL_CALL]',
         ),
     )
-    client = SequenceClient(['{"final": "ok"}'])
+    client = SequenceClient(['ok'])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -277,7 +277,7 @@ def test_chat_agent_omits_stored_raw_tool_call_messages_from_history(tmp_path: P
 
 def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
-    client = SequenceClient(['{"final": "ok"}'])
+    client = SequenceClient(['ok'])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -288,15 +288,16 @@ def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> N
     agent.respond("list events")
 
     prompt = client.messages[0][0].content
-    assert "Output exactly one raw JSON object and nothing else." in prompt
-    assert "Do not use markdown fences, provider-specific tool-call wrappers" in prompt
+    assert "For normal final answers, reply in plain text." in prompt
+    assert "For tool calls, output exactly one raw JSON object and nothing else." in prompt
+    assert "do not use markdown fences, provider-specific tool-call wrappers" in prompt
     assert "CLI-style flags" in prompt
     assert '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}' in prompt
 
 
 def test_chat_agent_includes_goals_and_current_time_in_system_prompt(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
-    client = SequenceClient(['{"final": "ok"}'])
+    client = SequenceClient(['ok'])
     agent = ChatAgent(
         store=store,
         provider=client,
