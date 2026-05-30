@@ -41,12 +41,31 @@ def test_parse_action_reads_provider_style_tool_name() -> None:
     assert action.arguments == {"content": "x"}
 
 
-def test_parse_action_reads_first_wrapped_tool_call_list_item() -> None:
-    action = parse_action('[TOOL_CALLS]\n[{"name": "memory.list", "arguments": {}}]\n[/TOOL_CALLS]')
+def test_parse_action_reads_wrapped_tool_call_list_items() -> None:
+    action = parse_action(
+        '[TOOL_CALLS]\n[{"name": "memory.list", "arguments": {}}, '
+        '{"name": "records.list", "arguments": {"limit": 2}}]\n[/TOOL_CALLS]',
+    )
 
     assert action.kind == "tool"
     assert action.tool_name == "memory.list"
     assert action.arguments == {}
+    assert [(call.name, call.arguments) for call in action.tool_calls] == [
+        ("memory.list", {}),
+        ("records.list", {"limit": 2}),
+    ]
+
+
+def test_parse_action_reads_explicit_multi_tool_request() -> None:
+    action = parse_action(
+        '{"tools": [{"tool": "web.open", "arguments": {"url": "https://example.com/a"}}, '
+        '{"tool": "web.open", "arguments": {"url": "https://example.com/b"}}]}',
+    )
+
+    assert [(call.name, call.arguments) for call in action.tool_calls] == [
+        ("web.open", {"url": "https://example.com/a"}),
+        ("web.open", {"url": "https://example.com/b"}),
+    ]
 
 
 def test_parse_action_does_not_extract_final_json_from_extra_text() -> None:
@@ -64,7 +83,7 @@ def test_parse_action_extracts_tool_json_from_extra_text() -> None:
     assert action.arguments == {"limit": 3}
 
 
-def test_parse_action_uses_first_tool_when_model_emits_multiple_calls() -> None:
+def test_parse_action_reads_multiple_calls_from_concatenated_model_output() -> None:
     action = parse_action(
         '{"tool": "web.open", "arguments": {"url": "https://www.delfi.lt/pagrindinis/", '
         '"max_chars": 3000}} [TOOL_CALL] {"tool": "web.open", "arguments": {"url": '
@@ -77,6 +96,22 @@ def test_parse_action_uses_first_tool_when_model_emits_multiple_calls() -> None:
         "url": "https://www.delfi.lt/pagrindinis/",
         "max_chars": 3000,
     }
+    assert [(call.name, call.arguments) for call in action.tool_calls] == [
+        (
+            "web.open",
+            {
+                "url": "https://www.delfi.lt/pagrindinis/",
+                "max_chars": 3000,
+            },
+        ),
+        (
+            "web.open",
+            {
+                "url": "https://www.google.com/search?q=festivalis",
+                "max_chars": 2000,
+            },
+        ),
+    ]
 
 
 def test_parse_action_skips_embedded_final_json_before_tool_call() -> None:

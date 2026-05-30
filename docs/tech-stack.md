@@ -145,7 +145,7 @@ The interactive path should look like this:
 2. Store the user message.
 3. Assemble recent chat history, current local time, configured goals, active memory, and available tool descriptions.
 4. Ask the configured LLM for either a normal response or a bounded tool request.
-5. Execute only explicit local tools.
+5. Execute only explicit local tools. Allow a small configured batch of independent tool requests per round, parallelizing read-only tools while keeping state-changing or expensive tools sequential.
 6. Store tool results and the assistant response.
 
 Initial tools should be narrow and inspectable:

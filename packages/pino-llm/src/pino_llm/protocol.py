@@ -7,12 +7,25 @@ from typing import Any, Literal
 
 
 @dataclass(frozen=True)
+class LLMToolCall:
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class LLMAction:
     kind: Literal["final", "tool"]
     content: str | None = None
-    tool_name: str | None = None
-    arguments: dict[str, Any] = field(default_factory=dict)
+    tool_calls: list[LLMToolCall] = field(default_factory=list)
     raw_response: str = ""
+
+    @property
+    def tool_name(self) -> str | None:
+        return self.tool_calls[0].name if self.tool_calls else None
+
+    @property
+    def arguments(self) -> dict[str, Any]:
+        return self.tool_calls[0].arguments if self.tool_calls else {}
 
 
 def parse_action(raw_response: str) -> LLMAction:
@@ -21,15 +34,18 @@ def parse_action(raw_response: str) -> LLMAction:
     if action is not None:
         return action
 
-    for embedded in _parse_embedded_json_objects(raw_response):
+    tool_calls: list[LLMToolCall] = []
+    for embedded in _parse_embedded_json_values(raw_response):
         action = _action_from_parsed(embedded, raw_response=raw_response, allow_final=False)
-        if action is not None:
-            return action
+        if action is not None and action.kind == "tool":
+            tool_calls.extend(action.tool_calls)
+    if tool_calls:
+        return LLMAction(kind="tool", tool_calls=tool_calls, raw_response=raw_response)
     return LLMAction(kind="final", content=raw_response, raw_response=raw_response)
 
 
 def _action_from_parsed(
-    parsed: dict[str, Any] | None,
+    parsed: Any,
     *,
     raw_response: str,
     allow_final: bool,
@@ -37,24 +53,16 @@ def _action_from_parsed(
     if parsed is None:
         return None
 
-    if allow_final and "final" in parsed:
+    if allow_final and isinstance(parsed, dict) and "final" in parsed:
         return LLMAction(kind="final", content=str(parsed["final"]), raw_response=raw_response)
 
-    tool_name = parsed.get("tool", parsed.get("name"))
-    if isinstance(tool_name, str):
-        arguments = _parse_arguments(parsed.get("arguments", {}))
-        if arguments is None:
-            arguments = {}
-        return LLMAction(
-            kind="tool",
-            tool_name=tool_name,
-            arguments=arguments,
-            raw_response=raw_response,
-        )
+    tool_calls = _parse_tool_calls(parsed)
+    if tool_calls:
+        return LLMAction(kind="tool", tool_calls=tool_calls, raw_response=raw_response)
     return None
 
 
-def _parse_json_object(raw_response: str) -> dict[str, Any] | None:
+def _parse_json_object(raw_response: str) -> Any:
     stripped = raw_response.strip()
     stripped = _strip_tool_call_wrappers(stripped)
     if stripped.startswith("```"):
@@ -67,31 +75,44 @@ def _parse_json_object(raw_response: str) -> dict[str, Any] | None:
         parsed = _parse_loose_tool_call(stripped)
         if parsed is None:
             return None
-    return _first_json_object(parsed)
+    return parsed
 
 
-def _parse_embedded_json_objects(raw_response: str) -> list[dict[str, Any]]:
+def _parse_embedded_json_values(raw_response: str) -> list[Any]:
     stripped = _strip_tool_call_wrappers(raw_response.strip())
     decoder = json.JSONDecoder()
-    objects: list[dict[str, Any]] = []
-    for match in re.finditer(r"[\{\[]", stripped):
+    values: list[Any] = []
+    cursor = 0
+    while match := re.search(r"[\{\[]", stripped[cursor:]):
+        start = cursor + match.start()
         try:
-            parsed, _end = decoder.raw_decode(stripped[match.start() :])
+            parsed, end = decoder.raw_decode(stripped[start:])
         except json.JSONDecodeError:
+            cursor = start + 1
             continue
-        first = _first_json_object(parsed)
-        if first is not None:
-            objects.append(first)
-    return objects
+        values.append(parsed)
+        cursor = start + end
+    return values
 
 
-def _first_json_object(parsed: Any) -> dict[str, Any] | None:
-    if isinstance(parsed, dict):
-        return parsed
-    if isinstance(parsed, list):
-        first = next((item for item in parsed if isinstance(item, dict)), None)
-        return first
-    return None
+def _parse_tool_calls(parsed: Any) -> list[LLMToolCall]:
+    if isinstance(parsed, dict) and isinstance(parsed.get("tools"), list):
+        candidates = parsed["tools"]
+    elif isinstance(parsed, list):
+        candidates = parsed
+    else:
+        candidates = [parsed]
+
+    tool_calls: list[LLMToolCall] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        tool_name = candidate.get("tool", candidate.get("name"))
+        if not isinstance(tool_name, str):
+            continue
+        arguments = _parse_arguments(candidate.get("arguments", {}))
+        tool_calls.append(LLMToolCall(name=tool_name, arguments=arguments or {}))
+    return tool_calls
 
 
 def _parse_loose_tool_call(value: str) -> dict[str, Any] | None:

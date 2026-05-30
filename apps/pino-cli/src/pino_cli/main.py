@@ -274,6 +274,7 @@ def print_chat_config_debug(config: PinoConfig) -> None:
     table.add_row("history_limit", plain_text(config.chat.history_limit))
     table.add_row("active_memory_limit", plain_text(config.chat.active_memory_limit))
     table.add_row("max_tool_rounds", plain_text(config.chat.max_tool_rounds))
+    table.add_row("max_tools_per_round", plain_text(config.chat.max_tools_per_round))
     console.print(Panel(table, title="Chat debug", border_style="blue"))
 
 
@@ -286,17 +287,20 @@ def print_chat_debug(config: PinoConfig, result) -> None:
 
     rounds = result.debug.get("rounds", [])
     if isinstance(rounds, list) and rounds:
-        rounds_table = Table("Round", "Messages", "Roles", "Tool Context", "Action", "Tool")
+        rounds_table = Table("Round", "Messages", "Roles", "Tool Context", "Action", "Tools")
         for item in rounds:
             if not isinstance(item, dict):
                 continue
+            tools = item.get("tools")
+            if not isinstance(tools, list):
+                tools = [item.get("tool", "")]
             rounds_table.add_row(
                 plain_text(item.get("round", "")),
                 plain_text(item.get("message_count", "")),
                 plain_text(summarize_roles(item.get("message_roles"))),
                 plain_text(item.get("tool_context_count", "")),
                 plain_text(item.get("action", "")),
-                plain_text(item.get("tool", "")),
+                plain_text(", ".join(str(tool) for tool in tools if tool)),
             )
         console.print(Panel(rounds_table, title="LLM rounds", border_style="blue"))
 

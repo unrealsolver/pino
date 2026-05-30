@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Barrier
 
 from pino_llm import LLMMessage
 from pino_llm.providers import EchoClient
@@ -8,7 +9,7 @@ from pino_core.chat import ChatAgent
 from pino_core.config import ChatConfig, GoalConfig
 from pino_core.models import ChatMessage, MemoryEntry
 from pino_core.storage import SQLiteStore
-from pino_core.tools import build_tools
+from pino_core.tools import Tool, build_tools
 
 
 class StaticClient:
@@ -229,6 +230,74 @@ def test_chat_agent_keeps_current_turn_tool_context(tmp_path: Path) -> None:
     assert any("memory.list result:" in message.content for message in client.messages[1])
 
 
+def test_chat_agent_runs_independent_read_only_tools_in_parallel(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    barrier = Barrier(2)
+
+    def run_read_only(arguments):
+        barrier.wait(timeout=1)
+        return f"result {arguments['id']}"
+
+    client = SequenceClient(
+        [
+            '{"tools": [{"tool": "memory.list", "arguments": {"id": 1}}, '
+            '{"tool": "records.list", "arguments": {"id": 2}}]}',
+            "Done.",
+        ],
+    )
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools={
+            "memory.list": Tool("memory.list", "test", run_read_only),
+            "records.list": Tool("records.list", "test", run_read_only),
+        },
+        config=ChatConfig(),
+    )
+
+    result = agent.respond("inspect both")
+
+    assert result.content == "Done."
+    assert result.tool_calls == ["memory.list", "records.list"]
+    assert result.debug["rounds"][0]["tools"] == ["memory.list", "records.list"]
+    assert any('"tools":' in message.content for message in client.messages[1])
+    assert any("memory.list result:\nresult 1" in message.content for message in client.messages[1])
+    assert any("records.list result:\nresult 2" in message.content for message in client.messages[1])
+
+
+def test_chat_agent_truncates_multi_tool_round_at_configured_limit(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    executed: list[int] = []
+
+    def run_mutating(arguments):
+        executed.append(arguments["id"])
+        return f"result {arguments['id']}"
+
+    client = SequenceClient(
+        [
+            '{"tools": ['
+            '{"tool": "memory.add", "arguments": {"id": 1}}, '
+            '{"tool": "memory.add", "arguments": {"id": 2}}, '
+            '{"tool": "memory.add", "arguments": {"id": 3}}'
+            "]}",
+            "Done.",
+        ],
+    )
+    agent = ChatAgent(
+        store=store,
+        provider=client,
+        tools={"memory.add": Tool("memory.add", "test", run_mutating)},
+        config=ChatConfig(max_tools_per_round=2),
+    )
+
+    result = agent.respond("do bounded work")
+
+    assert result.content == "Done."
+    assert result.tool_calls == ["memory.add", "memory.add"]
+    assert executed == [1, 2]
+    assert result.debug["rounds"][0]["truncated_tool_calls"] == 1
+
+
 def test_chat_agent_handles_wrapped_tool_call_response(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     client = SequenceClient(
@@ -290,6 +359,8 @@ def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> N
     prompt = client.messages[0][0].content
     assert "For normal final answers, reply in plain text." in prompt
     assert "For tool calls, output exactly one raw JSON object and nothing else." in prompt
+    assert "You may request up to 3 bounded local tool calls at a time." in prompt
+    assert '{"tools": [{"tool": "tool.name", "arguments": {}}' in prompt
     assert "do not use markdown fences, provider-specific tool-call wrappers" in prompt
     assert "CLI-style flags" in prompt
     assert '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}' in prompt

@@ -25,6 +25,7 @@ class ChatConfig(BaseModel):
     history_limit: int = 20
     active_memory_limit: int = 20
     max_tool_rounds: int = 2
+    max_tools_per_round: int = Field(default=3, ge=1, le=10)
 
 
 class GoalConfig(BaseModel):

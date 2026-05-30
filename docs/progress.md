@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-31 00:12 Europe/Vilnius - Codex
+
+- Before: Add first-class bounded multi-tool chat rounds for MiniMax-style batched tool requests, with parallel execution limited to safe read-only tools.
+- Areas: Chat config/agent, LLM action protocol, CLI debug output, sample config, tests, progress log.
+- After: Added `chat.max_tools_per_round` with default `3`, normalized explicit `{"tools": [...]}`, wrapped arrays, and concatenated JSON fragments into multi-call actions, executed safe read-only batches in parallel while keeping other tools sequential, and expanded prompt/debug output for multi-tool rounds.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-llm/tests/test_protocol.py packages/pino-core/tests/test_chat.py packages/pino-core/tests/test_config.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino debug prompts --config config.example.yaml`; `git diff --check`.
+- Follow-up: Review real MiniMax debug traces and adjust the cap only if three independent calls per round is too restrictive.
+
 ## 2026-05-31 00:00 Europe/Vilnius - Codex
 
 - Before: Recover the first valid tool call when a model emits multiple concatenated JSON/wrapped tool-call fragments instead of the required single call.

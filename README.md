@@ -260,6 +260,8 @@ Most CLI commands accept `--config/-c`. If omitted, Pino loads `config.local.yam
 
 `pino chat` is the natural-language interface for bounded local tools. It is designed as LLM-to-tools, not as a broad autonomous agent.
 
+Each LLM round may request up to `chat.max_tools_per_round` independent tools. Read-only tools are executed in parallel; state-changing or expensive tools remain sequential.
+
 The initial tool set is intentionally small:
 
 - `memory.add`

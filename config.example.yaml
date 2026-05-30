@@ -28,6 +28,7 @@ chat:
   history_limit: 20
   active_memory_limit: 20
   max_tool_rounds: 2
+  max_tools_per_round: 3
 
 evaluation:
   model: simple
