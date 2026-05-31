@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
-from pino_core.models import Evaluation, Record, utc_now
+from pino_core.models import Record, Refinement, utc_now
 from pino_core.sources import CursorSourceAdapter, SourceAdapter
 from pino_core.storage import SQLiteStore
 
@@ -19,8 +19,8 @@ class CheckResult:
     inserted: int
     duplicates: int
     records: list[Record]
-    pending_evaluation_total: int = 0
-    pending_evaluation_new: int = 0
+    pending_refinement_total: int = 0
+    pending_refinement_new: int = 0
 
 
 @dataclass(frozen=True)
@@ -60,15 +60,15 @@ class CheckPipeline:
                     duplicate_count += 1
             if next_cursor is not None:
                 self.store.set_source_cursor(source.name, next_cursor)
-        pending_evaluation_total = self.store.count_unevaluated_records()
-        pending_evaluation_new = self.store.count_unevaluated_records(record_ids=inserted_ids)
+        pending_refinement_total = self.store.count_unrefined_records()
+        pending_refinement_new = self.store.count_unrefined_records(record_ids=inserted_ids)
         return CheckResult(
             fetched=fetched_count,
             inserted=inserted_count,
             duplicates=duplicate_count,
             records=records,
-            pending_evaluation_total=pending_evaluation_total,
-            pending_evaluation_new=pending_evaluation_new,
+            pending_refinement_total=pending_refinement_total,
+            pending_refinement_new=pending_refinement_new,
         )
 
 
@@ -88,7 +88,7 @@ class DigestService:
             raise ValueError("window_days must be at least 1")
         window_start = window_start or utc_now()
         window_end = window_start + timedelta(days=window_days)
-        records = self.store.list_relevant_records_with_evaluations(
+        records = self.store.list_relevant_refinements(
             window_start=window_start,
             window_end=window_end,
             limit=limit,
@@ -98,31 +98,37 @@ class DigestService:
             body = f"No relevant records found for the next {window_days} day(s)."
         else:
             lines = []
-            for record, evaluation in records:
+            for record, refinement in records:
                 label = record.title or record.kind
                 source = f" ({record.source})" if record.source else ""
-                evaluation_text = _format_evaluation(evaluation)
-                relevance_text = _format_relevance_window(record)
-                location_text = _format_location(record)
-                summary = evaluation.summary if evaluation and evaluation.summary else record.text
+                category_text = _format_category_scores(refinement)
+                relevance_text = _format_relevance_window(refinement)
+                location_text = _format_location(refinement)
+                summary = refinement.summary or record.text
                 lines.append(
-                    f"- {label}{source}{evaluation_text}{relevance_text}{location_text}: {summary}",
+                    f"- {label}{source}{category_text}{relevance_text}{location_text}: {summary}",
                 )
             body = "\n".join(lines)
 
         return DigestResult(title="Latest digest", body=body)
 
 
-def _format_evaluation(evaluation: Evaluation | None) -> str:
-    if evaluation is None:
+def _format_category_scores(refinement: Refinement) -> str:
+    if not refinement.category_scores:
         return ""
-    matches = f" {'/'.join(evaluation.goal_matches)}" if evaluation.goal_matches else ""
-    return f" [score {evaluation.score:.2f}{matches}]"
+    scores = ", ".join(
+        f"{name}={score:.2f}"
+        for name, score in sorted(
+            refinement.category_scores.items(), key=lambda item: item[1], reverse=True
+        )
+        if score > 0
+    )
+    return f" [{scores}]" if scores else ""
 
 
-def _format_relevance_window(record: Record) -> str:
-    start = _local_datetime(record.relevant_from)
-    end = _local_datetime(record.relevant_to)
+def _format_relevance_window(refinement: Refinement) -> str:
+    start = _local_datetime(refinement.relevant_from)
+    end = _local_datetime(refinement.relevant_to)
     if start is None and end is None:
         return ""
     if start is not None and end is not None:
@@ -136,11 +142,10 @@ def _format_relevance_window(record: Record) -> str:
     return f" [until {end:%Y-%m-%d %H:%M}]"
 
 
-def _format_location(record: Record) -> str:
-    location = record.payload.get("location")
-    if not isinstance(location, str) or not location.strip():
+def _format_location(refinement: Refinement) -> str:
+    if not refinement.location or not refinement.location.strip():
         return ""
-    return f" @ {location.strip()}"
+    return f" @ {refinement.location.strip()}"
 
 
 def _local_datetime(value: datetime | None) -> datetime | None:

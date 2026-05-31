@@ -35,18 +35,67 @@ class GoalConfig(BaseModel):
     description: str
 
 
-class EvaluationConfig(BaseModel):
+class TaxonomyCategoryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str
+
+
+class RefinementConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = "simple"
     batch_size: int = 10
+    schema_version: int = 1
+    taxonomy_version: int = 1
+    categories: list[TaxonomyCategoryConfig] = Field(
+        default_factory=lambda: [
+            TaxonomyCategoryConfig(
+                name="social",
+                description="Social occasions with natural conversation or opportunities to meet people.",
+            ),
+            TaxonomyCategoryConfig(
+                name="metal_music", description="Metal music concerts or festivals."
+            ),
+            TaxonomyCategoryConfig(
+                name="electronic_music",
+                description="Electronic music events, especially synth-related music.",
+            ),
+            TaxonomyCategoryConfig(
+                name="open_synth_jam",
+                description="Open synth jams, participatory music jams, or similar events.",
+            ),
+            TaxonomyCategoryConfig(name="live_music", description="Live music performances."),
+            TaxonomyCategoryConfig(
+                name="volunteering", description="Volunteering or community work."
+            ),
+            TaxonomyCategoryConfig(
+                name="community", description="Community initiatives or gatherings."
+            ),
+            TaxonomyCategoryConfig(name="workshop", description="Participatory workshops."),
+            TaxonomyCategoryConfig(name="theatre", description="Theatre performances."),
+            TaxonomyCategoryConfig(name="pottery", description="Pottery workshops or gatherings."),
+            TaxonomyCategoryConfig(
+                name="dating",
+                description="Events explicitly intended for dating or meeting potential partners.",
+            ),
+        ],
+    )
+
+
+class ProfileConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     goals: list[GoalConfig] = Field(
         default_factory=lambda: [
             GoalConfig(
                 name="meet_people",
                 description="Social occasions in Vilnius where Boss could meet women or new people.",
             ),
-            GoalConfig(name="metal_music", description="Metal music concerts, festivals, or meetups."),
+            GoalConfig(
+                name="metal_music", description="Metal music concerts, festivals, or meetups."
+            ),
             GoalConfig(
                 name="electronic_music",
                 description="Electronic music events, especially synth-related events.",
@@ -86,7 +135,8 @@ class PinoConfig(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
-    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    refinement: RefinementConfig = Field(default_factory=RefinementConfig)
+    profile: ProfileConfig = Field(default_factory=ProfileConfig)
     sources: list[SourceConfig] = Field(default_factory=list)
 
 

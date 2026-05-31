@@ -29,16 +29,17 @@ def test_parse_telegram_message_builds_generic_record() -> None:
     assert record.external_id == "afishavilnius:123"
     assert record.title == "Vilnius synth meetup Tonight at 19:00"
     assert record.url == "https://t.me/afishavilnius/123"
-    assert record.relevant_from is not None
-    assert record.relevant_from.isoformat() == "2026-05-22T09:30:00+00:00"
     assert record.payload["message_id"] == 123
+    assert record.payload["posted_at_utc"] == "2026-05-22T09:30:00+00:00"
     assert record.payload["views"] == 99
     assert "location_scopes" not in record.payload
     assert record.provenance["adapter"] == "telegram_channel"
 
 
 def test_parse_telegram_message_skips_empty_text() -> None:
-    assert parse_telegram_message(SimpleNamespace(id=1), source_name="telegram", channel="@x") is None
+    assert (
+        parse_telegram_message(SimpleNamespace(id=1), source_name="telegram", channel="@x") is None
+    )
 
 
 def test_telegram_channel_source_fetch_uses_client_factory() -> None:
@@ -74,7 +75,9 @@ def test_telegram_channel_source_fetch_uses_client_factory() -> None:
 
 def test_telegram_channel_source_fetch_since_uses_message_cursor() -> None:
     messages = [
-        SimpleNamespace(id=43, text="New post", date=datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)),
+        SimpleNamespace(
+            id=43, text="New post", date=datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+        ),
         SimpleNamespace(id=44, text="", date=datetime(2026, 5, 22, 11, 0, tzinfo=timezone.utc)),
     ]
     factory = FakeTelegramClientFactory(messages)

@@ -4,7 +4,9 @@ from pino_integration.kaveikti import parse_kaveikti_records
 
 
 def test_parse_kaveikti_records_from_listing_fixture() -> None:
-    html = (Path(__file__).parent / "fixtures" / "kaveikti_listing.html").read_text(encoding="utf-8")
+    html = (Path(__file__).parent / "fixtures" / "kaveikti_listing.html").read_text(
+        encoding="utf-8"
+    )
 
     records = parse_kaveikti_records(
         html,
@@ -22,11 +24,5 @@ def test_parse_kaveikti_records_from_listing_fixture() -> None:
     assert record.payload["category"] == "Festivaliai"
     assert record.payload["display_time"] == "Liepos 18 15:00"
     assert record.payload["start_at"] == "2026-07-18 15:00:00"
-    assert record.payload["start_at_utc"] == "2026-07-18T12:00:00+00:00"
-    assert record.payload["end_at_utc"] == "2026-07-18T19:00:00+00:00"
-    assert record.payload["timezone"] == "Europe/Vilnius"
-    assert record.relevant_from is not None
-    assert record.relevant_from.isoformat() == "2026-07-18T12:00:00+00:00"
-    assert record.relevant_to is not None
-    assert record.relevant_to.isoformat() == "2026-07-18T19:00:00+00:00"
+    assert record.payload["end_at"] == "2026-07-18 22:00:00"
     assert record.provenance["adapter"] == "kaveikti"

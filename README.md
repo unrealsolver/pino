@@ -175,21 +175,19 @@ Storage computes a unique fingerprint for each record:
 
 Repeated `pino check` runs should report duplicates instead of appending the same source item repeatedly.
 
-## Record Normalization
+## Records And Refinements
 
-Source adapters may ingest mixed-language source pages, but records should expose critical metadata in a stable canonical form before evaluation and digest generation.
+Source adapters capture raw records cheaply and losslessly. Their payloads may preserve source-native fields for audit and future reprocessing, but query code must not depend on adapter-specific normalized metadata.
 
-Normalization rules:
+`pino refine` converts unrefined records into reusable normalized refinement items. One source record may produce multiple refinement rows when it describes several events. Refinements own:
 
-- Preserve source-native text in `payload.raw` or specific source payload fields when it may be useful for audit/debugging.
-- Store canonical metadata keys in English, for example `category`, `categories`, `location`, `location_scopes`, `display_time`, `start_at_utc`, `end_at_utc`, and `image_url`.
-- Prefer English category/location labels when the source provides them. If a source only provides Lithuanian or another language, keep the original value and add a later enrichment step rather than guessing silently.
-- Keep `payload.location` for human-facing venue/address text. When the source item provides trustworthy geographic specificity, optionally add machine-readable `payload.location_scopes`, for example `["LT/vilnius"]`, `["LT/vilnius", "LT/kaunas"]`, or explicitly nationwide `["LT/*"]`. Omit it when the source does not provide enough evidence.
-- Normalize event dates/times to timezone-aware ISO datetimes. For Vilnius-local sources without explicit timezone, interpret event times as `Europe/Vilnius`, then store canonical UTC ISO values such as `start_at_utc` and `end_at_utc`.
-- Keep the human-facing source display date in `display_time` only as presentation/debug context, not as the primary sortable date.
-- Keep ingestion time separate from relevance time. `captured_at` is when Pino stored the record. A separate relevance date/window should support queries like "what roughly happens this week?" without pretending every record has a single start timestamp.
-- Store the generic query window in top-level `relevant_from` and `relevant_to` fields. Point-like records may use the same timestamp for both fields.
-- For event-like records, keep exact start/end values together in payload fields such as `start_at_utc` and `end_at_utc`; do not promote only a single start timestamp without its matching end/range semantics.
+- content kind: `event`, `advertisement`, `announcement`, `non_event`, or `unknown`
+- concise summary
+- normalized relevance window
+- human-readable location
+- versioned taxonomy scores
+
+Pino applies private preferences when querying refinements. Personal goals are not stored in reusable refinement rows. Dense embeddings are intentionally deferred; [docs/refinements.md](docs/refinements.md) describes the later `bge-m3`-style experiment.
 
 LLM-generated summaries, reasons, and chat responses should follow the user's language within a chat session. If the user writes English, use English labels such as `Tuesday`; if the user writes Lithuanian, use Lithuanian labels such as `antradienį`. Relative date wording like `today`, `tomorrow`, and weekdays should stay consistent for the session and should be grounded in the configured local timezone.
 
@@ -234,20 +232,11 @@ run may prompt Telethon to create a local session file. That initial check
 bootstraps the newest configured `settings.limit` messages. Later checks use the
 stored SQLite source cursor as Telethon `min_id` and fetch all newer messages.
 
-## Evaluation
+## Refinement
 
-`pino evaluate` evaluates unevaluated records against configured goals with a bounded LLM classifier. The default local config uses the `simple` model alias, which resolves to Infercom `gpt-oss-120b`.
+`pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. The default local config uses the `simple` model alias, which resolves to Infercom `gpt-oss-120b`.
 
-Evaluation is cached by record ID, so records are not re-evaluated on every run. Digest output uses stored evaluation scores when available and defaults to records relevant in the next 14 days.
-
-Current evaluation output stores:
-
-- relevance score from `0.0` to `1.0`
-- matched goal names
-- detected language
-- short summary
-- reasons
-- risks/caveats
+Refinements are cached by record ID. `pino evaluate` remains as a temporary alias for `pino refine`.
 
 Current config entry point:
 
@@ -269,7 +258,7 @@ The initial tool set is intentionally small:
 
 - `memory.add`
 - `memory.list`
-- `records.relevant`: preferred for upcoming/current event recommendations; returns relevance-windowed records with evaluation score, goal matches, time, location, URL, and evaluation summary or raw text fallback. V1 arguments: `limit`, `days`, `min_score`, and `goals`.
+- `records.relevant`: preferred for upcoming/current event recommendations; returns refinement-backed records with taxonomy scores, time, location, URL, and summary. Arguments: `limit`, `days`, `min_score`, and `categories`.
 - `records.list`: raw recent records for inspection/debug, not the primary recommendation path.
 - `web.open`: opens one public HTTP(S) URL and returns compact readable text for checking event details.
 - `digest.create`
@@ -293,7 +282,7 @@ When working on this repository:
 
 - Preserve the local-only deployment assumption.
 - Keep integrations isolated; do not let source-specific parsing leak into core ranking or digest logic.
-- Prefer typed data models for observations, events, memory entries, evaluations, and digest results.
+- Prefer typed data models for records, refinements, memory entries, and digest results.
 - Make CLI flows useful before adding an admin panel.
 - Keep storage inspectable and migration-friendly.
 - Add tests around deduplication, ranking, config loading, and provider adapters.
@@ -303,7 +292,7 @@ When working on this repository:
 
 The repository is a `uv` workspace with:
 
-- `packages/pino-core`: generic records, storage, source adapter protocol, evaluation, memory, and batch pipeline.
+- `packages/pino-core`: generic records, refinements, storage, source adapter protocol, memory, and batch pipeline.
 - `packages/pino-integration`: third-party source adapters for external websites and services.
 - `packages/pino-llm`: unified LLM client interface, provider adapters, request normalization, and provider diagnostics.
 - `apps/pino-cli`: Typer CLI using `pino-core` and `pino-integration`.
@@ -317,7 +306,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run prek run --all-files
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest
 UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .
 UV_CACHE_DIR=/tmp/uv-cache uv run pino check
-UV_CACHE_DIR=/tmp/uv-cache uv run pino evaluate --limit 10 --debug
+UV_CACHE_DIR=/tmp/uv-cache uv run pino refine --limit 10 --debug
 UV_CACHE_DIR=/tmp/uv-cache uv run pino digest --days 14
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --message "show memory"
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --debug --message "hello"

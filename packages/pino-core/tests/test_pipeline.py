@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pino_core import CheckPipeline, DigestService, Evaluation, Record, SQLiteStore
+from pino_core import CheckPipeline, DigestService, Record, Refinement, SQLiteStore
 from pino_core.sources import CursorFetchResult, StaticYamlSource
 
 
@@ -24,8 +24,8 @@ records:
     assert result.fetched == 1
     assert result.inserted == 1
     assert result.duplicates == 0
-    assert result.pending_evaluation_total == 1
-    assert result.pending_evaluation_new == 1
+    assert result.pending_refinement_total == 1
+    assert result.pending_refinement_new == 1
     assert store.list_records()[0].title == "Test record"
 
 
@@ -50,8 +50,8 @@ records:
     assert second.fetched == 1
     assert second.inserted == 0
     assert second.duplicates == 1
-    assert second.pending_evaluation_total == 1
-    assert second.pending_evaluation_new == 0
+    assert second.pending_refinement_total == 1
+    assert second.pending_refinement_new == 0
     assert len(store.list_records()) == 1
 
 
@@ -86,7 +86,7 @@ records:
     digest = DigestService(store).create_digest()
 
     assert digest.title == "Latest digest"
-    assert "Test record" in digest.body
+    assert digest.body == "No relevant records found for the next 14 day(s)."
 
 
 def test_digest_service_uses_relevance_window(tmp_path: Path) -> None:
@@ -99,8 +99,6 @@ def test_digest_service_uses_relevance_window(tmp_path: Path) -> None:
             source="test",
             title="Old event",
             text="Old event text",
-            relevant_from=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
-            relevant_to=datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc),
         ),
     )
     upcoming = store.add_record(
@@ -109,26 +107,42 @@ def test_digest_service_uses_relevance_window(tmp_path: Path) -> None:
             source="test",
             title="Upcoming event",
             text="Upcoming event text",
-            relevant_from=datetime(2026, 5, 22, 15, 0, tzinfo=timezone.utc),
-            relevant_to=datetime(2026, 5, 22, 17, 0, tzinfo=timezone.utc),
-            payload={"location": "Loftas"},
         ),
     )
-    store.add_evaluation(Evaluation(record_id=old.record.id, score=1.0, summary="Old summary"))
-    store.add_evaluation(
-        Evaluation(
-            record_id=upcoming.record.id,
-            score=0.9,
-            goal_matches=["electronic_music"],
-            summary="Upcoming summary",
-        ),
+    store.replace_refinements(
+        old.record.id,
+        [
+            Refinement(
+                record_id=old.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+                relevant_to=datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc),
+                summary="Old summary",
+                refiner="test",
+            ),
+        ],
+    )
+    store.replace_refinements(
+        upcoming.record.id,
+        [
+            Refinement(
+                record_id=upcoming.record.id,
+                content_kind="event",
+                summary="Upcoming summary",
+                relevant_from=datetime(2026, 5, 22, 15, 0, tzinfo=timezone.utc),
+                relevant_to=datetime(2026, 5, 22, 17, 0, tzinfo=timezone.utc),
+                location="Loftas",
+                category_scores={"electronic_music": 0.9},
+                refiner="test",
+            ),
+        ],
     )
 
     digest = DigestService(store).create_digest(window_start=window_start, window_days=7)
 
     assert "Upcoming event" in digest.body
     assert "Old event" not in digest.body
-    assert "score 0.90 electronic_music" in digest.body
+    assert "electronic_music=0.90" in digest.body
     assert "2026-05-22 18:00-20:00" in digest.body
     assert "@ Loftas" in digest.body
 

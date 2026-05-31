@@ -6,7 +6,6 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from pino_core.config import SourceConfig
-from pino_core.dates import DEFAULT_SOURCE_TIMEZONE, parse_source_date_range, to_utc, utc_iso
 from pino_core.models import Record
 from pino_core.sources import SourceAdapter
 
@@ -54,14 +53,10 @@ def _parse_event_card(
     href = link.get("href")
     url = urljoin(page_url, str(href)) if href else None
     display_time = _text_or_none(card.select_one(".m-card__description-date"))
-    relevant_from_local, relevant_to_local = parse_source_date_range(display_time)
-    relevant_from_utc = to_utc(relevant_from_local)
-    relevant_to_utc = to_utc(relevant_to_local)
     location = _text_or_none(card.select_one("p.m-card__location a")) or _text_or_none(
         card.select_one("p.m-card__location"),
     )
     category = _text_or_none(card.select_one(".m-card__category"))
-    categories = _split_categories(category)
     image_url = _image_url(card, page_url)
 
     details = [title]
@@ -79,16 +74,10 @@ def _parse_event_card(
         title=title,
         text=". ".join(details),
         url=url,
-        relevant_from=relevant_from_utc,
-        relevant_to=relevant_to_utc,
         payload={
             "category": category,
-            "categories": categories,
             "location": location,
             "display_time": display_time,
-            "start_at_utc": utc_iso(relevant_from_local),
-            "end_at_utc": utc_iso(relevant_to_local),
-            "timezone": DEFAULT_SOURCE_TIMEZONE,
             "image_url": image_url,
         },
         provenance={
@@ -108,12 +97,6 @@ def _text_or_none(element: Tag | None) -> str | None:
 
 def _clean_text(value: str) -> str:
     return " ".join(value.split())
-
-
-def _split_categories(value: str | None) -> list[str]:
-    if value is None:
-        return []
-    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def _image_url(card: Tag, page_url: str) -> str | None:

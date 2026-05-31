@@ -9,7 +9,7 @@ from sqlalchemy import (
     JSON,
     Column,
     DateTime,
-    Float,
+    Integer,
     MetaData,
     String,
     Table,
@@ -26,7 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
-from pino_core.models import ChatMessage, Evaluation, MemoryEntry, Record, utc_now
+from pino_core.models import ChatMessage, MemoryEntry, Record, Refinement, utc_now
 
 metadata = MetaData()
 
@@ -41,8 +41,6 @@ records_table = Table(
     Column("title", String),
     Column("text", Text, nullable=False),
     Column("url", String),
-    Column("relevant_from", DateTime(timezone=True)),
-    Column("relevant_to", DateTime(timezone=True)),
     Column("captured_at", DateTime(timezone=True), nullable=False),
     Column("payload", JSON, nullable=False),
     Column("provenance", JSON, nullable=False),
@@ -71,20 +69,25 @@ chat_messages_table = Table(
     Column("payload", JSON, nullable=False),
 )
 
-evaluations_table = Table(
-    "evaluations",
+refinements_table = Table(
+    "refinements",
     metadata,
     Column("id", String, primary_key=True),
     Column("record_id", String, nullable=False),
-    Column("score", Float, nullable=False),
-    Column("goal_matches", JSON, nullable=False),
-    Column("language", String),
+    Column("item_index", Integer, nullable=False),
+    Column("schema_version", Integer, nullable=False),
+    Column("taxonomy_version", Integer, nullable=False),
+    Column("content_kind", String, nullable=False),
     Column("summary", Text),
-    Column("reasons", JSON, nullable=False),
-    Column("risks", JSON, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Column("payload", JSON, nullable=False),
-    UniqueConstraint("record_id", name="uq_evaluations_record_id"),
+    Column("relevant_from", DateTime(timezone=True)),
+    Column("relevant_to", DateTime(timezone=True)),
+    Column("location", String),
+    Column("category_scores", JSON, nullable=False),
+    Column("embedding", JSON),
+    Column("refiner", String, nullable=False),
+    Column("refined_at", DateTime(timezone=True), nullable=False),
+    Column("debug", JSON, nullable=False),
+    UniqueConstraint("record_id", "item_index", name="uq_refinements_record_item"),
 )
 
 source_cursors_table = Table(
@@ -103,13 +106,13 @@ class InsertResult:
 
 
 @dataclass(frozen=True)
-class RecordEvaluationStatus:
+class RecordRefinementStatus:
     record: Record
-    evaluation: Evaluation | None
+    refinements: list[Refinement]
 
     @property
-    def is_evaluated(self) -> bool:
-        return self.evaluation is not None
+    def is_refined(self) -> bool:
+        return bool(self.refinements)
 
 
 class SQLiteStore:
@@ -129,7 +132,9 @@ class SQLiteStore:
                 select(records_table).where(records_table.c.fingerprint == record.fingerprint),
             ).first()
             if existing is not None:
-                return InsertResult(record=Record.model_validate(dict(existing._mapping)), inserted=False)
+                return InsertResult(
+                    record=Record.model_validate(dict(existing._mapping)), inserted=False
+                )
             session.execute(insert(records_table).values(**record.model_dump(mode="python")))
             session.commit()
             return InsertResult(record=record, inserted=True)
@@ -137,20 +142,26 @@ class SQLiteStore:
     def get_source_cursor(self, source: str) -> str | None:
         with Session(self.engine) as session:
             return session.execute(
-                select(source_cursors_table.c.cursor).where(source_cursors_table.c.source == source),
+                select(source_cursors_table.c.cursor).where(
+                    source_cursors_table.c.source == source
+                ),
             ).scalar_one_or_none()
 
     def set_source_cursor(self, source: str, cursor: str) -> None:
         with Session(self.engine) as session:
             existing = session.execute(
-                select(source_cursors_table.c.source).where(source_cursors_table.c.source == source),
+                select(source_cursors_table.c.source).where(
+                    source_cursors_table.c.source == source
+                ),
             ).scalar_one_or_none()
             values = {"cursor": cursor, "updated_at": utc_now()}
             if existing is None:
                 session.execute(insert(source_cursors_table).values(source=source, **values))
             else:
                 session.execute(
-                    update(source_cursors_table).where(source_cursors_table.c.source == source).values(**values),
+                    update(source_cursors_table)
+                    .where(source_cursors_table.c.source == source)
+                    .values(**values),
                 )
             session.commit()
 
@@ -158,60 +169,37 @@ class SQLiteStore:
         rows = self._select_latest(records_table, records_table.c.captured_at, limit)
         return [Record.model_validate(dict(row)) for row in rows]
 
-    def list_unevaluated_records(self, limit: int = 20) -> list[Record]:
+    def list_unrefined_records(self, limit: int = 20) -> list[Record]:
         with Session(self.engine) as session:
             result = session.execute(
                 select(records_table)
                 .outerjoin(
-                    evaluations_table,
-                    records_table.c.id == evaluations_table.c.record_id,
+                    refinements_table,
+                    records_table.c.id == refinements_table.c.record_id,
                 )
-                .where(evaluations_table.c.record_id.is_(None))
+                .where(refinements_table.c.record_id.is_(None))
                 .order_by(records_table.c.captured_at.desc())
                 .limit(limit),
             )
             return [Record.model_validate(dict(row._mapping)) for row in result]
 
-    def list_records_with_evaluations(self, limit: int = 20) -> list[tuple[Record, Evaluation | None]]:
-        with Session(self.engine) as session:
-            result = session.execute(
-                select(records_table, evaluations_table)
-                .outerjoin(
-                    evaluations_table,
-                    records_table.c.id == evaluations_table.c.record_id,
-                )
-                .order_by(evaluations_table.c.score.desc().nulls_last(), records_table.c.captured_at.desc())
-                .limit(limit),
-            )
-            return [_record_with_evaluation_from_row(row) for row in result]
+    def list_records_with_refinement_status(self, limit: int = 50) -> list[RecordRefinementStatus]:
+        return [
+            RecordRefinementStatus(record=record, refinements=self.list_refinements(record.id))
+            for record in self.list_records(limit=limit)
+        ]
 
-    def list_records_with_evaluation_status(self, limit: int = 50) -> list[RecordEvaluationStatus]:
-        with Session(self.engine) as session:
-            result = session.execute(
-                select(records_table, evaluations_table)
-                .outerjoin(
-                    evaluations_table,
-                    records_table.c.id == evaluations_table.c.record_id,
-                )
-                .order_by(records_table.c.captured_at.desc())
-                .limit(limit),
-            )
-            return [
-                RecordEvaluationStatus(record=record, evaluation=evaluation)
-                for record, evaluation in (_record_with_evaluation_from_row(row) for row in result)
-            ]
-
-    def count_unevaluated_records(self, *, record_ids: list[str] | None = None) -> int:
+    def count_unrefined_records(self, *, record_ids: list[str] | None = None) -> int:
         with Session(self.engine) as session:
             query = (
                 select(func.count())
                 .select_from(
                     records_table.outerjoin(
-                        evaluations_table,
-                        records_table.c.id == evaluations_table.c.record_id,
+                        refinements_table,
+                        records_table.c.id == refinements_table.c.record_id,
                     ),
                 )
-                .where(evaluations_table.c.record_id.is_(None))
+                .where(refinements_table.c.record_id.is_(None))
             )
             if record_ids is not None:
                 if not record_ids:
@@ -219,62 +207,57 @@ class SQLiteStore:
                 query = query.where(records_table.c.id.in_(record_ids))
             return int(session.execute(query).scalar_one())
 
-    def list_relevant_records_with_evaluations(
+    def list_relevant_refinements(
         self,
         *,
         window_start: datetime,
         window_end: datetime,
         limit: int = 20,
-    ) -> list[tuple[Record, Evaluation | None]]:
+    ) -> list[tuple[Record, Refinement]]:
         with Session(self.engine) as session:
             result = session.execute(
-                select(records_table, evaluations_table)
-                .outerjoin(
-                    evaluations_table,
-                    records_table.c.id == evaluations_table.c.record_id,
-                )
+                select(records_table, refinements_table)
+                .join(refinements_table, records_table.c.id == refinements_table.c.record_id)
                 .where(
                     and_(
+                        refinements_table.c.content_kind == "event",
+                        refinements_table.c.relevant_from.is_not(None),
                         or_(
-                            records_table.c.relevant_to.is_(None),
-                            records_table.c.relevant_to >= window_start,
+                            refinements_table.c.relevant_to.is_(None),
+                            refinements_table.c.relevant_to >= window_start,
                         ),
-                        or_(
-                            records_table.c.relevant_from.is_(None),
-                            records_table.c.relevant_from <= window_end,
-                        ),
+                        refinements_table.c.relevant_from <= window_end,
                     ),
                 )
                 .order_by(
-                    evaluations_table.c.score.desc().nulls_last(),
-                    records_table.c.relevant_from.asc().nulls_last(),
+                    refinements_table.c.relevant_from.asc(),
                     records_table.c.captured_at.desc(),
                 )
                 .limit(limit),
             )
-            return [_record_with_evaluation_from_row(row) for row in result]
+            return [_record_with_refinement_from_row(row) for row in result]
 
-    def add_evaluation(self, evaluation: Evaluation) -> None:
+    def replace_refinements(self, record_id: str, refinements: list[Refinement]) -> None:
         with Session(self.engine) as session:
-            existing = session.execute(
-                select(evaluations_table.c.id).where(
-                    evaluations_table.c.record_id == evaluation.record_id,
-                ),
-            ).first()
-            if existing is not None:
-                return
-            session.execute(insert(evaluations_table).values(**evaluation.model_dump(mode="python")))
+            session.execute(
+                delete(refinements_table).where(refinements_table.c.record_id == record_id)
+            )
+            for refinement in refinements:
+                if refinement.record_id != record_id:
+                    raise ValueError("refinement record_id does not match replacement record")
+                session.execute(
+                    insert(refinements_table).values(**refinement.model_dump(mode="python"))
+                )
             session.commit()
 
-    def get_evaluation(self, record_id: str) -> Evaluation | None:
+    def list_refinements(self, record_id: str) -> list[Refinement]:
         with Session(self.engine) as session:
-            row = session.execute(
-                select(evaluations_table).where(evaluations_table.c.record_id == record_id),
-            ).first()
-            if row is None:
-                return None
-            return Evaluation.model_validate(dict(row._mapping))
-
+            rows = session.execute(
+                select(refinements_table)
+                .where(refinements_table.c.record_id == record_id)
+                .order_by(refinements_table.c.item_index),
+            )
+            return [Refinement.model_validate(dict(row._mapping)) for row in rows]
 
     def add_memory(self, memory: MemoryEntry) -> None:
         self._insert_model(active_memory_table, memory)
@@ -314,11 +297,6 @@ class SQLiteStore:
                 connection.exec_driver_sql("ALTER TABLE records ADD COLUMN external_id VARCHAR")
             if "fingerprint" not in columns:
                 connection.exec_driver_sql("ALTER TABLE records ADD COLUMN fingerprint VARCHAR")
-            if "relevant_from" not in columns:
-                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN relevant_from DATETIME")
-            if "relevant_to" not in columns:
-                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN relevant_to DATETIME")
-
             existing = connection.execute(select(records_table)).mappings().all()
             seen: set[str] = set()
             for row in existing:
@@ -340,15 +318,12 @@ class SQLiteStore:
                 )
 
 
-def _record_with_evaluation_from_row(row: Any) -> tuple[Record, Evaluation | None]:
+def _record_with_refinement_from_row(row: Any) -> tuple[Record, Refinement]:
     mapping = row._mapping
     record = Record.model_validate(
         {column.name: mapping[column] for column in records_table.columns},
     )
-    evaluation_id = mapping[evaluations_table.c.id]
-    evaluation = None
-    if evaluation_id is not None:
-        evaluation = Evaluation.model_validate(
-            {column.name: mapping[column] for column in evaluations_table.columns},
-        )
-    return record, evaluation
+    refinement = Refinement.model_validate(
+        {column.name: mapping[column] for column in refinements_table.columns},
+    )
+    return record, refinement

@@ -25,7 +25,7 @@ Use a `uv` workspace if the repository is split into a small number of coarse pa
 
 Suggested starting shape:
 
-- `packages/pino-core`: generic records, pipeline, memory abstractions, evaluation logic, provider interfaces.
+- `packages/pino-core`: generic records, pipeline, memory abstractions, refinement logic, provider interfaces.
 - `packages/pino-llm`: unified LLM interface, provider adapters, request/response normalization, and provider error wrapping.
 - `packages/pino-integration`: third-party source adapters and their parser dependencies.
 - `apps/pino-cli`: Typer CLI that calls `pino-core`.
@@ -33,7 +33,7 @@ Suggested starting shape:
 
 Current scaffold starts with `packages/pino-core`, `packages/pino-integration`, `packages/pino-llm`, and `apps/pino-cli`. The daemon package should be added after the batch workflow has enough real behavior to keep resident.
 
-Do not create one package per integration or per domain entity at the start. Keep third-party integration code in `pino-integration` and generic records, storage, pipeline, and evaluation code in `pino-core`.
+Do not create one package per integration or per domain entity at the start. Keep third-party integration code in `pino-integration` and generic records, storage, pipeline, and refinement code in `pino-core`.
 
 The root should own workspace-level settings, shared tooling, and the lockfile. Individual packages should own only their package metadata and direct dependencies.
 
@@ -65,7 +65,7 @@ Reasons:
 
 - Local-only.
 - Easy to inspect and back up.
-- Good enough for generic records, evaluations, chat history, and active memory.
+- Good enough for generic records, refinements, chat history, and active memory.
 - Can support simple full-text search.
 - Leaves a clear migration path to PostgreSQL if needed.
 
@@ -73,41 +73,29 @@ Avoid making the storage schema mirror the first event-ingestion pipeline too cl
 
 Better first-level storage concepts:
 
-- `records`: generic captured or derived facts/items with type, source, timestamps, payload, and provenance.
+- `records`: raw captured facts/items with type, source, payload, and provenance.
+- `refinements`: reusable normalized items extracted from records.
 - `chat_messages`: durable conversation history.
 - `active_memory`: explicit long-lived facts and preferences.
 - `tasks`: optional later, for daemon-managed recurring or interrupting work.
 
-Event candidates, dedup groups, ranking results, and source run details can be represented as record payloads or evaluation data until the system proves that they need dedicated tables.
+Event candidates are represented by refinements. Keep dedup groups, ranking results, and source run details lightweight until the system proves that they need dedicated tables.
 
-### Record Normalization
+### Refinement Layer
 
-Keep the first storage model generic, but do not leave every source adapter to invent incompatible metadata shapes.
+Keep records close to raw capture. Adapter payloads may preserve source-native fields, but query logic should depend on refinements rather than adapter-specific payload conventions.
 
-Canonical record metadata should use English keys and stable machine-readable values. Source-native labels and text should remain available for inspection, but they should not be the only copy of critical fields used by evaluation, sorting, or digest generation.
+Each refinement row owns one normalized item:
 
-Recommended normalized fields for event-like records:
+- `content_kind`
+- `summary`
+- `relevant_from` and `relevant_to`
+- `location`
+- versioned `category_scores`
+- optional later dense embedding
 
-- `payload.start_at_utc`: ISO 8601 UTC event start datetime.
-- `payload.end_at_utc`: ISO 8601 UTC event end datetime when known.
-- `payload.timezone`: source/event timezone used during normalization, usually `Europe/Vilnius`.
-- `payload.display_time`: source display text for humans/debugging.
-- `payload.category` and `payload.categories`: English canonical labels when available from the source.
-- `payload.location`: venue/location name in the most useful available language.
-- `payload.location_scopes`: optional source-derived machine-readable scopes such as `["LT/vilnius"]`, multiple city scopes, or explicit country-wide `["LT/*"]`. Omit when source evidence is insufficient.
-- `payload.raw`: source-native values that were transformed or could be useful for debugging.
-
-Generic record timing should distinguish:
-
-- `captured_at`: when Pino ingested/stored the record.
-- `relevant_from` and `relevant_to`: the generic query window for when the record is useful to query or act on, for example "events relevant this week".
-- event/source-specific time details: exact start/end/publication metadata in payload.
-
-Point-like records may use the same timestamp for `relevant_from` and `relevant_to`. Range-like records should fill both sides when known. Event start/end should remain paired in payload as source-specific exact details, while the top-level relevance window remains generic.
-
-For Vilnius event sources that publish date/time without a timezone, interpret the source time as `Europe/Vilnius` before converting to UTC. Do not store naive datetimes as canonical fields.
-
-If a source provides only Lithuanian labels for critical metadata, store those labels in `payload.raw` and either keep the canonical field unset or fill it through an explicit normalization/enrichment function. Avoid silent best-effort translations inside ad hoc parser code.
+One record may produce several refinement rows when a source message lists
+multiple events. See [refinements.md](refinements.md).
 
 Keep location scopes optional and source-derived. Do not infer `LT/vilnius` from Pino's usual target city, do not treat an empty scope as `LT/*`, and do not add config defaults until real source integrations need them.
 
@@ -117,7 +105,7 @@ Record idempotency is a deterministic storage concern, not an LLM or vector-sear
 2. Else use `source + kind + normalized_url` when a URL exists.
 3. Else use `source + kind + normalized_title + normalized_text`.
 
-This prevents repeated source checks from creating duplicate rows. Semantic duplicate detection across different sources can be added later as an evaluation/enrichment step if needed.
+This prevents repeated source checks from creating duplicate rows. Semantic duplicate detection across different sources can be added later as a refinement step if needed.
 
 Postpone vector storage. Add embeddings and Qdrant only after there is a concrete semantic-memory use case that SQLite search cannot cover.
 
@@ -136,7 +124,7 @@ The package also owns the simple JSON action protocol used by `pino chat`: model
 
 The application should still be partly useful without LLM calls. Fetching, storing, listing, simple filtering, and deterministic tests should not require a remote model.
 
-Record evaluation is LLM-assisted rather than keyword-only. Deterministic code controls batching, config, persistence, retries, and caching; the configured model performs multilingual semantic classification against explicit goals. The default evaluation model alias is `simple`, which resolves to Infercom `gpt-oss-120b` in the current config.
+Record refinement is LLM-assisted. Deterministic code controls batching, config, persistence, and caching; the configured model extracts reusable multilingual normalized items and versioned taxonomy scores. The default refinement model alias is `simple`, which resolves to Infercom `gpt-oss-120b` in the current config.
 
 ## Interactive Agent Shape
 
@@ -155,7 +143,7 @@ Initial tools should be narrow and inspectable:
 
 - `memory.add`
 - `memory.list`
-- `records.relevant`: preferred retrieval path for event/recommendation questions. It should query relevance-windowed records joined with evaluations and return title, source, score, goal matches, local time window, location, URL, and evaluation summary with raw text fallback. V1 arguments: `limit`, `days`, `min_score`, and `goals`.
+- `records.relevant`: preferred retrieval path for event/recommendation questions. It queries refinement-backed events and returns title, source, taxonomy scores, local time window, location, URL, and normalized summary. Arguments: `limit`, `days`, `min_score`, and `categories`.
 - `records.list`: raw recent record inspection/debug only.
 - `web.open`: bounded public HTTP(S) URL reader for checking event/detail pages referenced by records or user messages.
 - `digest.create`
@@ -173,7 +161,7 @@ Chat language should be session-consistent. Infer the response language from the
 
 ## Integrations
 
-Each source should be isolated behind a small interface. Integrations should fetch and parse source-specific data, then return generic records with payloads and provenance. Evaluation and digest decisions belong in the core.
+Each source should be isolated behind a small interface. Integrations should fetch and parse source-specific data, then return raw generic records with payloads and provenance. Refinement and digest decisions belong in the core.
 
 Source construction should use registered factories rather than a central `if/elif` chain. The registry owns source type resolution, and integrations provide small factory functions that build their adapters from config.
 
@@ -198,10 +186,10 @@ Keep the first pipeline batch-oriented and explicit:
 
 1. Fetch configured sources.
 2. Store captured records with provenance.
-3. Normalize or enrich records where useful.
+3. Refine raw records into reusable normalized items.
 4. Relate, merge, or suppress duplicates.
-5. Evaluate records against current goals with cached structured evaluations.
-6. Serve evaluated, relevance-windowed records to chat through `records.relevant`.
+5. Apply private profile preferences at query time.
+6. Serve refinement-backed, relevance-windowed records to chat through `records.relevant`.
 7. Generate and print/output concise digests.
 
 This pipeline should be callable from both CLI commands and the future daemon.
@@ -223,7 +211,7 @@ Important core concepts:
 - `MemoryEntry`
 - `ChatMessage`
 - `Task`
-- `Evaluation`
+- `Refinement`
 
 Avoid promoting use-case-specific concepts, such as event candidates or dedup groups, into first-class interfaces until the code repeatedly needs them.
 

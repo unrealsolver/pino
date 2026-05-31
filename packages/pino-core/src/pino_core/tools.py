@@ -11,10 +11,10 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
-from pino_core.models import Evaluation, MemoryEntry, Record, utc_now
+from pino_core.models import MemoryEntry, Record, Refinement, utc_now
 from pino_core.pipeline import CheckPipeline, DigestService
 from pino_core.sources import SourceAdapter
-from pino_core.storage import RecordEvaluationStatus, SQLiteStore
+from pino_core.storage import RecordRefinementStatus, SQLiteStore
 
 
 DEFAULT_WEB_OPEN_MAX_CHARS = 5000
@@ -65,7 +65,7 @@ def build_tools(
 
     def records_list(arguments: dict[str, Any]) -> str:
         limit = int(arguments.get("limit", 10))
-        rows = store.list_records_with_evaluation_status(limit=limit)
+        rows = store.list_records_with_refinement_status(limit=limit)
         if not rows:
             return "No records captured yet."
         return "\n".join(_format_record_with_status(row) for row in rows)
@@ -74,22 +74,22 @@ def build_tools(
         limit = int(arguments.get("limit", 20))
         window_days = int(arguments.get("days", arguments.get("window_days", 14)))
         min_score = float(arguments.get("min_score", 0.0))
-        goals = _coerce_goals(arguments.get("goals", []))
+        categories = _coerce_categories(arguments.get("categories", []))
         window_start = utc_now()
-        records = store.list_relevant_records_with_evaluations(
+        records = store.list_relevant_refinements(
             window_start=window_start,
             window_end=window_start + timedelta(days=window_days),
             limit=max(limit * 3, limit),
         )
         filtered = [
-            (record, evaluation)
-            for record, evaluation in records
-            if _matches_relevant_filters(evaluation, min_score=min_score, goals=goals)
+            (record, refinement)
+            for record, refinement in records
+            if _matches_relevant_filters(refinement, min_score=min_score, categories=categories)
         ][:limit]
         if not filtered:
             return f"No relevant records found for the next {window_days} day(s)."
         return "\n".join(
-            _format_relevant_record(record, evaluation) for record, evaluation in filtered
+            _format_relevant_record(record, refinement) for record, refinement in filtered
         )
 
     def digest_create(arguments: dict[str, Any]) -> str:
@@ -102,8 +102,8 @@ def build_tools(
         return (
             f"Fetched {result.fetched}; inserted {result.inserted}; "
             f"duplicates {result.duplicates}. "
-            f"Evaluation pending: {result.pending_evaluation_total} total, "
-            f"{result.pending_evaluation_new} new."
+            f"Refinement pending: {result.pending_refinement_total} total, "
+            f"{result.pending_refinement_new} new."
         )
 
     def web_open(arguments: dict[str, Any]) -> str:
@@ -140,23 +140,39 @@ def build_tools(
         return "\n".join(lines)
 
     tools = [
-        Tool("memory.add", "Add an active memory entry. Arguments JSON example: {\"content\": \"text\", \"tags\": [\"tag\"]}.", memory_add),
-        Tool("memory.list", "List active memory entries. Arguments JSON example: {\"limit\": 20}.", memory_list),
+        Tool(
+            "memory.add",
+            'Add an active memory entry. Arguments JSON example: {"content": "text", "tags": ["tag"]}.',
+            memory_add,
+        ),
+        Tool(
+            "memory.list",
+            'List active memory entries. Arguments JSON example: {"limit": 20}.',
+            memory_list,
+        ),
         Tool(
             "records.relevant",
-            "Preferred for event recommendations and upcoming/current plans. Returns relevance-windowed records with evaluation score, goal matches, local time, location, URL, and summary. Arguments JSON example: {\"limit\": 20, \"days\": 14, \"min_score\": 0.3, \"goals\": [\"metal_music\"]}.",
+            'Preferred for event recommendations and upcoming/current plans. Returns refinement-backed records with taxonomy scores, local time, location, URL, and summary. Arguments JSON example: {"limit": 20, "days": 14, "min_score": 0.3, "categories": ["metal_music"]}.',
             records_relevant,
         ),
-        Tool("records.list", "Raw recent records for inspection/debug only. Arguments JSON example: {\"limit\": 50}.", records_list),
+        Tool(
+            "records.list",
+            'Raw recent records for inspection/debug only. Arguments JSON example: {"limit": 50}.',
+            records_list,
+        ),
         Tool(
             "digest.create",
-            "Create a digest from relevant current/upcoming records. Arguments JSON example: {\"limit\": 20, \"days\": 14}.",
+            'Create a digest from relevant current/upcoming records. Arguments JSON example: {"limit": 20, "days": 14}.',
             digest_create,
         ),
-        Tool("sources.check", "Fetch configured sources and store records. Arguments JSON example: {}.", sources_check),
+        Tool(
+            "sources.check",
+            "Fetch configured sources and store records. Arguments JSON example: {}.",
+            sources_check,
+        ),
         Tool(
             "web.open",
-            "Open one public http(s) URL and return compact readable page text for event/detail checks. Arguments JSON example: {\"url\": \"https://example.com/event\", \"max_chars\": 3000}.",
+            'Open one public http(s) URL and return compact readable page text for event/detail checks. Arguments JSON example: {"url": "https://example.com/event", "max_chars": 3000}.',
             web_open,
         ),
     ]
@@ -167,7 +183,7 @@ def describe_tools(tools: dict[str, Tool]) -> str:
     return "\n".join(f"- {tool.name}: {tool.description}" for tool in tools.values())
 
 
-def _coerce_goals(value: object) -> list[str]:
+def _coerce_categories(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
     if isinstance(value, str):
@@ -183,49 +199,53 @@ def _coerce_int(value: object, *, default: int) -> int:
 
 
 def _matches_relevant_filters(
-    evaluation: Evaluation | None,
+    refinement: Refinement,
     *,
     min_score: float,
-    goals: list[str],
+    categories: list[str],
 ) -> bool:
-    if evaluation is None:
-        return min_score <= 0 and not goals
-    if evaluation.score < min_score:
-        return False
-    if goals and not set(goals).intersection(evaluation.goal_matches):
-        return False
+    if categories:
+        return any(
+            refinement.category_scores.get(category, -1.0) >= min_score for category in categories
+        )
+    if min_score > 0:
+        return any(score >= min_score for score in refinement.category_scores.values())
     return True
 
 
-def _format_relevant_record(record: Record, evaluation: Evaluation | None) -> str:
+def _format_relevant_record(record: Record, refinement: Refinement) -> str:
     label = record.title or record.kind
     source = f" ({record.source})" if record.source else ""
-    evaluation_text = _format_relevant_evaluation(evaluation)
-    relevance_text = _format_relevance_window(record)
-    location_text = _format_location(record)
+    category_text = _format_category_scores(refinement)
+    relevance_text = _format_relevance_window(refinement)
+    location_text = _format_location(refinement)
     url_text = f" [url: {record.url}]" if record.url else ""
-    summary = evaluation.summary if evaluation and evaluation.summary else record.text
-    return f"- {label}{source}{evaluation_text}{relevance_text}{location_text}{url_text}: {summary}"
+    summary = refinement.summary or record.text
+    return f"- {label}{source}{category_text}{relevance_text}{location_text}{url_text}: {summary}"
 
 
-def _format_relevant_evaluation(evaluation: Evaluation | None) -> str:
-    if evaluation is None:
-        return " [unevaluated]"
-    matches = f" {'/'.join(evaluation.goal_matches)}" if evaluation.goal_matches else ""
-    return f" [score {evaluation.score:.2f}{matches}]"
+def _format_category_scores(refinement: Refinement) -> str:
+    scores = ", ".join(
+        f"{name}={score:.2f}"
+        for name, score in sorted(
+            refinement.category_scores.items(), key=lambda item: item[1], reverse=True
+        )
+        if score > 0
+    )
+    return f" [{scores}]" if scores else ""
 
 
-def _format_record_with_status(row: RecordEvaluationStatus) -> str:
+def _format_record_with_status(row: RecordRefinementStatus) -> str:
     record = row.record
     label = record.title or record.kind
     source = f" ({record.source})" if record.source else ""
-    evaluation_text = _format_relevant_evaluation(row.evaluation)
-    return f"- {label}{source}{evaluation_text}: {record.text}"
+    status = f" [refined:{len(row.refinements)}]" if row.refinements else " [unrefined]"
+    return f"- {label}{source}{status}: {record.text}"
 
 
-def _format_relevance_window(record: Record) -> str:
-    start = _local_datetime(record.relevant_from)
-    end = _local_datetime(record.relevant_to)
+def _format_relevance_window(refinement: Refinement) -> str:
+    start = _local_datetime(refinement.relevant_from)
+    end = _local_datetime(refinement.relevant_to)
     if start is None and end is None:
         return ""
     if start is not None and end is not None:
@@ -239,11 +259,10 @@ def _format_relevance_window(record: Record) -> str:
     return f" [until {end:%Y-%m-%d %H:%M}]"
 
 
-def _format_location(record: Record) -> str:
-    location = record.payload.get("location")
-    if not isinstance(location, str) or not location.strip():
+def _format_location(refinement: Refinement) -> str:
+    if not refinement.location or not refinement.location.strip():
         return ""
-    return f" @ {location.strip()}"
+    return f" @ {refinement.location.strip()}"
 
 
 def _local_datetime(value: datetime | None) -> datetime | None:
@@ -293,7 +312,13 @@ def _is_text_content_type(content_type: str) -> bool:
     normalized = content_type.lower()
     return any(
         item in normalized
-        for item in ("text/html", "text/plain", "application/xhtml+xml", "application/xml", "text/xml")
+        for item in (
+            "text/html",
+            "text/plain",
+            "application/xhtml+xml",
+            "application/xml",
+            "text/xml",
+        )
     )
 
 
@@ -326,7 +351,20 @@ class _ReadableHTMLParser(HTMLParser):
             if values.get("name", "").lower() == "description" and values.get("content"):
                 self.description = values["content"]
             return
-        if tag in {"p", "div", "section", "article", "header", "footer", "li", "br", "tr", "h1", "h2", "h3"}:
+        if tag in {
+            "p",
+            "div",
+            "section",
+            "article",
+            "header",
+            "footer",
+            "li",
+            "br",
+            "tr",
+            "h1",
+            "h2",
+            "h3",
+        }:
             self.body_parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:

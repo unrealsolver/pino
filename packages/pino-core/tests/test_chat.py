@@ -135,7 +135,7 @@ def test_chat_agent_receives_history_limit_previous_messages(tmp_path: Path) -> 
             created_at=datetime(2026, 1, 1, 10, 3, tzinfo=timezone.utc),
         ),
     )
-    client = SequenceClient(['ok'])
+    client = SequenceClient(["ok"])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -171,7 +171,7 @@ def test_chat_agent_omits_stored_tool_messages_from_history(tmp_path: Path) -> N
             created_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
         ),
     )
-    client = SequenceClient(['ok'])
+    client = SequenceClient(["ok"])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -190,7 +190,7 @@ def test_chat_agent_includes_active_memory_in_system_prompt(tmp_path: Path) -> N
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     store.add_memory(MemoryEntry(content="Boss prefers evaluated event recommendations."))
-    client = SequenceClient(['ok'])
+    client = SequenceClient(["ok"])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -212,7 +212,7 @@ def test_chat_agent_keeps_current_turn_tool_context(tmp_path: Path) -> None:
     client = SequenceClient(
         [
             '{"tool": "memory.list", "arguments": {}}',
-            'Done.',
+            "Done.",
         ],
     )
     agent = ChatAgent(
@@ -262,7 +262,9 @@ def test_chat_agent_runs_independent_read_only_tools_in_parallel(tmp_path: Path)
     assert result.debug["rounds"][0]["tools"] == ["memory.list", "records.list"]
     assert any('"tools":' in message.content for message in client.messages[1])
     assert any("memory.list result:\nresult 1" in message.content for message in client.messages[1])
-    assert any("records.list result:\nresult 2" in message.content for message in client.messages[1])
+    assert any(
+        "records.list result:\nresult 2" in message.content for message in client.messages[1]
+    )
 
 
 def test_chat_agent_truncates_multi_tool_round_at_configured_limit(tmp_path: Path) -> None:
@@ -303,7 +305,7 @@ def test_chat_agent_handles_wrapped_tool_call_response(tmp_path: Path) -> None:
     client = SequenceClient(
         [
             '[TOOL_CALL]\n{"name": "memory.add", "arguments": {"content": "Boss likes synths"}}\n[/TOOL_CALL]',
-            'Saved.',
+            "Saved.",
         ],
     )
     agent = ChatAgent(
@@ -330,7 +332,7 @@ def test_chat_agent_omits_stored_raw_tool_call_messages_from_history(tmp_path: P
             content='[TOOL_CALL]\n{"name": "memory.list", "arguments": {}}\n[/TOOL_CALL]',
         ),
     )
-    client = SequenceClient(['ok'])
+    client = SequenceClient(["ok"])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -346,7 +348,7 @@ def test_chat_agent_omits_stored_raw_tool_call_messages_from_history(tmp_path: P
 
 def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
-    client = SequenceClient(['ok'])
+    client = SequenceClient(["ok"])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -363,12 +365,15 @@ def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> N
     assert '{"tools": [{"tool": "tool.name", "arguments": {}}' in prompt
     assert "do not use markdown fences, provider-specific tool-call wrappers" in prompt
     assert "CLI-style flags" in prompt
-    assert '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}' in prompt
+    assert (
+        '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, '
+        '"min_score": 0.3, "categories": ["electronic_music"]}}'
+    ) in prompt
 
 
 def test_chat_agent_includes_goals_and_current_time_in_system_prompt(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
-    client = SequenceClient(['ok'])
+    client = SequenceClient(["ok"])
     agent = ChatAgent(
         store=store,
         provider=client,
@@ -376,7 +381,9 @@ def test_chat_agent_includes_goals_and_current_time_in_system_prompt(tmp_path: P
         config=ChatConfig(),
         goals=[
             GoalConfig(name="metal_music", description="Metal concerts and related events."),
-            GoalConfig(name="synth_music", description="Synth, IDM, and participatory electronic music."),
+            GoalConfig(
+                name="synth_music", description="Synth, IDM, and participatory electronic music."
+            ),
         ],
         now=lambda: datetime(2026, 5, 25, 17, 38, tzinfo=timezone.utc),
     )

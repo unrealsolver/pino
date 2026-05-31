@@ -30,9 +30,36 @@ chat:
   max_tool_rounds: 2
   max_tools_per_round: 3
 
-evaluation:
+refinement:
   model: simple
   batch_size: 10
+  schema_version: 1
+  taxonomy_version: 1
+  categories:
+    - name: social
+      description: Social occasions with natural conversation or opportunities to meet people.
+    - name: metal_music
+      description: Metal music concerts or festivals.
+    - name: electronic_music
+      description: Electronic music events, especially synth-related music.
+    - name: open_synth_jam
+      description: Open synth jams, participatory music jams, or similar events.
+    - name: live_music
+      description: Live music performances.
+    - name: volunteering
+      description: Volunteering or community work.
+    - name: community
+      description: Community initiatives or gatherings.
+    - name: workshop
+      description: Participatory workshops.
+    - name: theatre
+      description: Theatre performances.
+    - name: pottery
+      description: Pottery workshops or gatherings.
+    - name: dating
+      description: Events explicitly intended for dating or meeting potential partners.
+
+profile:
   goals:
     - name: meet_people
       description: Social occasions in Vilnius where Boss could meet women or interesting new people, including small workshops, tastings, cultural salons, lectures, niche gatherings, volunteering, community events, and other settings with natural conversation.

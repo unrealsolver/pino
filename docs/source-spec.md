@@ -2,21 +2,19 @@
 
 This document is for humans or coding agents adding a new Pino source inside this repository. The MVP integration point is the repo itself, not an external plugin system.
 
-The record shape below documents the current implementation. The proposed
-refinement-layer migration in [refinements.md](refinements.md) moves normalized
-query fields out of raw records so structured and unstructured sources converge
-on one lean refinement model.
+The record shape below is intentionally raw. Normalized query fields belong to
+the reusable refinement layer documented in [refinements.md](refinements.md).
 
 ## Goal
 
 A source adapter fetches one configured source and returns generic `Record` objects. Once registered, the existing commands can use it:
 
 - `pino check` fetches and stores records.
-- `pino evaluate` scores unevaluated records against configured goals.
+- `pino refine` extracts reusable normalized items from unrefined records.
 - `pino digest` summarizes relevant records.
 - `pino chat` can retrieve records through tools.
 
-Keep source code source-specific. Keep ranking, evaluation, digest, memory, and chat logic in `pino-core`.
+Keep source code source-specific. Keep refinement, ranking, digest, memory, and chat logic in `pino-core`.
 
 ## Least Ugly Repo-Local Path
 
@@ -60,7 +58,8 @@ all returned records have been stored successfully.
 
 ## Record Shape
 
-Return `pino_core.models.Record` objects. For event-like records, prefer this shape:
+Return `pino_core.models.Record` objects. For event-like records, prefer a
+compact raw capture shape:
 
 ```python
 Record(
@@ -70,17 +69,10 @@ Record(
     title=title,
     text="Title. Category: ... Location: ... Time: ...",
     url=url,
-    relevant_from=start_at_utc,
-    relevant_to=end_at_utc or start_at_utc,
     payload={
         "category": category,
-        "categories": categories,
         "location": location,
-        "location_scopes": location_scopes,
         "display_time": display_time,
-        "start_at_utc": utc_iso(start_at_local),
-        "end_at_utc": utc_iso(end_at_local),
-        "timezone": "Europe/Vilnius",
         "image_url": image_url,
         "raw": raw_source_data,
     },
@@ -92,7 +84,9 @@ Record(
 )
 ```
 
-Required fields are `kind`, `source`, and `text`; most useful event records should also include `title`, `url`, `relevant_from`, `relevant_to`, and normalized payload keys.
+Required fields are `kind`, `source`, and `text`; useful records should also
+include stable identity, title, URL, source-native payload values, and
+provenance when available.
 
 ## Field Rules
 
@@ -100,13 +94,13 @@ Required fields are `kind`, `source`, and `text`; most useful event records shou
 - `source`: configured source name, not just adapter type.
 - `external_id`: stable ID from the source when available. Use URL slug, message ID, event ID, or canonical URL-derived ID.
 - `title`: short display title when available.
-- `text`: compact human-readable source summary. This is used by evaluation, so include the important facts.
+- `text`: compact human-readable source summary. This is used by refinement, so include the important facts.
 - `url`: canonical URL for the item when available.
-- `relevant_from` / `relevant_to`: top-level UTC datetimes for relevance-window queries.
-- `payload`: normalized metadata plus source-specific fields. Keep keys in English.
+- `payload`: source-native metadata useful for audit, debug, or later reprocessing. Keep wrapper keys in English.
 - `provenance`: parser/debug context, including adapter name and source location.
 
-For Vilnius-local event times without an explicit timezone, parse as `Europe/Vilnius`, then store UTC datetimes.
+Do not normalize query dates, taxonomy categories, or inferred locations inside
+adapters. The refinement layer owns those fields.
 
 ### Optional Location Scopes
 
@@ -205,7 +199,7 @@ Add focused tests under `packages/pino-integration/tests/`:
 
 - Parser fixture test for one representative item.
 - Missing optional fields test if the source is messy.
-- Date/time parsing assertions for `relevant_from`, `relevant_to`, and payload UTC fields.
+- Source-native date/time payload assertion when the source exposes date fields.
 - URL normalization assertion for relative links.
 - Factory validation test if required config is non-obvious.
 
@@ -221,7 +215,7 @@ Follow docs/source-spec.md.
 Keep parsing in packages/pino-integration/src/pino_integration/<type_name>.py.
 Register it in pino_integration.registry.
 Add fixture-based tests under packages/pino-integration/tests/.
-Return generic Record objects with event fields: title, text, url, relevant_from, relevant_to, location, optional source-derived location_scopes, display_time, start/end UTC payload fields, and provenance.
+Return generic raw Record objects with title, text, url, source-native payload values, optional source-derived location_scopes, and provenance.
 Do not add broad plugin architecture.
 ```
 

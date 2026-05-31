@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-06-01 01:37 Europe/Vilnius - Codex
+
+- Before: Implement the first end-to-end generic refinement slice without embeddings: raw-only records, reusable multi-item refinements, taxonomy scores, refinement-aware queries, and a `pino refine` CLI while keeping a temporary `pino evaluate` alias.
+- Areas: Core models/config/storage/refinement service/pipeline/tools, CLI, source adapters, tests, docs, progress log.
+- After: Replaced active goal-specific evaluations with reusable multi-item refinements; added `pino refine` plus temporary `pino evaluate` alias; moved relevance queries/digests and pending counts to refinements; made adapters capture source-native data only; separated reusable taxonomy config from private profile goals; and updated docs. Dense embeddings remain intentionally deferred.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-cli/tests/test_main.py packages/pino-core/tests/test_pipeline.py packages/pino-core/tests/test_refinement.py packages/pino-core/tests/test_storage.py packages/pino-core/tests/test_tools.py packages/pino-integration/tests`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino refine --help`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino evaluate --help`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino debug prompts --config config.example.yaml`; `git diff --check`.
+- Follow-up: Add private profile weighting beyond explicit category filters; benchmark Ollama `bge-m3` later; add deterministic refinement shortcuts only if measurements justify them; physically clean inert legacy SQLite evaluation/date columns only if worthwhile.
+
 ## 2026-05-31 20:54 Europe/Vilnius - Codex
 
 - Before: Write a lean refinement-layer design proposal that removes mixed structured-data ownership from raw records, supports reusable taxonomy scoring, and evaluates whether embedding models can complement or replace explicit category scores.

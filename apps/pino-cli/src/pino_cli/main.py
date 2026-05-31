@@ -16,19 +16,19 @@ from pino_core import (
     CheckPipeline,
     CheckResult,
     DigestService,
-    EvaluationProgress,
-    EvaluationService,
     LLMError,
     MemoryEntry,
     PinoConfig,
     SQLiteStore,
-    build_evaluation_llm_config,
+    RefinementProgress,
+    RefinementService,
+    build_refinement_llm_config,
     build_llm_client,
     build_tools,
     load_config,
     recent_chat_history,
     render_chat_system_prompt,
-    render_evaluation_system_prompt,
+    render_refinement_system_prompt,
 )
 from pino_integration import build_sources
 
@@ -73,8 +73,8 @@ def print_check_result(result: CheckResult) -> None:
         f"Inserted {result.inserted} new record(s), skipped {result.duplicates} duplicate(s).",
     )
     console.print(
-        f"Evaluation pending: {result.pending_evaluation_total} total, "
-        f"{result.pending_evaluation_new} new.",
+        f"Refinement pending: {result.pending_refinement_total} total, "
+        f"{result.pending_refinement_new} new.",
     )
 
 
@@ -93,51 +93,66 @@ def digest(
 
 
 @app.command()
+def refine(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    limit: Annotated[int | None, typer.Option("--limit", "-n", min=1)] = None,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Refine captured records into reusable normalized items."""
+    _run_refine(config_path=config_path, limit=limit, debug=debug)
+
+
+@app.command()
 def evaluate(
     config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     limit: Annotated[int | None, typer.Option("--limit", "-n", min=1)] = None,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """Evaluate unevaluated records against configured goals."""
+    """Deprecated alias for `pino refine`."""
+    _run_refine(config_path=config_path, limit=limit, debug=debug)
+
+
+def _run_refine(*, config_path: Path | None, limit: int | None, debug: bool) -> None:
     config = get_config(config_path)
-    llm_config = build_evaluation_llm_config(config.llm, config.evaluation)
+    llm_config = build_refinement_llm_config(config.llm, config.refinement)
     store = get_store(config)
-    service = EvaluationService(
+    service = RefinementService(
         store=store,
         client=build_llm_client(llm_config),
-        config=config.evaluation,
+        config=config.refinement,
     )
-    result = service.evaluate_pending(limit=limit, on_progress=print_evaluation_progress)
+    result = service.refine_pending(limit=limit, on_progress=print_refinement_progress)
     if debug:
         table = Table("Field", "Value")
         table.add_row("provider", plain_text(llm_config.default_provider))
         table.add_row("model", plain_text(llm_config.selected_model()))
         table.add_row("requested", plain_text(result.requested))
-        table.add_row("evaluated", plain_text(result.evaluated))
+        table.add_row("refined", plain_text(result.refined))
+        table.add_row("items", plain_text(result.items))
         table.add_row("skipped", plain_text(result.skipped))
-        console.print(Panel(table, title="Evaluation debug", border_style="blue"))
+        console.print(Panel(table, title="Refinement debug", border_style="blue"))
     console.print(
-        f"Requested {result.requested}; evaluated {result.evaluated}; skipped {result.skipped}.",
+        f"Requested {result.requested}; refined {result.refined}; "
+        f"items {result.items}; skipped {result.skipped}.",
     )
 
 
-def print_evaluation_progress(progress: EvaluationProgress) -> None:
+def print_refinement_progress(progress: RefinementProgress) -> None:
     if progress.status == "selected":
         if progress.total == 0:
-            console.print("No unevaluated records found.")
+            console.print("No unrefined records found.")
         else:
-            console.print(f"Evaluating {progress.total} record(s)...")
+            console.print(f"Refining {progress.total} record(s)...")
         return
 
     label = progress.record.title or progress.record.kind if progress.record else "record"
     prefix = f"[{progress.index}/{progress.total}]" if progress.index is not None else ""
-    if progress.status == "evaluating":
+    if progress.status == "refining":
         console.print(Text(f"  {prefix} {label}", style="dim"))
         return
 
-    if progress.status == "evaluated" and progress.evaluation is not None:
-        goals = "/".join(progress.evaluation.goal_matches) or "no goals"
-        console.print(Text(f"    evaluated score {progress.evaluation.score:.2f} ({goals})", style="green"))
+    if progress.status == "refined" and progress.refinements is not None:
+        console.print(Text(f"    refined {len(progress.refinements)} item(s)", style="green"))
         return
 
     reason = progress.reason or "skipped"
@@ -161,12 +176,12 @@ def debug_prompts(
                 store=store,
                 tools=tools,
                 config=config.chat,
-                goals=config.evaluation.goals,
+                goals=config.profile.goals,
             ),
         ),
     )
-    console.rule("Evaluation system prompt")
-    console.print(plain_text(render_evaluation_system_prompt(config.evaluation)))
+    console.rule("Refinement system prompt")
+    console.print(plain_text(render_refinement_system_prompt(config.refinement)))
 
 
 @chat_app.callback(invoke_without_command=True)
@@ -191,7 +206,7 @@ def chat_main(
         provider=build_llm_client(config.llm),
         tools=build_tools(store, sources),
         config=config.chat,
-        goals=config.evaluation.goals,
+        goals=config.profile.goals,
     )
 
     if message:
@@ -365,7 +380,9 @@ def print_provider_error(exc: LLMError) -> None:
 
     console.print(Panel(table, title="LLM provider error", border_style="red"))
     if exc.response_body:
-        console.print(Panel(plain_text(exc.response_body), title="Response body", border_style="red"))
+        console.print(
+            Panel(plain_text(exc.response_body), title="Response body", border_style="red")
+        )
 
 
 def json_dumps(value: object) -> str:

@@ -1,8 +1,8 @@
 # Refinement Layer Proposal
 
-This document describes a target design, not the current schema. The goal is to
-keep source capture lossless and cheap while making normalized data reusable
-across different Pino profiles.
+This document describes the implemented foundation and the remaining direction.
+The goal is to keep source capture lossless and cheap while making normalized
+data reusable across different Pino profiles.
 
 ## Direction
 
@@ -211,14 +211,25 @@ References:
 - [OpenAI vector embeddings guide](https://platform.openai.com/docs/guides/embeddings)
 - [Sentence Transformers semantic textual similarity documentation](https://sbert.net/docs/sentence_transformer/usage/semantic_textual_similarity.html)
 
-## Migration Outline
+## Current Status
 
-1. Add the `refinements` table and a refinement command or service.
-2. Stop assigning Telegram publication time to event relevance fields.
-3. Route deterministic event adapters through refinement creation.
-4. Route Telegram records through LLM extraction.
-5. Move upcoming-event queries and digests to refinements.
-6. Remove `records.relevant_from` and `records.relevant_to`.
-7. Replace goal-specific evaluations with query-time private profile ranking.
+Implemented:
 
-Do not remove the existing fields before the refinement query path is working.
+1. `records` no longer own relevance dates.
+2. `refinements` store reusable multi-item normalized output.
+3. `pino refine` runs generic LLM refinement; `pino evaluate` is a temporary alias.
+4. Telegram publication time remains raw payload metadata rather than event relevance.
+5. Upcoming-event queries and digests read refinements.
+6. Goal-specific evaluations no longer drive active queries.
+
+Remaining:
+
+1. Add deterministic refinement shortcuts for trustworthy structured sources if
+   LLM cost or quality measurements justify them.
+2. Define query-time private profile weighting beyond explicit category filters.
+3. Try local dense embeddings with Ollama `bge-m3`, then benchmark taxonomy
+   projections on a labeled sample before making embeddings part of the default
+   pipeline.
+4. Remove inert legacy `records.relevant_from`, `records.relevant_to`, and
+   `evaluations` columns/tables from existing SQLite files with an explicit
+   migration if physical cleanup becomes worthwhile.

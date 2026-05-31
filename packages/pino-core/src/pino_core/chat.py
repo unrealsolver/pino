@@ -13,7 +13,9 @@ from pino_core.models import ChatMessage, MemoryEntry, utc_now
 from pino_core.storage import SQLiteStore
 from pino_core.tools import Tool, describe_tools
 
-PARALLEL_READ_ONLY_TOOLS = frozenset({"memory.list", "records.list", "records.relevant", "web.open"})
+PARALLEL_READ_ONLY_TOOLS = frozenset(
+    {"memory.list", "records.list", "records.relevant", "web.open"}
+)
 
 
 @dataclass(frozen=True)
@@ -81,17 +83,20 @@ class ChatAgent:
             truncated_count = len(action.tool_calls) - len(selected_calls)
             if truncated_count:
                 round_debug["truncated_tool_calls"] = truncated_count
-            unavailable = next((call.name for call in selected_calls if call.name not in self.tools), None)
+            unavailable = next(
+                (call.name for call in selected_calls if call.name not in self.tools), None
+            )
             if not selected_calls or unavailable is not None:
                 final = (
-                    "Boss, the model requested an unavailable tool: "
-                    f"{unavailable or '<missing>'}."
+                    f"Boss, the model requested an unavailable tool: {unavailable or '<missing>'}."
                 )
                 self.store.add_chat_message(ChatMessage(role="assistant", content=final))
                 return ChatResult(content=final, tool_calls=tool_calls, debug=debug)
 
             results = _run_tool_calls(selected_calls, self.tools)
-            tool_context.append(LLMMessage(role="assistant", content=_tool_actions_json(selected_calls)))
+            tool_context.append(
+                LLMMessage(role="assistant", content=_tool_actions_json(selected_calls))
+            )
             for call, result in results:
                 tool_calls.append(call.name)
                 tool_usage.append(
@@ -138,7 +143,9 @@ class ChatAgent:
             self.config.history_limit,
             exclude_ids=current_turn_message_ids,
         )
-        messages.extend(LLMMessage(role=message.role, content=message.content) for message in history)
+        messages.extend(
+            LLMMessage(role=message.role, content=message.content) for message in history
+        )
         messages.append(LLMMessage(role=current_message.role, content=current_message.content))
         messages.extend(tool_context)
         return messages
@@ -165,7 +172,7 @@ def render_chat_system_prompt(
         "Use these forms for tool calls:\n"
         '{"tool": "tool.name", "arguments": {}}\n'
         '{"tools": [{"tool": "tool.name", "arguments": {}}, {"tool": "tool.name", "arguments": {}}]}\n'
-        '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3}}\n\n'
+        '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3, "categories": ["electronic_music"]}}\n\n'
         f"Available tools:\n{describe_tools(tools)}"
     )
     current_time = _format_current_time(now())
@@ -197,7 +204,9 @@ def recent_chat_history(
     filtered = [
         message
         for message in latest
-        if message.id not in excluded and message.role != "tool" and not _is_raw_tool_call_message(message)
+        if message.id not in excluded
+        and message.role != "tool"
+        and not _is_raw_tool_call_message(message)
     ]
     return list(reversed(filtered[:limit]))
 

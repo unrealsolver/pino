@@ -36,8 +36,6 @@ class Record(BaseModel):
     title: str | None = None
     text: str
     url: str | None = None
-    relevant_from: datetime | None = None
-    relevant_to: datetime | None = None
     captured_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
@@ -48,7 +46,7 @@ class Record(BaseModel):
             return self
         return self.model_copy(update={"fingerprint": compute_record_fingerprint(self)})
 
-    @field_validator("relevant_from", "relevant_to", "captured_at")
+    @field_validator("captured_at")
     @classmethod
     def _assume_utc_for_naive_datetimes(cls, value: datetime | None) -> datetime | None:
         if value is not None and value.tzinfo is None:
@@ -81,21 +79,40 @@ class ChatMessage(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-class Evaluation(BaseModel):
-    """Assessment of a record against current goals or preferences."""
+class Refinement(BaseModel):
+    """Reusable normalized item extracted from a captured record."""
 
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=new_id)
     record_id: str
-    score: float
-    goal_matches: list[str] = Field(default_factory=list)
-    language: str | None = None
+    item_index: int = Field(default=0, ge=0)
+    schema_version: int = Field(default=1, ge=1)
+    taxonomy_version: int = Field(default=1, ge=1)
+    content_kind: Literal["event", "advertisement", "announcement", "non_event", "unknown"] = (
+        "unknown"
+    )
     summary: str | None = None
-    reasons: list[str] = Field(default_factory=list)
-    risks: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=utc_now)
-    payload: dict[str, Any] = Field(default_factory=dict)
+    relevant_from: datetime | None = None
+    relevant_to: datetime | None = None
+    location: str | None = None
+    category_scores: dict[str, float] = Field(default_factory=dict)
+    embedding: list[float] | None = None
+    refiner: str
+    refined_at: datetime = Field(default_factory=utc_now)
+    debug: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("relevant_from", "relevant_to", "refined_at")
+    @classmethod
+    def _assume_utc_for_naive_datetimes(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    @field_validator("category_scores")
+    @classmethod
+    def _validate_category_scores(cls, value: dict[str, float]) -> dict[str, float]:
+        return {key: max(0.0, min(1.0, float(score))) for key, score in value.items()}
 
 
 def compute_record_fingerprint(record: Record) -> str:
@@ -103,7 +120,7 @@ def compute_record_fingerprint(record: Record) -> str:
 
     The fingerprint is deliberately non-semantic: prefer explicit source
     identity, then URL identity, then normalized text. Semantic duplicate
-    detection belongs in a later evaluation/enrichment layer.
+    detection belongs in a later refinement layer.
     """
     if record.external_id:
         parts = [record.source, record.kind, record.external_id]

@@ -68,8 +68,8 @@ This document tracks source integrations worth adding to Pino. It focuses on sou
 ## Implementation Notes
 
 - Follow [Source Adapter Spec](source-spec.md) when adding repo-local custom integrations.
-- Prefer source adapters that return generic `Record` objects with canonical payload keys: `category`, `categories`, `location`, `display_time`, `start_at_utc`, `end_at_utc`, `timezone`, `image_url`, and `raw`.
-- For event pages with local times and no timezone, interpret times as `Europe/Vilnius` before storing UTC fields.
+- Prefer source adapters that return raw generic `Record` objects with source-native payload fields useful for audit and later reprocessing.
+- Normalize dates, locations, summaries, and taxonomy scores in the reusable refinement layer rather than inside adapters.
 - Keep source-specific parsing in `pino-integration`; keep ranking, digest, and chat retrieval in `pino-core`.
 - Add fixtures for each parser before enabling a live source in example config.
 - Cross-source deduplication should be implemented before many overlapping event sources are enabled by default.
