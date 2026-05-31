@@ -2,6 +2,11 @@
 
 This document is for humans or coding agents adding a new Pino source inside this repository. The MVP integration point is the repo itself, not an external plugin system.
 
+The record shape below documents the current implementation. The proposed
+refinement-layer migration in [refinements.md](refinements.md) moves normalized
+query fields out of raw records so structured and unstructured sources converge
+on one lean refinement model.
+
 ## Goal
 
 A source adapter fetches one configured source and returns generic `Record` objects. Once registered, the existing commands can use it:

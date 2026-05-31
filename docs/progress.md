@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-05-31 20:54 Europe/Vilnius - Codex
+
+- Before: Write a lean refinement-layer design proposal that removes mixed structured-data ownership from raw records, supports reusable taxonomy scoring, and evaluates whether embedding models can complement or replace explicit category scores.
+- Areas: Refinement design docs, progress log.
+- After: Added `docs/refinements.md` with a lean target model: raw capture-only records, one normalized refinement table, derived multi-event handling, source-derived geographic scope, additive taxonomy versions, private query-time ranking, and optional embedding-based taxonomy projection. Linked the proposal from the current source adapter spec.
+- Verification: `git diff --check`.
+- Follow-up: Review the seed taxonomy against captured records, then benchmark embedding-derived category projections on a small labeled sample before deciding whether any categories need an LLM classifier pass.
+
 ## 2026-05-31 02:55 Europe/Vilnius - Codex
 
 - Before: Refactor Telegram ingestion to persisted cursor-style checks so routine runs request only messages newer than the last successfully stored channel message.
