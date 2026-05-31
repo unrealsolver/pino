@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pino_core import CheckPipeline, DigestService, Evaluation, Record, SQLiteStore
-from pino_core.sources import StaticYamlSource
+from pino_core.sources import CursorFetchResult, StaticYamlSource
 
 
 def test_check_pipeline_stores_static_source_records(tmp_path: Path) -> None:
@@ -53,6 +53,19 @@ records:
     assert second.pending_evaluation_total == 1
     assert second.pending_evaluation_new == 0
     assert len(store.list_records()) == 1
+
+
+def test_check_pipeline_persists_source_cursor_between_runs(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    source = CursorSource()
+
+    first = CheckPipeline(store, [source]).run()
+    second = CheckPipeline(store, [source]).run()
+
+    assert first.inserted == 1
+    assert second.inserted == 1
+    assert source.cursors == [None, "1"]
+    assert store.get_source_cursor(source.name) == "2"
 
 
 def test_digest_service_creates_digest_result(tmp_path: Path) -> None:
@@ -118,3 +131,25 @@ def test_digest_service_uses_relevance_window(tmp_path: Path) -> None:
     assert "score 0.90 electronic_music" in digest.body
     assert "2026-05-22 18:00-20:00" in digest.body
     assert "@ Loftas" in digest.body
+
+
+class CursorSource:
+    name = "cursor-source"
+
+    def __init__(self) -> None:
+        self.cursors: list[str | None] = []
+
+    def fetch_since(self, cursor: str | None) -> CursorFetchResult:
+        self.cursors.append(cursor)
+        next_cursor = str(len(self.cursors))
+        return CursorFetchResult(
+            records=[
+                Record(
+                    kind="note",
+                    source=self.name,
+                    external_id=next_cursor,
+                    text=f"Record {next_cursor}",
+                ),
+            ],
+            cursor=next_cursor,
+        )

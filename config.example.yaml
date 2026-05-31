@@ -77,3 +77,14 @@ sources:
       location_scopes:
         - LT/vilnius
     enabled: false
+  - name: vilnius-belarus
+    type: telegram_channel
+    url: https://t.me/Vilnius_Belarus
+    settings:
+      api_id: env:TELEGRAM_API_ID
+      api_hash: env:TELEGRAM_API_HASH
+      session_path: .pino/telegram
+      limit: 50
+      location_scopes:
+        - LT/vilnius
+    enabled: false

@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Evaluation, Record, utc_now
-from pino_core.sources import SourceAdapter
+from pino_core.sources import CursorSourceAdapter, SourceAdapter
 from pino_core.storage import SQLiteStore
 
 
@@ -42,7 +42,13 @@ class CheckPipeline:
         duplicate_count = 0
         inserted_ids: list[str] = []
         for source in self.sources:
-            fetched = source.fetch()
+            next_cursor = None
+            if isinstance(source, CursorSourceAdapter):
+                fetch_result = source.fetch_since(self.store.get_source_cursor(source.name))
+                fetched = fetch_result.records
+                next_cursor = fetch_result.cursor
+            else:
+                fetched = source.fetch()
             fetched_count += len(fetched)
             for record in fetched:
                 result = self.store.add_record(record)
@@ -52,6 +58,8 @@ class CheckPipeline:
                     records.append(result.record)
                 else:
                     duplicate_count += 1
+            if next_cursor is not None:
+                self.store.set_source_cursor(source.name, next_cursor)
         pending_evaluation_total = self.store.count_unevaluated_records()
         pending_evaluation_new = self.store.count_unevaluated_records(record_ids=inserted_ids)
         return CheckResult(

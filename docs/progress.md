@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-05-31 02:55 Europe/Vilnius - Codex
+
+- Before: Refactor Telegram ingestion to persisted cursor-style checks so routine runs request only messages newer than the last successfully stored channel message.
+- Areas: Core source protocol/pipeline/storage, Telegram adapter/tests, docs, progress log.
+- After: Added optional cursor-aware source ingestion with durable SQLite `source_cursors`, switched Telegram checks to a bounded first-run bootstrap followed by complete `min_id` incremental reads, documented the behavior, and covered pipeline persistence plus Telegram request shape.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_pipeline.py packages/pino-core/tests/test_storage.py packages/pino-integration/tests/test_telegram.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `git diff --check`.
+- Follow-up: Existing databases intentionally bootstrap each Telegram source on its next check because they do not yet have cursor rows. Consider an explicit cursor reset CLI only if source maintenance needs it.
+
+## 2026-05-31 02:14 Europe/Vilnius - Codex
+
+- Before: Add `t.me/Vilnius_Belarus` as another Vilnius-scoped Telegram source.
+- Areas: Example and local source config, progress log.
+- After: Added disabled committed and enabled local `vilnius-belarus` Telegram sources with channel-level `LT/vilnius` scope metadata.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.yaml`; `git diff --check`.
+- Follow-up: Run an intentional live Telegram fetch when desired; it contacts Telegram and may update the local session file.
+
 ## 2026-05-31 02:08 Europe/Vilnius - Codex
 
 - Before: Add `t.me/reforumspace` as a Vilnius Telegram source and carry its trustworthy channel-level `LT/vilnius` scope into captured message payload/provenance.

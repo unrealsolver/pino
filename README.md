@@ -223,14 +223,16 @@ Current source types:
 
 - `static_yaml`: reads local fixture/sample records.
 - `kaveikti`: fetches and parses kaveikti.lt event listing pages into generic event records.
-- `telegram_channel`: fetches recent Telegram channel messages through Telethon using configured API credentials.
+- `telegram_channel`: fetches Telegram channel messages through Telethon using configured API credentials and a durable per-source cursor.
 - `vilnius_events`: fetches and parses vilnius-events.lt listing pages into generic event records.
 
 For custom sources, use this repository as the integration point: add an adapter under `packages/pino-integration`, register it in `pino_integration.registry`, and configure it in YAML. See [docs/source-spec.md](docs/source-spec.md) for the source adapter contract and checklist.
 
 Telegram sources should set `settings.api_id: env:TELEGRAM_API_ID` and
 `settings.api_hash: env:TELEGRAM_API_HASH` in local config. The first enabled
-run may prompt Telethon to create a local session file.
+run may prompt Telethon to create a local session file. That initial check
+bootstraps the newest configured `settings.limit` messages. Later checks use the
+stored SQLite source cursor as Telethon `min_id` and fetch all newer messages.
 
 ## Evaluation
 

@@ -22,10 +22,11 @@ from sqlalchemy import (
     insert,
     or_,
     select,
+    update,
 )
 from sqlalchemy.orm import Session
 
-from pino_core.models import ChatMessage, Evaluation, MemoryEntry, Record
+from pino_core.models import ChatMessage, Evaluation, MemoryEntry, Record, utc_now
 
 metadata = MetaData()
 
@@ -86,6 +87,14 @@ evaluations_table = Table(
     UniqueConstraint("record_id", name="uq_evaluations_record_id"),
 )
 
+source_cursors_table = Table(
+    "source_cursors",
+    metadata,
+    Column("source", String, primary_key=True),
+    Column("cursor", String, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 
 @dataclass(frozen=True)
 class InsertResult:
@@ -124,6 +133,26 @@ class SQLiteStore:
             session.execute(insert(records_table).values(**record.model_dump(mode="python")))
             session.commit()
             return InsertResult(record=record, inserted=True)
+
+    def get_source_cursor(self, source: str) -> str | None:
+        with Session(self.engine) as session:
+            return session.execute(
+                select(source_cursors_table.c.cursor).where(source_cursors_table.c.source == source),
+            ).scalar_one_or_none()
+
+    def set_source_cursor(self, source: str, cursor: str) -> None:
+        with Session(self.engine) as session:
+            existing = session.execute(
+                select(source_cursors_table.c.source).where(source_cursors_table.c.source == source),
+            ).scalar_one_or_none()
+            values = {"cursor": cursor, "updated_at": utc_now()}
+            if existing is None:
+                session.execute(insert(source_cursors_table).values(source=source, **values))
+            else:
+                session.execute(
+                    update(source_cursors_table).where(source_cursors_table.c.source == source).values(**values),
+                )
+            session.commit()
 
     def list_records(self, limit: int = 50) -> list[Record]:
         rows = self._select_latest(records_table, records_table.c.captured_at, limit)

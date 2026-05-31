@@ -10,7 +10,7 @@ from telethon import TelegramClient
 
 from pino_core.config import SourceConfig
 from pino_core.models import Record
-from pino_core.sources import SourceAdapter
+from pino_core.sources import CursorFetchResult, SourceAdapter
 
 
 class TelegramClientFactory(Protocol):
@@ -42,16 +42,27 @@ class TelegramChannelSource:
         self._client_factory = client_factory
 
     def fetch(self) -> list[Record]:
-        return asyncio.run(self._fetch())
+        return self.fetch_since(None).records
 
-    async def _fetch(self) -> list[Record]:
+    def fetch_since(self, cursor: str | None) -> CursorFetchResult:
+        return asyncio.run(self._fetch_since(cursor))
+
+    async def _fetch_since(self, cursor: str | None) -> CursorFetchResult:
         records: list[Record] = []
+        previous_message_id = _message_id_cursor(cursor)
+        next_message_id = None
         async with self._client_factory(
             str(self.session_path),
             self.api_id,
             self.api_hash,
         ) as client:
-            async for message in client.iter_messages(self.channel, limit=self.limit):
+            request = {"limit": self.limit}
+            if previous_message_id is not None:
+                request = {"limit": None, "min_id": previous_message_id}
+            async for message in client.iter_messages(self.channel, **request):
+                message_id = getattr(message, "id", None)
+                if isinstance(message_id, int):
+                    next_message_id = max(next_message_id or message_id, message_id)
                 record = parse_telegram_message(
                     message,
                     source_name=self.name,
@@ -60,7 +71,10 @@ class TelegramChannelSource:
                 )
                 if record is not None:
                     records.append(record)
-        return records
+        return CursorFetchResult(
+            records=records,
+            cursor=str(next_message_id) if next_message_id is not None else None,
+        )
 
 
 def parse_telegram_message(
@@ -167,6 +181,18 @@ def _message_url(channel_ref: str, message_id: Any) -> str | None:
     if message_id is None or not channel_ref or channel_ref.startswith("+"):
         return None
     return f"https://t.me/{channel_ref}/{message_id}"
+
+
+def _message_id_cursor(cursor: str | None) -> int | None:
+    if cursor is None:
+        return None
+    try:
+        message_id = int(cursor)
+    except ValueError as exc:
+        raise ValueError(f"telegram_channel cursor must be an integer: {cursor!r}") from exc
+    if message_id < 1:
+        raise ValueError("telegram_channel cursor must be at least 1")
+    return message_id
 
 
 def _api_id(config: SourceConfig) -> int:

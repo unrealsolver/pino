@@ -69,7 +69,28 @@ def test_telegram_channel_source_fetch_uses_client_factory() -> None:
     assert records[0].payload["location_scopes"] == ["LT/vilnius"]
     assert records[0].provenance["location_scope_source"] == "channel_config"
     assert factory.calls == [(".pino/test-telegram", 12345, "hash")]
-    assert factory.clients[0].iter_calls == [("@afishavilnius", 10)]
+    assert factory.clients[0].iter_calls == [("@afishavilnius", 10, None)]
+
+
+def test_telegram_channel_source_fetch_since_uses_message_cursor() -> None:
+    messages = [
+        SimpleNamespace(id=43, text="New post", date=datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)),
+        SimpleNamespace(id=44, text="", date=datetime(2026, 5, 22, 11, 0, tzinfo=timezone.utc)),
+    ]
+    factory = FakeTelegramClientFactory(messages)
+    source = TelegramChannelSource(
+        "@afishavilnius",
+        api_id=12345,
+        api_hash="hash",
+        session_path=".pino/test-telegram",
+        client_factory=factory,
+    )
+
+    result = source.fetch_since("42")
+
+    assert [record.external_id for record in result.records] == ["afishavilnius:43"]
+    assert result.cursor == "44"
+    assert factory.clients[0].iter_calls == [("@afishavilnius", None, 42)]
 
 
 class FakeTelegramClientFactory:
@@ -96,8 +117,8 @@ class FakeTelegramClient:
     async def __aexit__(self, exc_type, exc, traceback):
         return None
 
-    async def iter_messages(self, channel: str, limit: int):
-        self.iter_calls.append((channel, limit))
+    async def iter_messages(self, channel: str, limit: int | None, min_id: int | None = None):
+        self.iter_calls.append((channel, limit, min_id))
         for message in self.messages:
             yield message
 

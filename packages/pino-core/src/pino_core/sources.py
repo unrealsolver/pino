@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from dataclasses import dataclass
+from typing import Any, Callable, Protocol, runtime_checkable
 
 import yaml
 
@@ -14,6 +15,20 @@ class SourceAdapter(Protocol):
 
     def fetch(self) -> list[Record]:
         """Fetch records from a source."""
+
+
+@dataclass(frozen=True)
+class CursorFetchResult:
+    records: list[Record]
+    cursor: str | None
+
+
+@runtime_checkable
+class CursorSourceAdapter(Protocol):
+    name: str
+
+    def fetch_since(self, cursor: str | None) -> CursorFetchResult:
+        """Fetch records newer than a durable source cursor."""
 
 
 SourceFactory = Callable[[SourceConfig], SourceAdapter]

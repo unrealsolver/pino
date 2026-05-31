@@ -38,6 +38,21 @@ class SourceAdapter(Protocol):
 
 Adapters should be deterministic for the same source contents. Network code belongs in `fetch`; HTML/JSON parsing should live in separate functions so tests can use fixtures without network.
 
+Sources that support incremental reads can additionally satisfy `CursorSourceAdapter`:
+
+```python
+class CursorSourceAdapter(Protocol):
+    name: str
+
+    def fetch_since(self, cursor: str | None) -> CursorFetchResult:
+        """Fetch records newer than a durable source cursor."""
+```
+
+The check pipeline stores cursors in SQLite by configured source name and calls
+`fetch_since` when available. Return the next cursor only after the returned
+batch represents a complete incremental read. The pipeline advances it after
+all returned records have been stored successfully.
+
 ## Record Shape
 
 Return `pino_core.models.Record` objects. For event-like records, prefer this shape:
