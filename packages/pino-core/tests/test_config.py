@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from pino_core.config import load_config
+from pino_core.config import StorageConfig, load_config
 
 
 def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> None:
@@ -13,7 +13,9 @@ def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> N
     config_path.write_text(
         """
 storage:
-  path: data/pino.sqlite
+  local:
+    type: sqlite
+    path: data/pino.sqlite
 sources:
   - name: sample
     type: static_yaml
@@ -24,8 +26,63 @@ sources:
 
     config = load_config(config_path)
 
-    assert config.storage.path == config_dir / "data/pino.sqlite"
+    assert config.storage.local.path == config_dir / "data/pino.sqlite"
     assert config.sources[0].path == config_dir / "sources/sample.yaml"
+
+
+def test_storage_config_uses_selected_database_backend() -> None:
+    config = StorageConfig.model_validate(
+        {
+            "use": "pg_vps",
+            "local": {"type": "sqlite", "path": "local.sqlite"},
+            "pg_vps": {"type": "postgres", "url": "postgresql://pino@example.test/pino"},
+        },
+    )
+
+    assert config.database_url() == "postgresql://pino@example.test/pino"
+
+
+def test_storage_config_requires_selected_backend_to_exist() -> None:
+    with pytest.raises(ValueError, match="storage.use references unknown backend"):
+        StorageConfig(use="missing")
+
+
+def test_storage_config_requires_selected_postgres_url_lazily() -> None:
+    config = StorageConfig.model_validate(
+        {
+            "use": "pg_vps",
+            "pg_vps": {"type": "postgres", "url": None},
+        },
+    )
+
+    with pytest.raises(ValueError, match="'pg_vps' requires url for type postgres"):
+        config.database_url()
+
+
+def test_load_config_resolves_storage_url_from_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PINO_DATABASE_URL", raising=False)
+    config_path = tmp_path / "pino.yaml"
+    config_path.write_text(
+        """
+storage:
+  use: pg_vps
+  pg_vps:
+    type: postgres
+    url: env:PINO_DATABASE_URL
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "PINO_DATABASE_URL=postgresql://pino:secret@example.test/pino\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.storage.database_url() == "postgresql://pino:secret@example.test/pino"
 
 
 def test_load_config_accepts_kaveikti_source(tmp_path: Path) -> None:

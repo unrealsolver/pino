@@ -1,5 +1,11 @@
 storage:
-  path: .pino/pino.sqlite
+  use: local
+  local:
+    type: sqlite
+    path: .pino/pino.sqlite
+  pg_vps:
+    type: postgres
+    url: null
 
 llm:
   default_provider: echo

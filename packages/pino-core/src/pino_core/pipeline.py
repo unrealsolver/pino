@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Record, Refinement, utc_now
 from pino_core.sources import CursorSourceAdapter, SourceAdapter
-from pino_core.storage import SQLiteStore
+from pino_core.storage import DatabaseStore
 
 
 DEFAULT_DIGEST_WINDOW_DAYS = 14
@@ -30,7 +30,7 @@ class DigestResult:
 
 
 class CheckPipeline:
-    def __init__(self, store: SQLiteStore, sources: list[SourceAdapter]) -> None:
+    def __init__(self, store: DatabaseStore, sources: list[SourceAdapter]) -> None:
         self.store = store
         self.sources = sources
 
@@ -73,7 +73,7 @@ class CheckPipeline:
 
 
 class DigestService:
-    def __init__(self, store: SQLiteStore) -> None:
+    def __init__(self, store: DatabaseStore) -> None:
         self.store = store
 
     def create_digest(

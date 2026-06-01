@@ -104,7 +104,9 @@ def test_check_result_prints_pending_refinement_counts(monkeypatch) -> None:
 def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:
     output = StringIO()
     monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
-    config = PinoConfig(storage=StorageConfig(path=tmp_path / "pino.sqlite"))
+    config = PinoConfig(
+        storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"}),
+    )
     monkeypatch.setattr(main, "get_config", lambda config_path: config)
 
     main.debug_prompts()

@@ -51,8 +51,8 @@ class CursorSourceAdapter(Protocol):
         """Fetch records newer than a durable source cursor."""
 ```
 
-The check pipeline stores cursors in SQLite by configured source name and calls
-`fetch_since` when available. Return the next cursor only after the returned
+The check pipeline stores cursors in the configured database by source name and
+calls `fetch_since` when available. Return the next cursor only after the returned
 batch represents a complete incremental read. The pipeline advances it after
 all returned records have been stored successfully.
 

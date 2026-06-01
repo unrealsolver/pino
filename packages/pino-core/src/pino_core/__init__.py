@@ -11,7 +11,7 @@ from pino_core.refinement import (
     render_refinement_system_prompt,
 )
 from pino_core.registry import build_sources
-from pino_core.storage import SQLiteStore
+from pino_core.storage import DatabaseStore, SQLiteStore
 from pino_core.tools import build_tools
 
 __all__ = [
@@ -19,6 +19,7 @@ __all__ = [
     "ChatAgent",
     "CheckPipeline",
     "CheckResult",
+    "DatabaseStore",
     "DigestService",
     "LLMError",
     "MemoryEntry",

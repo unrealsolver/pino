@@ -14,7 +14,7 @@ from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import MemoryEntry, Record, Refinement, utc_now
 from pino_core.pipeline import CheckPipeline, DigestService
 from pino_core.sources import SourceAdapter
-from pino_core.storage import RecordRefinementStatus, SQLiteStore
+from pino_core.storage import DatabaseStore, RecordRefinementStatus
 
 
 DEFAULT_WEB_OPEN_MAX_CHARS = 5000
@@ -40,7 +40,7 @@ WebFetcher = Callable[[str], WebPage]
 
 
 def build_tools(
-    store: SQLiteStore,
+    store: DatabaseStore,
     sources: list[SourceAdapter],
     *,
     web_fetcher: WebFetcher | None = None,

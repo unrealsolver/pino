@@ -10,7 +10,7 @@ from pino_llm import LLMClient, LLMMessage, LLMToolCall, parse_action
 from pino_core.config import ChatConfig, GoalConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import ChatMessage, MemoryEntry, utc_now
-from pino_core.storage import SQLiteStore
+from pino_core.storage import DatabaseStore
 from pino_core.tools import Tool, describe_tools
 
 PARALLEL_READ_ONLY_TOOLS = frozenset(
@@ -28,7 +28,7 @@ class ChatResult:
 class ChatAgent:
     def __init__(
         self,
-        store: SQLiteStore,
+        store: DatabaseStore,
         provider: LLMClient,
         tools: dict[str, Tool],
         config: ChatConfig,
@@ -153,7 +153,7 @@ class ChatAgent:
 
 def render_chat_system_prompt(
     *,
-    store: SQLiteStore,
+    store: DatabaseStore,
     tools: dict[str, Tool],
     config: ChatConfig,
     goals: list[GoalConfig] | None = None,
@@ -190,7 +190,7 @@ def render_chat_system_prompt(
 
 
 def recent_chat_history(
-    store: SQLiteStore,
+    store: DatabaseStore,
     limit: int,
     *,
     exclude_ids: set[str] | None = None,

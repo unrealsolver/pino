@@ -1,7 +1,50 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
-from pino_core import ChatMessage, MemoryEntry, Record, Refinement, SQLiteStore
+from pino_core import ChatMessage, DatabaseStore, MemoryEntry, Record, Refinement, SQLiteStore
+
+
+def test_database_store_normalizes_postgresql_url_to_psycopg(monkeypatch) -> None:
+    created: list[tuple[object, bool]] = []
+
+    def fake_create_engine(url: object, *, future: bool) -> SimpleNamespace:
+        created.append((url, future))
+        return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+    monkeypatch.setattr("pino_core.storage.create_engine", fake_create_engine)
+
+    store = DatabaseStore("postgresql://pino:secret@example.test/pino")
+
+    assert store.database_url.drivername == "postgresql+psycopg"
+    assert created == [(store.database_url, True)]
+
+
+def test_database_store_skips_sqlite_legacy_migration_for_postgresql(
+    monkeypatch,
+) -> None:
+    engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    create_calls: list[object] = []
+    migration_calls: list[bool] = []
+    monkeypatch.setattr(
+        "pino_core.storage.create_engine",
+        lambda url, *, future: engine,
+    )
+    monkeypatch.setattr(
+        "pino_core.storage.metadata.create_all",
+        lambda actual_engine: create_calls.append(actual_engine),
+    )
+    store = DatabaseStore("postgresql://pino@example.test/pino")
+    monkeypatch.setattr(
+        store,
+        "_migrate_legacy_sqlite_records_table",
+        lambda: migration_calls.append(True),
+    )
+
+    store.init_schema()
+
+    assert create_calls == [engine]
+    assert migration_calls == []
 
 
 def test_active_memory_round_trip(tmp_path: Path) -> None:

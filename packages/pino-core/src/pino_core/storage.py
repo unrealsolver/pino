@@ -24,6 +24,7 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from pino_core.models import ChatMessage, MemoryEntry, Record, Refinement, utc_now
@@ -115,15 +116,22 @@ class RecordRefinementStatus:
         return bool(self.refinements)
 
 
-class SQLiteStore:
-    def __init__(self, path: Path | str) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.engine = create_engine(f"sqlite:///{self.path}", future=True)
+class DatabaseStore:
+    def __init__(self, database_url: str) -> None:
+        url = make_url(database_url)
+        if url.drivername == "postgresql":
+            url = url.set(drivername="postgresql+psycopg")
+        if url.get_backend_name() not in {"sqlite", "postgresql"}:
+            raise ValueError(f"Unsupported storage database: {url.get_backend_name()}")
+        if url.get_backend_name() == "sqlite" and url.database not in {None, "", ":memory:"}:
+            Path(url.database).parent.mkdir(parents=True, exist_ok=True)
+        self.database_url = url
+        self.engine = create_engine(url, future=True)
 
     def init_schema(self) -> None:
         metadata.create_all(self.engine)
-        self._migrate_records_table()
+        if self.engine.dialect.name == "sqlite":
+            self._migrate_legacy_sqlite_records_table()
 
     def add_record(self, record: Record) -> InsertResult:
         record = record.with_fingerprint()
@@ -289,7 +297,7 @@ class SQLiteStore:
             result = session.execute(select(table).order_by(order_column.desc()).limit(limit))
             return [dict(row._mapping) for row in result]
 
-    def _migrate_records_table(self) -> None:
+    def _migrate_legacy_sqlite_records_table(self) -> None:
         with self.engine.begin() as connection:
             rows = connection.exec_driver_sql("PRAGMA table_info(records)").mappings().all()
             columns = {row["name"] for row in rows}
@@ -316,6 +324,12 @@ class SQLiteStore:
                 connection.exec_driver_sql(
                     "CREATE UNIQUE INDEX uq_records_fingerprint ON records(fingerprint)",
                 )
+
+
+class SQLiteStore(DatabaseStore):
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+        super().__init__(f"sqlite:///{self.path}")
 
 
 def _record_with_refinement_from_row(row: Any) -> tuple[Record, Refinement]:

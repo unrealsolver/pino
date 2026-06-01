@@ -11,13 +11,14 @@ Use a small Python stack with inspectable local storage and explicit module boun
 - Typer for CLI commands
 - Pydantic for config and domain models
 - YAML for editable local configuration
-- SQLite as the first storage backend
+- SQLite as the zero-config local storage backend
+- PostgreSQL for optional single-tenant VPS-backed development state
 - SQLAlchemy or SQLModel for persistence
 - pytest for tests
 - prek for Git hook management
 - Rich for readable terminal output
 
-Do not start with PostgreSQL, Qdrant, Docker Compose, or LangGraph unless the first useful workflows clearly need them.
+Do not start with Qdrant, Docker Compose, or LangGraph unless the first useful workflows clearly need them.
 
 ## Package Structure
 
@@ -59,7 +60,8 @@ Reasonable progression:
 
 ## Storage
 
-Start with SQLite.
+Default to SQLite locally. Use PostgreSQL when development state needs to live
+on a VPS and remain available across machines.
 
 Reasons:
 
@@ -67,7 +69,13 @@ Reasons:
 - Easy to inspect and back up.
 - Good enough for generic records, refinements, chat history, and active memory.
 - Can support simple full-text search.
-- Leaves a clear migration path to PostgreSQL if needed.
+- Keeps the zero-config local path simple while PostgreSQL uses the same schema.
+
+Set `storage.use: pg_vps` to select a named PostgreSQL backend configured with
+`type: postgres` and `url: env:PINO_DATABASE_URL`. The default named `local`
+backend uses `type: sqlite` and `path: .pino/pino.sqlite`. Unselected backends
+are lazy; plain `postgresql://` URLs use Psycopg 3. Fresh-database schema
+creation is supported. Cross-database schema migrations remain future work.
 
 Avoid making the storage schema mirror the first event-ingestion pipeline too closely. Source-specific concepts should live in source adapters or typed payloads, not in top-level storage tables.
 
@@ -220,7 +228,8 @@ Avoid promoting use-case-specific concepts, such as event candidates or dedup gr
 These are intentionally not first-step dependencies:
 
 - LangGraph: consider only if orchestration becomes complex enough to justify it.
-- PostgreSQL: consider if SQLite becomes limiting.
+- PostgreSQL deployment automation and schema migrations: add when the VPS
+  workflow needs more than fresh-database initialization.
 - Qdrant or another vector DB: consider after semantic search is proven necessary.
 - Docker Compose: consider when there are multiple long-running services.
 - Web/admin UI: consider after CLI workflows are useful.

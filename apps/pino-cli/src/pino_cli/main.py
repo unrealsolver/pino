@@ -16,10 +16,10 @@ from pino_core import (
     CheckPipeline,
     CheckResult,
     DigestService,
+    DatabaseStore,
     LLMError,
     MemoryEntry,
     PinoConfig,
-    SQLiteStore,
     RefinementProgress,
     RefinementService,
     build_refinement_llm_config,
@@ -49,8 +49,8 @@ def get_config(path: Path | None) -> PinoConfig:
     return load_config(path)
 
 
-def get_store(config: PinoConfig) -> SQLiteStore:
-    store = SQLiteStore(config.storage.path)
+def get_store(config: PinoConfig) -> DatabaseStore:
+    store = DatabaseStore(config.storage.database_url())
     store.init_schema()
     return store
 
@@ -333,7 +333,7 @@ def print_chat_debug(config: PinoConfig, result) -> None:
         console.print(Panel(usage_table, title="Tool usage", border_style="blue"))
 
 
-def print_recent_chat_history(store: SQLiteStore, limit: int) -> None:
+def print_recent_chat_history(store: DatabaseStore, limit: int) -> None:
     history = [
         message
         for message in recent_chat_history(store, limit)

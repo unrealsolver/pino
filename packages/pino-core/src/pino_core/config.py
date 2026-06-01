@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -13,10 +13,47 @@ from pino_llm import LLMConfig
 logger = logging.getLogger(__name__)
 
 
-class StorageConfig(BaseModel):
+class StorageBackendConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    path: Path = Path(".pino/pino.sqlite")
+    type: Literal["sqlite", "postgres"]
+    path: Path | None = None
+    url: str | None = None
+
+    def database_url(self, name: str) -> str:
+        if self.type == "sqlite":
+            if self.path is None:
+                raise ValueError(f"storage backend {name!r} requires path for type sqlite")
+            return f"sqlite:///{self.path}"
+        if self.url is None:
+            raise ValueError(f"storage backend {name!r} requires url for type postgres")
+        return self.url
+
+
+class StorageConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    __pydantic_extra__: dict[str, StorageBackendConfig] = Field(init=False)
+
+    use: str = "local"
+    local: StorageBackendConfig = Field(
+        default_factory=lambda: StorageBackendConfig(
+            type="sqlite",
+            path=Path(".pino/pino.sqlite"),
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_selected_backend(self) -> StorageConfig:
+        if self.use not in self.backends():
+            raise ValueError(f"storage.use references unknown backend: {self.use!r}")
+        return self
+
+    def backends(self) -> dict[str, StorageBackendConfig]:
+        return {"local": self.local, **(self.__pydantic_extra__ or {})}
+
+    def database_url(self) -> str:
+        return self.backends()[self.use].database_url(self.use)
 
 
 class ChatConfig(BaseModel):
@@ -157,7 +194,9 @@ def load_config(path: Path | str | None = None) -> PinoConfig:
 
 def _resolve_paths(config: PinoConfig, base_dir: Path) -> PinoConfig:
     data = config.model_dump(mode="python")
-    data["storage"]["path"] = _resolve_path(config.storage.path, base_dir)
+    for name, backend in config.storage.backends().items():
+        if backend.path is not None:
+            data["storage"][name]["path"] = _resolve_path(backend.path, base_dir)
     for source in data["sources"]:
         if source.get("path") is not None:
             source["path"] = _resolve_path(source["path"], base_dir)

@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-06-01 02:48 Europe/Vilnius - Codex
+
+- Before: Replace flat storage path/URL selection with named storage backends selected by `storage.use`, allowing explicit local SQLite and VPS PostgreSQL profiles while keeping unselected profiles lazy.
+- Areas: Storage config model/path resolution, local/example config, tests, docs, progress log.
+- After: Completed at 03:13. Added typed named storage backends with arbitrary profile names, `storage.use` selection, per-backend SQLite path resolution, lazy target validation, `local`/`pg_vps` example and ignored local config profiles, docs, and tests.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_config.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino memory list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino memory list --config config.yaml`; `git diff --check`.
+- Follow-up: Set `PINO_DATABASE_URL`, change `storage.use` to `pg_vps`, and run a live VPS smoke test. Missing env references still warn even for unselected backends by design.
+
+## 2026-06-01 02:35 Europe/Vilnius - Codex
+
+- Before: Add single-tenant PostgreSQL storage support for VPS-backed development state while preserving SQLite as the local default and keeping existing SQLite callers compatible.
+- Areas: Storage config/store construction/schema initialization, PostgreSQL driver dependency/lockfile, tests, example env/config, docs, progress log.
+- After: Completed at 02:43. Added URL-configured `DatabaseStore`, Psycopg 3 support, fresh PostgreSQL schema initialization, SQLite compatibility wrapper and migration gating, env/config examples, local ignored `env:PINO_DATABASE_URL` wiring, docs, and tests.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv lock`; `UV_CACHE_DIR=/tmp/uv-cache uv sync --all-packages`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; offline PostgreSQL DDL compilation with SQLAlchemy `create_mock_engine`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino memory list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino memory list --config config.yaml`; `git diff --check`.
+- Follow-up: Populate `PINO_DATABASE_URL` and run a live VPS smoke test. Cross-database schema migrations remain future work; current PostgreSQL support initializes a fresh database.
+
 ## 2026-06-01 01:37 Europe/Vilnius - Codex
 
 - Before: Implement the first end-to-end generic refinement slice without embeddings: raw-only records, reusable multi-item refinements, taxonomy scores, refinement-aware queries, and a `pino refine` CLI while keeping a temporary `pino evaluate` alias.

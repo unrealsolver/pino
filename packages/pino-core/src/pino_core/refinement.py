@@ -11,7 +11,7 @@ from pino_llm import LLMClient, LLMMessage
 
 from pino_core.config import RefinementConfig
 from pino_core.models import Record, Refinement
-from pino_core.storage import SQLiteStore
+from pino_core.storage import DatabaseStore
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class RefinementService:
 
     def __init__(
         self,
-        store: SQLiteStore,
+        store: DatabaseStore,
         client: LLMClient,
         config: RefinementConfig,
     ) -> None:

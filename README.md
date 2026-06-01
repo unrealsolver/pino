@@ -74,7 +74,7 @@ Prefer small explicit interfaces over a large autonomous-agent abstraction. Lang
 - Python.
 - `uv` for dependency and environment management.
 - Local Linux deployment.
-- Optional later: LangGraph, PostgreSQL, Qdrant, Docker Compose.
+- Optional later: LangGraph, Qdrant, Docker Compose.
 
 See [docs/tech-stack.md](docs/tech-stack.md) for the current stack direction and runtime design notes.
 
@@ -159,7 +159,8 @@ Pino needs persistent memory with two distinct layers:
 - Full history: chat history, source observations, generated digests, decisions, and processed items.
 - Active memory: facts or preferences explicitly remembered by the user or promoted by Pino because they are useful for future decisions.
 
-Storage can be file-based, SQLite, PostgreSQL, Qdrant, or a combination. For the MVP, prefer the simplest local storage that is easy to inspect and migrate.
+Storage defaults to local SQLite. A single-tenant PostgreSQL database can be
+configured when development state needs to persist on a VPS.
 
 Memory must be user-reviewable. Avoid opaque storage that makes it hard to understand why Pino recommended something.
 
@@ -202,7 +203,7 @@ Configuration should cover:
 - Schedule settings.
 - LLM provider and model selection.
 - Ranking goals and keywords.
-- Storage paths.
+- Storage path or database URL.
 - Digest output preferences.
 
 Avoid hard-coding user preferences that should be editable without code changes.
@@ -217,6 +218,31 @@ config value to explicit `null` to silence the warning for an intentionally
 unset secret. Inactive providers and disabled sources do not block startup; the
 provider or source factory fails when that secret is actually required.
 
+Storage defaults to the `local` SQLite backend. Configure a PostgreSQL backend
+for shared VPS-backed development state and select it with `storage.use`:
+
+```yaml
+storage:
+  use: pg_vps
+  local:
+    type: sqlite
+    path: .pino/pino.sqlite
+  pg_vps:
+    type: postgres
+    url: env:PINO_DATABASE_URL
+```
+
+Then set `PINO_DATABASE_URL` in `.env` or the process environment:
+
+```dotenv
+PINO_DATABASE_URL=postgresql://pino:secret@db.example.net/pino
+```
+
+Unselected backends are lazy, so `pg_vps.url` may remain unset while
+`storage.use: local`. Plain `postgresql://` URLs use the Psycopg 3 driver.
+PostgreSQL schema creation is supported for a fresh database; this project does
+not yet ship cross-database schema migrations.
+
 Current source types:
 
 - `static_yaml`: reads local fixture/sample records.
@@ -230,7 +256,7 @@ Telegram sources should set `settings.api_id: env:TELEGRAM_API_ID` and
 `settings.api_hash: env:TELEGRAM_API_HASH` in local config. The first enabled
 run may prompt Telethon to create a local session file. That initial check
 bootstraps the newest configured `settings.limit` messages. Later checks use the
-stored SQLite source cursor as Telethon `min_id` and fetch all newer messages.
+stored source cursor as Telethon `min_id` and fetch all newer messages.
 
 ## Refinement
 
