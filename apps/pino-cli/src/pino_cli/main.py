@@ -20,6 +20,7 @@ from pino_core import (
     LLMError,
     MemoryEntry,
     PinoConfig,
+    Record,
     RefinementProgress,
     RefinementService,
     build_refinement_llm_config,
@@ -80,7 +81,7 @@ def print_check_result(result: CheckResult) -> None:
         sources = Table("Source", "Fetched", "Inserted", "Duplicates", "Cursor")
         for source in result.sources:
             sources.add_row(
-                plain_text(source.name),
+                plain_text(_format_source_label(source.kind, source.name)),
                 plain_text(source.fetched),
                 plain_text(source.inserted),
                 plain_text(source.duplicates),
@@ -93,7 +94,7 @@ def print_check_result(result: CheckResult) -> None:
         for record in result.records[:10]:
             records.add_row(
                 plain_text(record.title or _truncate_inline(record.text, 60)),
-                plain_text(record.source),
+                plain_text(_format_source_label(_record_source_kind(record), record.source)),
                 plain_text(record.kind),
             )
         console.print(records)
@@ -439,6 +440,21 @@ def _format_cursor_status(value: str) -> str:
     return value
 
 
+def _format_source_label(kind: str, name: str) -> str:
+    prefix = "tg" if kind == "tg" else "web"
+    if name.startswith(("web:", "tg:")):
+        return name
+    return f"{prefix}:{name}"
+
+
+def _record_source_kind(record: Record) -> str:
+    return "tg" if record.provenance.get("adapter") == "telegram_channel" else "web"
+
+
+def _config_source_kind(source_type: str) -> str:
+    return "tg" if source_type == "telegram_channel" else "web"
+
+
 @memory_app.command("add")
 def memory_add(
     content: Annotated[str, typer.Argument()],
@@ -481,7 +497,7 @@ def sources_list(
     table = Table("Name", "Type", "Status")
     for source in config.sources:
         table.add_row(
-            plain_text(source.name),
+            plain_text(_format_source_label(_config_source_kind(source.type), source.name)),
             plain_text(source.type),
             plain_text("enabled" if source.enabled else "disabled"),
         )

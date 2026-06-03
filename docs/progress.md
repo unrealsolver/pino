@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-06-04 01:47 Europe/Vilnius - Codex
+
+- Before: Format non-chat CLI source labels as `{web|tg}:{name}` while leaving Pino chat output unchanged.
+- Areas: CLI source display, tests, progress log.
+- After: Completed at 01:49. Added source-kind metadata for web and Telegram adapters, carried it through check results, and formatted non-chat CLI source labels as `web:{name}` or `tg:{name}` in `pino check` and `pino sources list`.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-cli/tests/test_main.py packages/pino-core/tests/test_pipeline.py packages/pino-integration/tests/test_kaveikti.py packages/pino-integration/tests/test_vilnius_events.py packages/pino-integration/tests/test_telegram.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check apps/pino-cli/src/pino_cli/main.py apps/pino-cli/tests/test_main.py packages/pino-core/src/pino_core/pipeline.py packages/pino-core/tests/test_pipeline.py packages/pino-core/src/pino_core/sources.py packages/pino-integration/src/pino_integration/kaveikti.py packages/pino-integration/src/pino_integration/vilnius_events.py packages/pino-integration/src/pino_integration/telegram.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino check --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino sources list --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
 ## 2026-06-04 01:43 Europe/Vilnius - Codex
 
 - Before: Clarify `pino check` cursor status so cursor-aware sources with no new messages do not look the same as non-cursor sources.

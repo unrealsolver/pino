@@ -58,6 +58,8 @@ class SourceRegistry:
 
 
 class StaticYamlSource:
+    source_kind = "web"
+
     def __init__(self, path: Path, name: str = "static-yaml") -> None:
         self.path = path
         self.name = name

@@ -27,8 +27,12 @@ records:
     assert result.pending_refinement_total == 1
     assert result.pending_refinement_new == 1
     assert result.sources is not None
-    assert [(source.name, source.fetched, source.inserted, source.duplicates) for source in result.sources] == [
-        ("static-yaml", 1, 1, 0),
+    source_rows = [
+        (source.kind, source.name, source.fetched, source.inserted, source.duplicates)
+        for source in result.sources
+    ]
+    assert source_rows == [
+        ("web", "static-yaml", 1, 1, 0),
     ]
     assert store.list_records()[0].title == "Test record"
 
@@ -57,8 +61,12 @@ records:
     assert second.pending_refinement_total == 1
     assert second.pending_refinement_new == 0
     assert second.sources is not None
-    assert [(source.name, source.fetched, source.inserted, source.duplicates) for source in second.sources] == [
-        ("static-yaml", 1, 0, 1),
+    source_rows = [
+        (source.kind, source.name, source.fetched, source.inserted, source.duplicates)
+        for source in second.sources
+    ]
+    assert source_rows == [
+        ("web", "static-yaml", 1, 0, 1),
     ]
     assert len(store.list_records()) == 1
 

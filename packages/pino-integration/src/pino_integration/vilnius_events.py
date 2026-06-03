@@ -13,6 +13,8 @@ from pino_core.sources import SourceAdapter
 class VilniusEventsSource:
     """Fetch and parse event records from vilnius-events.lt listing pages."""
 
+    source_kind = "web"
+
     def __init__(self, url: str, name: str = "vilnius-events") -> None:
         self.url = url
         self.name = name

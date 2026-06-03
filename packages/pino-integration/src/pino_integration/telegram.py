@@ -20,6 +20,8 @@ class TelegramClientFactory(Protocol):
 class TelegramChannelSource:
     """Fetch recent public-channel messages through Telethon."""
 
+    source_kind = "tg"
+
     def __init__(
         self,
         channel: str,

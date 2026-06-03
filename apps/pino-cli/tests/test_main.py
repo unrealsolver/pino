@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from rich.console import Console
 
 from pino_cli import main
-from pino_core.config import PinoConfig, StorageConfig
+from pino_core.config import PinoConfig, SourceConfig, StorageConfig
 from pino_core.models import ChatMessage, Record, Refinement
 from pino_core.pipeline import CheckResult, SourceCheckResult
 from pino_core.refinement import RefinementProgress
@@ -95,6 +95,7 @@ def test_check_result_prints_pending_refinement_counts(monkeypatch) -> None:
                     source="vilnius-events",
                     title="Synth night",
                     text="Synth event text",
+                    provenance={"adapter": "vilnius_events"},
                 ),
             ],
             pending_refinement_total=37,
@@ -105,6 +106,7 @@ def test_check_result_prints_pending_refinement_counts(monkeypatch) -> None:
                     fetched=84,
                     inserted=12,
                     duplicates=72,
+                    kind="web",
                     cursor_updated=True,
                     cursor_status="updated",
                 ),
@@ -113,6 +115,7 @@ def test_check_result_prints_pending_refinement_counts(monkeypatch) -> None:
                     fetched=0,
                     inserted=0,
                     duplicates=0,
+                    kind="tg",
                     cursor_status="unchanged",
                 ),
             ],
@@ -130,11 +133,33 @@ def test_check_result_prints_pending_refinement_counts(monkeypatch) -> None:
     assert "Pending refinement" in rendered
     assert "Pending from this check" in rendered
     assert "37" in rendered
-    assert "vilnius-events" in rendered
+    assert "web:vilnius-events" in rendered
     assert "updated" in rendered
-    assert "afisha-vilnius" in rendered
+    assert "tg:afisha-vilnius" in rendered
     assert "unchanged" in rendered
     assert "Synth night" in rendered
+
+
+def test_sources_list_prefixes_source_names(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    config = PinoConfig(
+        sources=[
+            SourceConfig(name="vilnius-events", type="vilnius_events"),
+            SourceConfig(
+                name="afisha-vilnius",
+                type="telegram_channel",
+                settings={"api_id": 12345, "api_hash": "hash"},
+            ),
+        ],
+    )
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+
+    main.sources_list()
+
+    rendered = output.getvalue()
+    assert "web:vilnius-events" in rendered
+    assert "tg:afisha-vilnius" in rendered
 
 
 def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:

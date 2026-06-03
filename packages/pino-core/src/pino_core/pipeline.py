@@ -20,6 +20,7 @@ class SourceCheckResult:
     fetched: int
     inserted: int
     duplicates: int
+    kind: Literal["web", "tg"] = "web"
     cursor_updated: bool = False
     cursor_status: Literal["unsupported", "none", "unchanged", "updated"] = "unsupported"
 
@@ -95,6 +96,7 @@ class CheckPipeline:
                     fetched=len(fetched),
                     inserted=source_inserted,
                     duplicates=source_duplicates,
+                    kind=_source_kind(source),
                     cursor_updated=next_cursor is not None,
                     cursor_status=cursor_status,
                 ),
@@ -110,6 +112,10 @@ class CheckPipeline:
             pending_refinement_new=pending_refinement_new,
             sources=source_results,
         )
+
+
+def _source_kind(source: SourceAdapter) -> Literal["web", "tg"]:
+    return "tg" if getattr(source, "source_kind", None) == "tg" else "web"
 
 
 class DigestService:
