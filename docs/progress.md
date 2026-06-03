@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-06-04 01:43 Europe/Vilnius - Codex
+
+- Before: Clarify `pino check` cursor status so cursor-aware sources with no new messages do not look the same as non-cursor sources.
+- Areas: Check result model, CLI source table, tests, progress log.
+- After: Completed at 01:45. Added explicit cursor statuses (`unsupported`, `none`, `unchanged`, `updated`) and render non-cursor sources as `-` while cursor-aware sources with no new messages show `unchanged`.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-cli/tests/test_main.py packages/pino-core/tests/test_pipeline.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check apps/pino-cli/src/pino_cli/main.py apps/pino-cli/tests/test_main.py packages/pino-core/src/pino_core/pipeline.py packages/pino-core/tests/test_pipeline.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino check --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-04 01:16 Europe/Vilnius - Codex
+
+- Before: Make `pino check` output more useful and scannable while preserving existing fetch/insert/duplicate/refinement information.
+- Areas: CLI check output, tests, progress log.
+- After: Completed at 01:18. Added per-source check statistics to `CheckResult`, rendered `pino check` as a Rich summary panel plus source breakdown and new-record preview, and kept the empty-new-record case explicit.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-cli/tests/test_main.py packages/pino-core/tests/test_pipeline.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check apps/pino-cli/src/pino_cli/main.py apps/pino-cli/tests/test_main.py packages/pino-core/src/pino_core/pipeline.py packages/pino-core/tests/test_pipeline.py packages/pino-core/src/pino_core/__init__.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino check --config config.example.yaml`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Consider per-source timing/error capture later if source checks become slow or flaky.
+
 ## 2026-06-04 00:25 Europe/Vilnius - Codex
 
 - Before: Fix date-range retrieval returning March events for June queries because null `relevant_to` is treated as an indefinitely ongoing event.

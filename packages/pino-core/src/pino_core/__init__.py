@@ -3,7 +3,7 @@ from pino_llm import LLMError, build_llm_client
 from pino_core.chat import ChatAgent, recent_chat_history, render_chat_system_prompt
 from pino_core.config import PinoConfig, load_config
 from pino_core.models import ChatMessage, MemoryEntry, Record, Refinement
-from pino_core.pipeline import CheckPipeline, CheckResult, DigestService
+from pino_core.pipeline import CheckPipeline, CheckResult, DigestService, SourceCheckResult
 from pino_core.refinement import (
     RefinementProgress,
     RefinementService,
@@ -29,6 +29,7 @@ __all__ = [
     "RefinementProgress",
     "RefinementService",
     "SQLiteStore",
+    "SourceCheckResult",
     "build_llm_client",
     "build_refinement_llm_config",
     "build_sources",

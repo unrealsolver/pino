@@ -7,7 +7,7 @@ from rich.console import Console
 from pino_cli import main
 from pino_core.config import PinoConfig, StorageConfig
 from pino_core.models import ChatMessage, Record, Refinement
-from pino_core.pipeline import CheckResult
+from pino_core.pipeline import CheckResult, SourceCheckResult
 from pino_core.refinement import RefinementProgress
 from pino_core.storage import SQLiteStore
 
@@ -89,16 +89,52 @@ def test_check_result_prints_pending_refinement_counts(monkeypatch) -> None:
             fetched=84,
             inserted=12,
             duplicates=72,
-            records=[],
+            records=[
+                Record(
+                    kind="event",
+                    source="vilnius-events",
+                    title="Synth night",
+                    text="Synth event text",
+                ),
+            ],
             pending_refinement_total=37,
             pending_refinement_new=12,
+            sources=[
+                SourceCheckResult(
+                    name="vilnius-events",
+                    fetched=84,
+                    inserted=12,
+                    duplicates=72,
+                    cursor_updated=True,
+                    cursor_status="updated",
+                ),
+                SourceCheckResult(
+                    name="afisha-vilnius",
+                    fetched=0,
+                    inserted=0,
+                    duplicates=0,
+                    cursor_status="unchanged",
+                ),
+            ],
         ),
     )
 
     rendered = output.getvalue()
-    assert "Fetched 84 record(s)." in rendered
-    assert "Inserted 12 new record(s), skipped 72 duplicate(s)." in rendered
-    assert "Refinement pending: 37 total, 12 new." in rendered
+    assert "Check complete" in rendered
+    assert "Fetched" in rendered
+    assert "84" in rendered
+    assert "Inserted" in rendered
+    assert "12" in rendered
+    assert "Duplicates" in rendered
+    assert "72" in rendered
+    assert "Pending refinement" in rendered
+    assert "Pending from this check" in rendered
+    assert "37" in rendered
+    assert "vilnius-events" in rendered
+    assert "updated" in rendered
+    assert "afisha-vilnius" in rendered
+    assert "unchanged" in rendered
+    assert "Synth night" in rendered
 
 
 def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:

@@ -68,14 +68,39 @@ def check(
 
 
 def print_check_result(result: CheckResult) -> None:
-    console.print(f"Fetched {result.fetched} record(s).")
-    console.print(
-        f"Inserted {result.inserted} new record(s), skipped {result.duplicates} duplicate(s).",
-    )
-    console.print(
-        f"Refinement pending: {result.pending_refinement_total} total, "
-        f"{result.pending_refinement_new} new.",
-    )
+    summary = Table("Metric", "Count", show_edge=False)
+    summary.add_row("Fetched", plain_text(result.fetched))
+    summary.add_row("Inserted", plain_text(result.inserted))
+    summary.add_row("Duplicates", plain_text(result.duplicates))
+    summary.add_row("Pending refinement", plain_text(result.pending_refinement_total))
+    summary.add_row("Pending from this check", plain_text(result.pending_refinement_new))
+    console.print(Panel(summary, title="Check complete", border_style="green"))
+
+    if result.sources:
+        sources = Table("Source", "Fetched", "Inserted", "Duplicates", "Cursor")
+        for source in result.sources:
+            sources.add_row(
+                plain_text(source.name),
+                plain_text(source.fetched),
+                plain_text(source.inserted),
+                plain_text(source.duplicates),
+                _format_cursor_status(source.cursor_status),
+            )
+        console.print(sources)
+
+    if result.records:
+        records = Table("New record", "Source", "Kind")
+        for record in result.records[:10]:
+            records.add_row(
+                plain_text(record.title or _truncate_inline(record.text, 60)),
+                plain_text(record.source),
+                plain_text(record.kind),
+            )
+        console.print(records)
+        if len(result.records) > 10:
+            console.print(Text(f"... {len(result.records) - 10} more new record(s)", style="dim"))
+    else:
+        console.print(Text("No new records inserted.", style="dim"))
 
 
 @app.command()
@@ -399,6 +424,19 @@ def json_dumps_compact(value: object) -> str:
 
 def plain_text(value: object) -> Text:
     return Text(str(value))
+
+
+def _truncate_inline(value: str, limit: int) -> str:
+    text = " ".join(value.split())
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 3)].rstrip()}..."
+
+
+def _format_cursor_status(value: str) -> str:
+    if value == "unsupported":
+        return "-"
+    return value
 
 
 @memory_app.command("add")

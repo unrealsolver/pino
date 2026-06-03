@@ -26,6 +26,10 @@ records:
     assert result.duplicates == 0
     assert result.pending_refinement_total == 1
     assert result.pending_refinement_new == 1
+    assert result.sources is not None
+    assert [(source.name, source.fetched, source.inserted, source.duplicates) for source in result.sources] == [
+        ("static-yaml", 1, 1, 0),
+    ]
     assert store.list_records()[0].title == "Test record"
 
 
@@ -52,6 +56,10 @@ records:
     assert second.duplicates == 1
     assert second.pending_refinement_total == 1
     assert second.pending_refinement_new == 0
+    assert second.sources is not None
+    assert [(source.name, source.fetched, source.inserted, source.duplicates) for source in second.sources] == [
+        ("static-yaml", 1, 0, 1),
+    ]
     assert len(store.list_records()) == 1
 
 
@@ -64,8 +72,30 @@ def test_check_pipeline_persists_source_cursor_between_runs(tmp_path: Path) -> N
 
     assert first.inserted == 1
     assert second.inserted == 1
+    assert first.sources is not None
+    assert second.sources is not None
+    assert first.sources[0].cursor_updated is True
+    assert second.sources[0].cursor_updated is True
+    assert first.sources[0].cursor_status == "updated"
+    assert second.sources[0].cursor_status == "updated"
     assert source.cursors == [None, "1"]
     assert store.get_source_cursor(source.name) == "2"
+
+
+def test_check_pipeline_reports_unchanged_cursor_when_no_new_records(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    source = EmptyCursorSource()
+    store.init_schema()
+    store.set_source_cursor(source.name, "42")
+
+    result = CheckPipeline(store, [source]).run()
+
+    assert result.fetched == 0
+    assert result.sources is not None
+    assert result.sources[0].cursor_updated is False
+    assert result.sources[0].cursor_status == "unchanged"
+    assert source.cursors == ["42"]
+    assert store.get_source_cursor(source.name) == "42"
 
 
 def test_digest_service_creates_digest_result(tmp_path: Path) -> None:
@@ -167,3 +197,14 @@ class CursorSource:
             ],
             cursor=next_cursor,
         )
+
+
+class EmptyCursorSource:
+    name = "empty-cursor-source"
+
+    def __init__(self) -> None:
+        self.cursors: list[str | None] = []
+
+    def fetch_since(self, cursor: str | None) -> CursorFetchResult:
+        self.cursors.append(cursor)
+        return CursorFetchResult(records=[], cursor=None)

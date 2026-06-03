@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
@@ -14,6 +15,16 @@ DEFAULT_DIGEST_WINDOW_DAYS = 14
 
 
 @dataclass(frozen=True)
+class SourceCheckResult:
+    name: str
+    fetched: int
+    inserted: int
+    duplicates: int
+    cursor_updated: bool = False
+    cursor_status: Literal["unsupported", "none", "unchanged", "updated"] = "unsupported"
+
+
+@dataclass(frozen=True)
 class CheckResult:
     fetched: int
     inserted: int
@@ -21,6 +32,7 @@ class CheckResult:
     records: list[Record]
     pending_refinement_total: int = 0
     pending_refinement_new: int = 0
+    sources: list[SourceCheckResult] | None = None
 
 
 @dataclass(frozen=True)
@@ -41,25 +53,52 @@ class CheckPipeline:
         inserted_count = 0
         duplicate_count = 0
         inserted_ids: list[str] = []
+        source_results: list[SourceCheckResult] = []
         for source in self.sources:
             next_cursor = None
-            if isinstance(source, CursorSourceAdapter):
-                fetch_result = source.fetch_since(self.store.get_source_cursor(source.name))
+            is_cursor_source = isinstance(source, CursorSourceAdapter)
+            previous_cursor = None
+            if is_cursor_source:
+                previous_cursor = self.store.get_source_cursor(source.name)
+                fetch_result = source.fetch_since(previous_cursor)
                 fetched = fetch_result.records
                 next_cursor = fetch_result.cursor
             else:
                 fetched = source.fetch()
+            source_inserted = 0
+            source_duplicates = 0
             fetched_count += len(fetched)
             for record in fetched:
                 result = self.store.add_record(record)
                 if result.inserted:
                     inserted_count += 1
+                    source_inserted += 1
                     inserted_ids.append(result.record.id)
                     records.append(result.record)
                 else:
                     duplicate_count += 1
+                    source_duplicates += 1
             if next_cursor is not None:
                 self.store.set_source_cursor(source.name, next_cursor)
+            cursor_status: Literal["unsupported", "none", "unchanged", "updated"]
+            if not is_cursor_source:
+                cursor_status = "unsupported"
+            elif next_cursor is not None:
+                cursor_status = "updated"
+            elif previous_cursor is not None:
+                cursor_status = "unchanged"
+            else:
+                cursor_status = "none"
+            source_results.append(
+                SourceCheckResult(
+                    name=source.name,
+                    fetched=len(fetched),
+                    inserted=source_inserted,
+                    duplicates=source_duplicates,
+                    cursor_updated=next_cursor is not None,
+                    cursor_status=cursor_status,
+                ),
+            )
         pending_refinement_total = self.store.count_unrefined_records()
         pending_refinement_new = self.store.count_unrefined_records(record_ids=inserted_ids)
         return CheckResult(
@@ -69,6 +108,7 @@ class CheckPipeline:
             records=records,
             pending_refinement_total=pending_refinement_total,
             pending_refinement_new=pending_refinement_new,
+            sources=source_results,
         )
 
 
