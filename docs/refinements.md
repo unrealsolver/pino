@@ -102,6 +102,21 @@ Upcoming-event queries should read from `refinements`, not `records`.
 Records without refinements remain visible in raw/debug views and pending-work
 counts. They should not silently enter an upcoming-event query.
 
+Relevant-record retrieval must avoid truncating candidates before compatibility
+is computed. A small date-ordered slice can hide moderately compatible events
+that appear later in the window. The current tool scans a larger bounded window,
+then applies category filtering and score ordering. If a good option appears in
+`records.list` but not `records.relevant`, debug in this order:
+
+1. Does the record have a refinement row?
+2. Is `content_kind` `event`?
+3. Are `relevant_from` / `relevant_to` inside the requested window?
+4. Are category scores present for the queried categories?
+5. Was the candidate pool large enough before ranking?
+
+This is separate from embeddings. Embeddings should improve semantic recall and
+ranking after the basic refinement and candidate-generation gates are visible.
+
 ## Refinement Pipeline
 
 Start with a small staged pipeline:
@@ -203,8 +218,15 @@ A pragmatic first version:
 4. Add an LLM taxonomy pass only for categories where measured embedding
    quality is insufficient.
 
-For the current SQLite-scale dataset, store embeddings locally. A vector
-database is not required until nearest-neighbor search volume proves otherwise.
+With PostgreSQL available, `pgvector` is the natural place to store dense
+refinement vectors next to relational data. Keep the relational gates explicit:
+date window, `content_kind`, source provenance, and refinement status should
+remain normal columns. Use vector search as candidate expansion or reranking,
+not as the only way an event can enter consideration.
+
+For local SQLite development, embeddings can still be stored as JSON for
+inspection or small offline experiments. Use PostgreSQL + `pgvector` when
+nearest-neighbor search becomes part of the normal query path.
 
 References:
 

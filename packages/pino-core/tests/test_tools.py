@@ -75,6 +75,130 @@ def test_records_relevant_returns_refined_recommendation_fields(
     assert "Raw upcoming text" not in output
 
 
+def test_records_relevant_filters_after_scanning_beyond_return_limit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "pino_core.tools.utc_now",
+        lambda: datetime(2026, 5, 21, 0, 0, tzinfo=timezone.utc),
+    )
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    for day in range(1, 5):
+        record = store.add_record(
+            Record(
+                kind="event",
+                source="test",
+                title=f"Generic event {day}",
+                text="Generic upcoming event",
+            ),
+        )
+        store.replace_refinements(
+            record.record.id,
+            [
+                Refinement(
+                    record_id=record.record.id,
+                    content_kind="event",
+                    relevant_from=datetime(2026, 5, 21 + day, 12, 0, tzinfo=timezone.utc),
+                    category_scores={"workshop": 0.8},
+                    refiner="test",
+                ),
+            ],
+        )
+    matching = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Later synth meetup",
+            text="Synth meetup text",
+        ),
+    )
+    store.replace_refinements(
+        matching.record.id,
+        [
+            Refinement(
+                record_id=matching.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 5, 27, 12, 0, tzinfo=timezone.utc),
+                category_scores={"electronic_music": 0.7},
+                refiner="test",
+            ),
+        ],
+    )
+
+    output = build_tools(store, sources=[])["records.relevant"].run(
+        {"limit": 1, "days": 14, "min_score": 0.3, "categories": ["electronic_music"]},
+    )
+
+    assert "Later synth meetup" in output
+    assert "Generic event" not in output
+
+
+def test_records_relevant_accepts_single_day_local_date_range(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "pino_core.tools.utc_now",
+        lambda: datetime(2026, 6, 4, 21, 0, tzinfo=timezone.utc),
+    )
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    friday = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Macau short films",
+            text="Screening and Q&A",
+        ),
+    )
+    saturday = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Saturday high score",
+            text="High-score event on the wrong day",
+        ),
+    )
+    store.replace_refinements(
+        friday.record.id,
+        [
+            Refinement(
+                record_id=friday.record.id,
+                content_kind="event",
+                summary="Screening of five short films from Macau followed by Q&A.",
+                relevant_from=datetime(2026, 6, 5, 16, 30, tzinfo=timezone.utc),
+                location="Meno Avilys, Vilnius",
+                category_scores={"social": 0.7, "theatre": 0.3},
+                refiner="test",
+            ),
+        ],
+    )
+    store.replace_refinements(
+        saturday.record.id,
+        [
+            Refinement(
+                record_id=saturday.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 6, 6, 10, 0, tzinfo=timezone.utc),
+                category_scores={"social": 1.0},
+                refiner="test",
+            ),
+        ],
+    )
+
+    output = build_tools(store, sources=[])["records.relevant"].run(
+        {"limit": 20, "date_from": "2026-06-05", "date_to": "2026-06-05", "min_score": 0.1},
+    )
+
+    assert "Relevant records for 2026-06-05 (Europe/Vilnius):" in output
+    assert "Macau short films" in output
+    assert "2026-06-05 19:30" in output
+    assert "@ Meno Avilys, Vilnius" in output
+    assert "Saturday high score" not in output
+
+
 def test_records_relevant_excludes_unrefined_records(
     tmp_path: Path,
     monkeypatch,

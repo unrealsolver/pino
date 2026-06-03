@@ -167,12 +167,16 @@ def render_chat_system_prompt(
         "For normal final answers, reply in plain text.\n"
         "For tool calls, output exactly one raw JSON object and nothing else.\n"
         "Request multiple tools only when the calls are independent.\n"
+        "For a calendar-specific request such as next Friday or weekend, compute the local "
+        'inclusive range from Current time and call records.relevant with "date_from" and "date_to". '
+        "Use the same date for both fields for a single-day request.\n"
         "For tool calls, do not use markdown fences, provider-specific tool-call wrappers, "
         "=> syntax, single quotes, or CLI-style flags.\n"
         "Use these forms for tool calls:\n"
         '{"tool": "tool.name", "arguments": {}}\n'
         '{"tools": [{"tool": "tool.name", "arguments": {}}, {"tool": "tool.name", "arguments": {}}]}\n'
-        '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, "min_score": 0.3, "categories": ["electronic_music"]}}\n\n'
+        '{"tool": "records.relevant", "arguments": {"limit": 20, "date_from": "2026-06-05", "date_to": "2026-06-05", "min_score": 0.3, "categories": ["electronic_music"]}}\n'
+        '{"tool": "records.relevant", "arguments": {"limit": 20, "date_from": "2026-06-06", "date_to": "2026-06-07", "min_score": 0.1}}\n\n'
         f"Available tools:\n{describe_tools(tools)}"
     )
     current_time = _format_current_time(now())

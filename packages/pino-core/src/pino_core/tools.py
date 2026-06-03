@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from html.parser import HTMLParser
 from ipaddress import ip_address
 from typing import Any, Callable
@@ -75,22 +75,41 @@ def build_tools(
         window_days = int(arguments.get("days", arguments.get("window_days", 14)))
         min_score = float(arguments.get("min_score", 0.0))
         categories = _coerce_categories(arguments.get("categories", []))
-        window_start = utc_now()
+        scan_limit = _coerce_int(arguments.get("scan_limit"), default=1000)
+        scan_limit = max(limit, min(scan_limit, 5000))
+        window = _resolve_relevant_window(arguments, default_days=window_days)
+        if isinstance(window, str):
+            return f"records.relevant failed: {window}"
+        window_start, window_end, window_label = window
         records = store.list_relevant_refinements(
             window_start=window_start,
-            window_end=window_start + timedelta(days=window_days),
-            limit=max(limit * 3, limit),
+            window_end=window_end,
+            limit=scan_limit,
         )
         filtered = [
             (record, refinement)
             for record, refinement in records
             if _matches_relevant_filters(refinement, min_score=min_score, categories=categories)
-        ][:limit]
+        ]
+        if categories or min_score > 0:
+            filtered.sort(
+                key=lambda item: (
+                    -_relevant_filter_score(
+                        item[1],
+                        min_score=min_score,
+                        categories=categories,
+                    ),
+                    item[1].relevant_from or datetime.max,
+                ),
+            )
+        filtered = filtered[:limit]
         if not filtered:
-            return f"No relevant records found for the next {window_days} day(s)."
-        return "\n".join(
+            return f"No relevant records found for {window_label}."
+        lines = [f"Relevant records for {window_label}:"]
+        lines.extend(
             _format_relevant_record(record, refinement) for record, refinement in filtered
         )
+        return "\n".join(lines)
 
     def digest_create(arguments: dict[str, Any]) -> str:
         limit = int(arguments.get("limit", 20))
@@ -152,7 +171,7 @@ def build_tools(
         ),
         Tool(
             "records.relevant",
-            'Preferred for event recommendations and upcoming/current plans. Returns refinement-backed records with taxonomy scores, local time, location, URL, and summary. Arguments JSON example: {"limit": 20, "days": 14, "min_score": 0.3, "categories": ["metal_music"]}.',
+            'Preferred for event recommendations and upcoming/current plans. Returns refinement-backed records with taxonomy scores, local time, location, URL, and summary. For calendar-specific queries, pass local inclusive ISO dates in "date_from" and "date_to"; use the same date for a single day such as next Friday. Arguments JSON example: {"limit": 20, "date_from": "2026-06-05", "date_to": "2026-06-05", "min_score": 0.3, "categories": ["metal_music"], "scan_limit": 1000}.',
             records_relevant,
         ),
         Tool(
@@ -198,6 +217,57 @@ def _coerce_int(value: object, *, default: int) -> int:
         return default
 
 
+def _resolve_relevant_window(
+    arguments: dict[str, Any],
+    *,
+    default_days: int,
+) -> tuple[datetime, datetime, str] | str:
+    local_timezone = ZoneInfo(DEFAULT_SOURCE_TIMEZONE)
+    date_from = _parse_iso_date(arguments.get("date_from") or arguments.get("start_date"))
+    date_to = _parse_iso_date(arguments.get("date_to") or arguments.get("end_date"))
+    if date_from is False or date_to is False:
+        return "date_from and date_to must be ISO dates like 2026-06-05."
+    if date_from is not None or date_to is not None:
+        if date_from is None or date_to is None:
+            return "date ranges require both date_from and date_to."
+        if date_to < date_from:
+            return "date_to must be on or after date_from."
+        start = datetime.combine(date_from, time.min, tzinfo=local_timezone).astimezone(
+            ZoneInfo("UTC")
+        )
+        end = datetime.combine(date_to, time.max, tzinfo=local_timezone).astimezone(
+            ZoneInfo("UTC")
+        )
+        if date_from == date_to:
+            label = f"{date_from:%Y-%m-%d} ({DEFAULT_SOURCE_TIMEZONE})"
+        else:
+            label = f"{date_from:%Y-%m-%d} to {date_to:%Y-%m-%d} ({DEFAULT_SOURCE_TIMEZONE})"
+        return start, end, label
+
+    start = utc_now()
+    end = start + timedelta(days=default_days)
+    local_start = start.astimezone(local_timezone)
+    local_end = end.astimezone(local_timezone)
+    label = (
+        f"the next {default_days} day(s), "
+        f"{local_start:%Y-%m-%d %H:%M} to {local_end:%Y-%m-%d %H:%M} "
+        f"({DEFAULT_SOURCE_TIMEZONE})"
+    )
+    return start, end, label
+
+
+def _parse_iso_date(value: object) -> date | None | bool:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return False
+
+
 def _matches_relevant_filters(
     refinement: Refinement,
     *,
@@ -211,6 +281,22 @@ def _matches_relevant_filters(
     if min_score > 0:
         return any(score >= min_score for score in refinement.category_scores.values())
     return True
+
+
+def _relevant_filter_score(
+    refinement: Refinement,
+    *,
+    min_score: float,
+    categories: list[str],
+) -> float:
+    if categories:
+        return max(
+            (refinement.category_scores.get(category, 0.0) for category in categories),
+            default=0.0,
+        )
+    if min_score > 0:
+        return max(refinement.category_scores.values(), default=0.0)
+    return 0.0
 
 
 def _format_relevant_record(record: Record, refinement: Refinement) -> str:

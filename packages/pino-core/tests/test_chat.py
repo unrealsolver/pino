@@ -362,12 +362,19 @@ def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> N
     assert "For normal final answers, reply in plain text." in prompt
     assert "For tool calls, output exactly one raw JSON object and nothing else." in prompt
     assert "You may request up to 3 bounded local tool calls at a time." in prompt
+    assert "For a calendar-specific request such as next Friday or weekend" in prompt
+    assert "Use the same date for both fields for a single-day request." in prompt
     assert '{"tools": [{"tool": "tool.name", "arguments": {}}' in prompt
     assert "do not use markdown fences, provider-specific tool-call wrappers" in prompt
     assert "CLI-style flags" in prompt
     assert (
-        '{"tool": "records.relevant", "arguments": {"limit": 20, "days": 14, '
+        '{"tool": "records.relevant", "arguments": {"limit": 20, '
+        '"date_from": "2026-06-05", "date_to": "2026-06-05", '
         '"min_score": 0.3, "categories": ["electronic_music"]}}'
+    ) in prompt
+    assert (
+        '{"tool": "records.relevant", "arguments": {"limit": 20, '
+        '"date_from": "2026-06-06", "date_to": "2026-06-07", "min_score": 0.1}}'
     ) in prompt
 
 

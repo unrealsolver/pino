@@ -153,6 +153,12 @@ def test_list_relevant_refinements_filters_by_overlap_and_kind(tmp_path: Path) -
     future = store.add_record(
         Record(kind="event", source="test", title="Future", text="Future event")
     )
+    past_point = store.add_record(
+        Record(kind="event", source="test", title="Past point", text="Past point event")
+    )
+    future_point = store.add_record(
+        Record(kind="event", source="test", title="Future point", text="Future point event")
+    )
     ad = store.add_record(Record(kind="note", source="test", title="Ad", text="Advertisement"))
     undated = store.add_record(Record(kind="note", source="test", title="Undated", text="Note"))
     store.replace_refinements(
@@ -192,6 +198,30 @@ def test_list_relevant_refinements_filters_by_overlap_and_kind(tmp_path: Path) -
         ],
     )
     store.replace_refinements(
+        past_point.record.id,
+        [
+            Refinement(
+                record_id=past_point.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 3, 13, 17, 0, tzinfo=timezone.utc),
+                relevant_to=None,
+                refiner="test",
+            ),
+        ],
+    )
+    store.replace_refinements(
+        future_point.record.id,
+        [
+            Refinement(
+                record_id=future_point.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 5, 23, 17, 0, tzinfo=timezone.utc),
+                relevant_to=None,
+                refiner="test",
+            ),
+        ],
+    )
+    store.replace_refinements(
         ad.record.id,
         [
             Refinement(
@@ -212,6 +242,7 @@ def test_list_relevant_refinements_filters_by_overlap_and_kind(tmp_path: Path) -
     assert [record.id for record, _refinement in rows] == [
         current.record.id,
         future.record.id,
+        future_point.record.id,
     ]
 
 

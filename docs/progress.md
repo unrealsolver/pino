@@ -2,6 +2,46 @@
 
 Newest entries go first.
 
+## 2026-06-04 00:25 Europe/Vilnius - Codex
+
+- Before: Fix date-range retrieval returning March events for June queries because null `relevant_to` is treated as an indefinitely ongoing event.
+- Areas: Relevant refinement storage query, SQLite regression tests, progress log.
+- After: Completed at 00:27. Changed overlap logic so `relevant_to = null` means a point event at `relevant_from`, not an indefinitely ongoing event; added SQLite regression coverage for excluding past null-end events and including in-window null-end events.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_storage.py packages/pino-core/tests/test_tools.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/storage.py packages/pino-core/tests/test_storage.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Run one live PostgreSQL smoke query if the model still returns stale null-end events.
+
+## 2026-06-04 00:15 Europe/Vilnius - Codex
+
+- Before: Remove the bare `date` filter from `records.relevant` and use `date_from`/`date_to` consistently for single-day and range queries.
+- Areas: Relevant-record tool arguments, chat prompt, tests, progress log.
+- After: Completed at 00:16. Removed bare `date` handling from the tool, changed single-day examples to `date_from == date_to`, and updated prompt/tests accordingly.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_chat.py packages/pino-core/tests/test_tools.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/tools.py packages/pino-core/src/pino_core/chat.py packages/pino-core/tests/test_tools.py packages/pino-core/tests/test_chat.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-04 00:14 Europe/Vilnius - Codex
+
+- Before: Clarify weekend-style event queries so chat uses explicit `records.relevant` date ranges rather than broad day counts.
+- Areas: Chat prompt, tests, progress log.
+- After: Completed at 00:15. Added chat prompt guidance and an example for weekend-style range queries using `date_from`/`date_to`, and extended the prompt regression test.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_chat.py packages/pino-core/tests/test_tools.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/chat.py packages/pino-core/tests/test_chat.py`.
+- Follow-up: None.
+
+## 2026-06-04 00:08 Europe/Vilnius - Codex
+
+- Before: Diagnose and fix `records.relevant`/chat behavior after Pino claimed no June events despite a June 5 refinement row being present in the database.
+- Areas: Relevant-record tool path, chat/tool diagnostics, tests, progress log.
+- After: Completed at 00:12. Added explicit local-date and date-range arguments to `records.relevant`, added a query-window header to tool output, taught the chat prompt to use `date` for specific-day requests like next Friday, and covered the June 5 Macau-film row shape with a regression test.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_tools.py packages/pino-core/tests/test_chat.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Watch the live MiniMax behavior for whether it now chooses `date`; no exact live chat rerun was performed after the interrupted diagnostic.
+
+## 2026-06-03 14:04 Europe/Vilnius - Codex
+
+- Before: Improve retrieval recall after Pino missed compatible events present in raw `records.list`, starting with the current `records.relevant` candidate truncation and documenting the pgvector/embedding follow-up.
+- Areas: Relevant-record retrieval, tests, refinement/retrieval docs, progress log.
+- After: Completed at 14:05. Changed `records.relevant` to scan a larger bounded candidate window before category filtering, rank filtered results by compatibility score, exposed `scan_limit`, added a regression test for later-window compatible events, and documented retrieval debugging plus the PostgreSQL/pgvector direction.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_tools.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Add retrieval diagnostics for unrefined/date-missing/non-event/low-score misses; then add refinement embeddings and optional PostgreSQL `pgvector` nearest-neighbor candidate expansion.
+
 ## 2026-06-01 02:48 Europe/Vilnius - Codex
 
 - Before: Replace flat storage path/URL selection with named storage backends selected by `storage.use`, allowing explicit local SQLite and VPS PostgreSQL profiles while keeping unselected profiles lazy.

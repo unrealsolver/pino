@@ -231,8 +231,14 @@ class DatabaseStore:
                         refinements_table.c.content_kind == "event",
                         refinements_table.c.relevant_from.is_not(None),
                         or_(
-                            refinements_table.c.relevant_to.is_(None),
-                            refinements_table.c.relevant_to >= window_start,
+                            and_(
+                                refinements_table.c.relevant_to.is_(None),
+                                refinements_table.c.relevant_from >= window_start,
+                            ),
+                            and_(
+                                refinements_table.c.relevant_to.is_not(None),
+                                refinements_table.c.relevant_to >= window_start,
+                            ),
                         ),
                         refinements_table.c.relevant_from <= window_end,
                     ),
