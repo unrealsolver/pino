@@ -115,6 +115,10 @@ def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
     assert refinement.relevant_from == relevant_from
     assert refinement.relevant_to == relevant_to
     assert refinement.category_scores == {"metal_music": 0.75}
+    assert store.get_record(inserted.record.id) == inserted.record
+    assert store.get_record("missing") is None
+    assert store.get_refinement(refinement.id) == refinement
+    assert store.get_refinement("missing") is None
 
 
 def test_refinement_status_is_derived_from_left_join(tmp_path: Path) -> None:

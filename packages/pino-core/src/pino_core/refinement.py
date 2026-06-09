@@ -23,6 +23,16 @@ class RefinementRunResult:
 
 
 @dataclass(frozen=True)
+class RefinementDebugResult:
+    record: Record
+    messages: list[LLMMessage]
+    raw_response: str
+    parsed_response: dict[str, Any]
+    refinements: list[Refinement]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class RefinementProgress:
     status: Literal["selected", "refining", "refined", "skipped"]
     total: int
@@ -115,12 +125,7 @@ class RefinementService:
         )
 
     def refine_record(self, record: Record) -> list[Refinement]:
-        raw_response = self.client.complete(
-            [
-                LLMMessage(role="system", content=self._system_prompt()),
-                LLMMessage(role="user", content=self._record_prompt(record)),
-            ],
-        )
+        raw_response = self.client.complete(self._record_messages(record))
         data = _parse_json_object(raw_response)
         raw_items = data.get("items")
         if not isinstance(raw_items, list) or not raw_items:
@@ -133,6 +138,32 @@ class RefinementService:
         if not refinements:
             raise RefinementResponseError("refinement response has no usable items")
         return refinements
+
+    def debug_refine_record(self, record: Record) -> RefinementDebugResult:
+        messages = self._record_messages(record)
+        raw_response = self.client.complete(messages)
+        data = _parse_json_object(raw_response)
+        raw_items = data.get("items")
+        refinements: list[Refinement] = []
+        error: str | None = None
+        if not isinstance(raw_items, list) or not raw_items:
+            error = "refinement response is missing items"
+        else:
+            refinements = [
+                self._build_refinement(record, item_index, raw_item)
+                for item_index, raw_item in enumerate(raw_items)
+                if isinstance(raw_item, dict)
+            ]
+            if not refinements:
+                error = "refinement response has no usable items"
+        return RefinementDebugResult(
+            record=record,
+            messages=messages,
+            raw_response=raw_response,
+            parsed_response=data,
+            refinements=refinements,
+            error=error,
+        )
 
     def _build_refinement(
         self,
@@ -169,6 +200,12 @@ class RefinementService:
             "payload": record.payload,
         }
         return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    def _record_messages(self, record: Record) -> list[LLMMessage]:
+        return [
+            LLMMessage(role="system", content=self._system_prompt()),
+            LLMMessage(role="user", content=self._record_prompt(record)),
+        ]
 
 
 def render_refinement_system_prompt(config: RefinementConfig) -> str:

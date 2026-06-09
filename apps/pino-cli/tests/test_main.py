@@ -3,6 +3,7 @@ from io import StringIO
 from types import SimpleNamespace
 
 from rich.console import Console
+from pino_llm import LLMMessage
 
 from pino_cli import main
 from pino_core.config import PinoConfig, SourceConfig, StorageConfig
@@ -10,6 +11,16 @@ from pino_core.models import ChatMessage, Record, Refinement
 from pino_core.pipeline import CheckResult, SourceCheckResult
 from pino_core.refinement import RefinementProgress
 from pino_core.storage import SQLiteStore
+
+
+class StaticRefinementClient:
+    def __init__(self, response: str) -> None:
+        self.response = response
+        self.messages: list[LLMMessage] = []
+
+    def complete(self, messages: list[LLMMessage]) -> str:
+        self.messages = messages
+        return self.response
 
 
 def test_chat_debug_prints_tool_markup_as_plain_text(monkeypatch) -> None:
@@ -278,3 +289,60 @@ def test_refinement_progress_prints_empty_selection(monkeypatch) -> None:
     main.print_refinement_progress(RefinementProgress(status="selected", total=0))
 
     assert "No unrefined records found." in output.getvalue()
+
+
+def test_refine_with_id_reruns_refinement_without_updating_store(tmp_path, monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=160))
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="Raw", text="Raw text"))
+    existing = Refinement(
+        record_id=inserted.record.id,
+        content_kind="event",
+        summary="Stored summary",
+        refiner="test",
+    )
+    store.replace_refinements(inserted.record.id, [existing])
+    config = PinoConfig(
+        storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"})
+    )
+    client = StaticRefinementClient(
+        '{"items": [{"content_kind": "event", "summary": "Dry run summary", "category_scores": {}}]}'
+    )
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+    monkeypatch.setattr(main, "get_store", lambda actual_config: store)
+    monkeypatch.setattr(main, "build_llm_client", lambda llm_config: client)
+
+    main._run_refine(config_path=None, limit=None, debug=False, selected_id=f"ID {existing.id}")
+
+    rendered = output.getvalue()
+    assert "Refinement dry run" in rendered
+    assert "persisted" in rendered
+    assert "False" in rendered
+    assert "Prompt: system" in rendered
+    assert "Prompt: user" in rendered
+    assert "Raw response" in rendered
+    assert "Parsed response" in rendered
+    assert "Generated refinements" in rendered
+    assert "Dry run summary" in rendered
+    assert "Stored summary" in rendered
+    assert [message.role for message in client.messages] == ["system", "user"]
+    assert store.list_refinements(inserted.record.id)[0].summary == "Stored summary"
+
+
+def test_resolve_refinement_debug_target_accepts_record_id(tmp_path, monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="Raw", text="Raw text"))
+
+    record, refinement, resolved_kind = main.resolve_refinement_debug_target(
+        store,
+        inserted.record.id,
+    )
+
+    assert record.id == inserted.record.id
+    assert refinement is None
+    assert resolved_kind == "record"

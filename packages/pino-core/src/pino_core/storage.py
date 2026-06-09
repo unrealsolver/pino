@@ -184,6 +184,13 @@ class DatabaseStore:
         rows = self._select_latest(records_table, records_table.c.captured_at, limit)
         return [Record.model_validate(dict(row)) for row in rows]
 
+    def get_record(self, record_id: str) -> Record | None:
+        with Session(self.engine) as session:
+            row = session.execute(
+                select(records_table).where(records_table.c.id == record_id),
+            ).first()
+            return Record.model_validate(dict(row._mapping)) if row is not None else None
+
     def list_unrefined_records(self, limit: int = 20) -> list[Record]:
         with Session(self.engine) as session:
             result = session.execute(
@@ -316,6 +323,13 @@ class DatabaseStore:
                 .order_by(refinements_table.c.item_index),
             )
             return [Refinement.model_validate(dict(row._mapping)) for row in rows]
+
+    def get_refinement(self, refinement_id: str) -> Refinement | None:
+        with Session(self.engine) as session:
+            row = session.execute(
+                select(refinements_table).where(refinements_table.c.id == refinement_id),
+            ).first()
+            return Refinement.model_validate(dict(row._mapping)) if row is not None else None
 
     def add_memory(self, memory: MemoryEntry) -> None:
         self._insert_model(active_memory_table, memory)

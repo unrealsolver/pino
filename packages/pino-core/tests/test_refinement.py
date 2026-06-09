@@ -123,6 +123,42 @@ def test_refinement_service_filters_unknown_categories(tmp_path: Path) -> None:
     assert store.list_refinements(inserted.record.id)[0].category_scores == {"metal_music": 0.8}
 
 
+def test_refinement_service_debug_refine_record_does_not_update_store(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="Debug", text="Debug me"))
+    client = StaticClient(
+        '{"items": [{"content_kind": "event", "summary": "Debug result", "category_scores": {}}]}'
+    )
+
+    result = RefinementService(store, client, RefinementConfig()).debug_refine_record(
+        inserted.record
+    )
+
+    assert result.record.id == inserted.record.id
+    assert [message.role for message in result.messages] == ["system", "user"]
+    assert result.parsed_response["items"][0]["summary"] == "Debug result"
+    assert result.refinements[0].summary == "Debug result"
+    assert result.error is None
+    assert store.list_refinements(inserted.record.id) == []
+
+
+def test_refinement_service_debug_refine_record_returns_parse_error(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="Debug", text="Debug me"))
+    client = StaticClient('{"final": "not refinement json"}')
+
+    result = RefinementService(store, client, RefinementConfig()).debug_refine_record(
+        inserted.record
+    )
+
+    assert result.raw_response == '{"final": "not refinement json"}'
+    assert result.parsed_response == {"final": "not refinement json"}
+    assert result.refinements == []
+    assert result.error == "refinement response is missing items"
+
+
 def test_build_refinement_llm_config_selects_simple_model() -> None:
     from pino_llm import LLMConfig
 

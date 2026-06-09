@@ -21,6 +21,8 @@ from pino_core import (
     MemoryEntry,
     PinoConfig,
     Record,
+    Refinement,
+    RefinementDebugResult,
     RefinementProgress,
     RefinementService,
     build_refinement_llm_config,
@@ -120,12 +122,13 @@ def digest(
 
 @app.command()
 def refine(
+    selected_id: Annotated[str | None, typer.Argument()] = None,
     config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     limit: Annotated[int | None, typer.Option("--limit", "-n", min=1)] = None,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Refine captured records into reusable normalized items."""
-    _run_refine(config_path=config_path, limit=limit, debug=debug)
+    _run_refine(config_path=config_path, limit=limit, debug=debug, selected_id=selected_id)
 
 
 @app.command()
@@ -135,10 +138,16 @@ def evaluate(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Deprecated alias for `pino refine`."""
-    _run_refine(config_path=config_path, limit=limit, debug=debug)
+    _run_refine(config_path=config_path, limit=limit, debug=debug, selected_id=None)
 
 
-def _run_refine(*, config_path: Path | None, limit: int | None, debug: bool) -> None:
+def _run_refine(
+    *,
+    config_path: Path | None,
+    limit: int | None,
+    debug: bool,
+    selected_id: str | None = None,
+) -> None:
     config = get_config(config_path)
     llm_config = build_refinement_llm_config(config.llm, config.refinement)
     store = get_store(config)
@@ -147,6 +156,14 @@ def _run_refine(*, config_path: Path | None, limit: int | None, debug: bool) -> 
         client=build_llm_client(llm_config),
         config=config.refinement,
     )
+    if selected_id is not None:
+        _run_refine_debug_id(
+            store=store,
+            service=service,
+            llm_config=llm_config,
+            selected_id=selected_id,
+        )
+        return
     result = service.refine_pending(limit=limit, on_progress=print_refinement_progress)
     if debug:
         table = Table("Field", "Value")
@@ -160,6 +177,109 @@ def _run_refine(*, config_path: Path | None, limit: int | None, debug: bool) -> 
     console.print(
         f"Requested {result.requested}; refined {result.refined}; "
         f"items {result.items}; skipped {result.skipped}.",
+    )
+
+
+def _run_refine_debug_id(
+    *,
+    store: DatabaseStore,
+    service: RefinementService,
+    llm_config,
+    selected_id: str,
+) -> None:
+    normalized_id = normalize_refinement_debug_id(selected_id)
+    if not normalized_id:
+        console.print(Text("Refinement id is required.", style="red"))
+        raise typer.Exit(code=1)
+    record, existing_refinement, resolved_kind = resolve_refinement_debug_target(
+        store,
+        normalized_id,
+    )
+    try:
+        result = service.debug_refine_record(record)
+    except LLMError as exc:
+        print_provider_error(exc)
+        raise typer.Exit(code=1) from exc
+    print_refinement_debug_rerun(
+        selected_id=normalized_id,
+        resolved_kind=resolved_kind,
+        provider=llm_config.default_provider,
+        model=llm_config.selected_model(),
+        existing_refinement=existing_refinement,
+        result=result,
+    )
+
+
+def normalize_refinement_debug_id(selected_id: str) -> str:
+    normalized_id = selected_id.strip()
+    if normalized_id.lower().startswith("id "):
+        return normalized_id[3:].strip()
+    return normalized_id
+
+
+def resolve_refinement_debug_target(
+    store: DatabaseStore,
+    selected_id: str,
+) -> tuple[Record, Refinement | None, str]:
+    refinement = store.get_refinement(selected_id)
+    if refinement is not None:
+        record = store.get_record(refinement.record_id)
+        if record is None:
+            console.print(Text("Refinement source record not found.", style="red"))
+            raise typer.Exit(code=1)
+        return record, refinement, "refinement"
+    record = store.get_record(selected_id)
+    if record is not None:
+        return record, None, "record"
+    console.print(Text("Refinement or record id not found.", style="red"))
+    raise typer.Exit(code=1)
+
+
+def print_refinement_debug_rerun(
+    *,
+    selected_id: str,
+    resolved_kind: str,
+    provider: str,
+    model: str,
+    existing_refinement: Refinement | None,
+    result: RefinementDebugResult,
+) -> None:
+    summary = Table("Field", "Value")
+    summary.add_row("selected_id", plain_text(selected_id))
+    summary.add_row("resolved_kind", plain_text(resolved_kind))
+    summary.add_row("persisted", plain_text(False))
+    summary.add_row("provider", plain_text(provider))
+    summary.add_row("model", plain_text(model))
+    summary.add_row("record_id", plain_text(result.record.id))
+    summary.add_row("record_title", plain_text(result.record.title or ""))
+    if existing_refinement is not None:
+        summary.add_row("existing_refinement_id", plain_text(existing_refinement.id))
+        summary.add_row("existing_item_index", plain_text(existing_refinement.item_index))
+        summary.add_row("existing_summary", plain_text(existing_refinement.summary or ""))
+    if result.error is not None:
+        summary.add_row("error", plain_text(result.error))
+    console.print(Panel(summary, title="Refinement dry run", border_style="blue"))
+
+    for message in result.messages:
+        console.print(
+            Panel(
+                plain_text(message.content),
+                title=f"Prompt: {message.role}",
+                border_style="blue",
+            )
+        )
+    console.print(Panel(plain_text(result.raw_response), title="Raw response", border_style="blue"))
+    console.print(
+        Panel(plain_text(json_dumps(result.parsed_response)), title="Parsed response", border_style="blue")
+    )
+    console.print(
+        Panel(
+            plain_text(
+                json_dumps([refinement.model_dump(mode="json") for refinement in result.refinements])
+            ),
+            title="Generated refinements",
+            border_style="blue",
+        )
     )
 
 

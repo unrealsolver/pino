@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-06-10 01:28 Europe/Vilnius - Codex
+
+- Before: Add a debug workflow to rerun a selected event/refinement id without updating the database, returning comprehensive output.
+- Areas: CLI refine command, refinement pipeline/storage, tests, docs/progress.
+- After: Completed at 01:38. Added `pino refine [SELECTED_ID]` dry-run behavior that resolves a refinement id first and record id second, reruns refinement without calling storage replacement, and prints provider/model, target metadata, prompts, raw response, parsed response, generated refinements, and any parse error; removed the initially attempted Web API/UI debug surface.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino refine --help`.
+- Follow-up: None.
+
 ## 2026-06-10 01:21 Europe/Vilnius - Codex
 
 - Before: Add a small event id label to every Web UI event row.

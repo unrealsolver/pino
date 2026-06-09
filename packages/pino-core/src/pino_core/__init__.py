@@ -5,6 +5,7 @@ from pino_core.config import PinoConfig, load_config
 from pino_core.models import ChatMessage, MemoryEntry, Record, Refinement
 from pino_core.pipeline import CheckPipeline, CheckResult, DigestService, SourceCheckResult
 from pino_core.refinement import (
+    RefinementDebugResult,
     RefinementProgress,
     RefinementService,
     build_refinement_llm_config,
@@ -26,6 +27,7 @@ __all__ = [
     "PinoConfig",
     "Record",
     "Refinement",
+    "RefinementDebugResult",
     "RefinementProgress",
     "RefinementService",
     "SQLiteStore",
