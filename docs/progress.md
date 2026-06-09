@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-06-10 00:49 Europe/Vilnius - Codex
+
+- Before: Refactor Web UI `EventRoute` into a route folder with named barrel export, nearby structural components, and low-correlation local utilities.
+- Areas: Frontend route file organization, imports, tests, docs/progress.
+- After: Completed at 00:53. Replaced the flat `routes/EventRoute.tsx` with `routes/EventRoute/`, kept `EventRoute.tsx` as the route shell, added an exports-only `index.ts`, moved header/filter/list/event-row/day-hidden structural components beside the route, moved route-level list/filter helpers to `utils.ts`, and kept the tiny picker coercion helper local to the filter component.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-10 00:39 Europe/Vilnius - Codex
+
+- Before: Replace Web UI filter `useState`/`setFilters` state handling with Mantine 9 `useForm`.
+- Areas: Frontend event route filter form state, tests, docs/progress.
+- After: Completed at 00:41. Added `@mantine/form` 9.3.0 and moved event filter values to a Mantine `useForm<EventFilters>` instance while preserving category/text/score updates, coupled `From` -> `To` window behavior, reset, and `Next month` extension.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
 ## 2026-06-09 18:25 Europe/Vilnius - Codex
 
 - Before: Rework the TanStack Virtual hide/show drift fix because stable item keys plus `measure()` did not resolve row offset errors.
