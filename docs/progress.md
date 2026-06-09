@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-06-10 01:21 Europe/Vilnius - Codex
+
+- Before: Add a small event id label to every Web UI event row.
+- Areas: Frontend event row rendering, tests, docs/progress.
+- After: Completed at 01:22. Added a dimmed `xs` `ID {event.id}` line inside each event row's main content column.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
 ## 2026-06-10 00:49 Europe/Vilnius - Codex
 
 - Before: Refactor Web UI `EventRoute` into a route folder with named barrel export, nearby structural components, and low-correlation local utilities.

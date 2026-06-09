@@ -63,6 +63,12 @@ export function EventLine({
             {event.summary}
           </Text>
         )}
+        <Text size="xs" c="wood.6">
+          ID{" "}
+          <Text component="span" inherit c="wood.7" style={{ userSelect: "all" }}>
+            {event.id}
+          </Text>
+        </Text>
       </div>
       <Group className="eventTags" gap={6} wrap="wrap">
         {categories.map((category) => (
