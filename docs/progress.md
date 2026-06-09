@@ -2,6 +2,126 @@
 
 Newest entries go first.
 
+## 2026-06-09 18:25 Europe/Vilnius - Codex
+
+- Before: Rework the TanStack Virtual hide/show drift fix because stable item keys plus `measure()` did not resolve row offset errors.
+- Areas: Frontend virtualized event list measurement/reset behavior, tests, docs/progress.
+- After: Completed at 18:29. Moved window virtualization into a keyed `VirtualEventList` child so row identity changes remount the virtualizer, kept TanStack Virtual keyed by stable day/event row keys, and replaced render-time `listRef.current?.offsetTop` reads with layout-effect-managed `scrollMargin` state to prevent offset jumps after hide/reveal or other visibility renders.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-09 17:56 Europe/Vilnius - Codex
+
+- Before: Fix TanStack Virtual row-position drift after hiding/revealing events or changing visibility.
+- Areas: Frontend virtualizer row identity/measurement, tests, docs/progress.
+- After: Completed at 17:59. Added stable TanStack Virtual item keys based on the flattened day/event row keys and forced the virtualizer to remeasure whenever the visible row list changes, preventing stale index-based measurements after hide/show or filter visibility changes.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-09 15:36 Europe/Vilnius - Codex
+
+- Before: Normalize Web UI styling toward Mantine component props and keep CSS only for layout mechanics, using Mantine xs-xl token variables where CSS remains.
+- Areas: Frontend route component props, CSS, tests, docs/progress.
+- After: Completed at 15:39. Moved filter/empty/event row/day-header visual styling to Mantine props where practical (`bg`, `withBorder`, `p`, `radius`, `c`, `opacity`, `m`) and trimmed CSS back toward virtualization/grid/layout concerns; remaining CSS now uses Mantine variables for spacing, radius, shadows, and palette tokens instead of hard-coded rem/hex values where practical.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-09 03:06 Europe/Vilnius - Codex
+
+- Before: Persist Web UI hidden event preferences in local storage using Mantine's `useLocalStorage`.
+- Areas: Frontend hide/show state, tests, docs/progress.
+- After: Completed at 03:07. Replaced in-memory hidden event/show-hidden state with Mantine `useLocalStorage`, storing hidden event ids under `pino-web-hidden-event-ids` and the `Show hidden` checkbox under `pino-web-show-hidden-events`; kept derived `Set` lookup for rendering.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-09 03:03 Europe/Vilnius - Codex
+
+- Before: Make Web UI day headers harder to miss while keeping the virtualized list simple and non-sticky.
+- Areas: Frontend day-header styling, tests, docs/progress.
+- After: Completed at 03:04. Made day headers more prominent with a compact tinted band, stronger amber accent border, heavier title text, thicker separator line, and subtle depth while avoiding sticky behavior that conflicts with the absolute-positioned virtual rows.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: If stronger static headers still are not enough, implement a separate floating current-day indicator driven by the virtualizer visible range instead of CSS sticky.
+
+## 2026-06-08 23:41 Europe/Vilnius - Codex
+
+- Before: Refactor Web UI hide/show controls to use a global `Show hidden` checkbox, passive day hidden counts, and per-row eye/eye-off icons.
+- Areas: Frontend event route hide state rendering, styles, tests, docs/progress.
+- After: Completed at 23:42. Replaced the previous per-day undo button with a header `Show hidden` checkbox, changed day headers to passive `N hidden` text, kept hidden rows in the virtual list only when `Show hidden` is enabled, and made visible rows use an eye-off icon while hidden rows use a regular eye icon to restore them.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-08 23:21 Europe/Vilnius - Codex
+
+- Before: Fix Web UI long-event overflow rendering showing `NaNd` when original event bounds are missing or invalid.
+- Areas: Frontend event overflow formatter, tests, docs/progress.
+- After: Completed at 23:22. Made `original_starts_at`/`original_ends_at` optional in the frontend response type and hardened the overflow formatter to ignore missing or invalid dates instead of rendering `NaNd`; added regression tests for missing and invalid original bounds.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Restart the frontend dev server if it does not hot-reload the type/formatter change.
+
+## 2026-06-08 23:02 Europe/Vilnius - Codex
+
+- Before: Show long-event overflow context in the Web UI while keeping visible event dates clipped to the active filter window.
+- Areas: Web API event response shape, frontend event time metadata rendering, tests, docs/progress.
+- After: Completed at 23:04. Added original event bounds to `/api/events` responses while keeping visible `starts_at`/`ends_at` clipped to the active filter window; the UI now renders clipped multi-day occurrences as `All day` with an overflow marker like `-5d | +20d` when the original event extends before/after the visible range.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check apps/pino-web/src/pino_web apps/pino-web/tests/test_app.py`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Restart any running `pino-web` API process to expose the new original-bound fields.
+
+## 2026-06-08 22:58 Europe/Vilnius - Codex
+
+- Before: Diagnose and fix `/api/events` returning events outside an explicit `date_from`/`date_to` range.
+- Areas: Web API date parsing/window handling, storage event query tests, docs/progress.
+- After: Completed at 22:59. Kept storage overlap matching intact, but changed Web API event serialization to clip long-running event `starts_at`/`ends_at` to the requested window so `/api/events?date_from=2026-06-07T21:00:00.000Z&date_to=2026-07-08T21:00:00.000Z` cannot return response timestamps outside that range.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py packages/pino-core/tests/test_storage.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check apps/pino-web/src/pino_web apps/pino-web/tests/test_app.py packages/pino-core/src/pino_core/storage.py packages/pino-core/tests/test_storage.py`; direct in-memory smoke check for the reported UTC window; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `git diff --check`.
+- Follow-up: Restart any running `pino-web` API process to pick up the serialization fix.
+
+## 2026-06-08 17:45 Europe/Vilnius - Codex
+
+- Before: Improve Web UI large-list performance by defaulting date range to 30 days, adding a `Next month` range extension button, and rendering event rows with TanStack React Virtual.
+- Areas: Frontend dependencies, event route date/window behavior, virtualized rendering, tests, docs/progress.
+- After: Completed at 21:44. Added `@tanstack/react-virtual` `^3.14.2`; changed the default Web UI date range to today morning through +30 days; made `From` changes and reset actions maintain a 30-day window; added a bottom `Next month` button that extends `dateTo` by another 30 days; replaced full day/event rendering with a window-virtualized flattened list of day headers and visible event occurrences; updated the Web UI spec.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun add @tanstack/react-virtual`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Vite build still succeeds with the existing bundle-size warning; consider code splitting later.
+
+## 2026-06-08 16:01 Europe/Vilnius - Codex
+
+- Before: Add TanStack Query for Web UI API fetching and update `docs/web-ui.md` to include it in the frontend stack.
+- Areas: Frontend dependencies/provider/API hook usage, Web UI spec, tests, docs/progress.
+- After: Completed at 16:11. Added `@tanstack/react-query` `^5.101.0`, wrapped the app in `QueryClientProvider`, moved event fetching to `useQuery` with stable filter-derived keys and abort-signal forwarding, kept previous data during filter refreshes, and documented TanStack Query in the Web UI frontend stack.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun add @tanstack/react-query`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Vite build still succeeds with a bundle-size warning, now larger after adding TanStack Query; consider code splitting later.
+
+## 2026-06-08 15:46 Europe/Vilnius - Codex
+
+- Before: Update the Web UI from Mantine 8.x to Mantine 9.x and apply any required compatibility fixes.
+- Areas: Frontend dependencies, Mantine theme/provider usage, tests, docs/progress.
+- After: Completed at 15:48. Updated `@mantine/core`, `@mantine/dates`, and `@mantine/hooks` to `9.3.0`; kept React 19.2.x unchanged; added `defaultRadius: "sm"` to preserve the pre-v9 default radius behavior for future Mantine components.
+- Verification: `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun add @mantine/core@9.3.0 @mantine/dates@9.3.0 @mantine/hooks@9.3.0`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Vite build still succeeds with the existing bundle-size warning; consider code splitting later if needed.
+
+## 2026-06-08 15:41 Europe/Vilnius - Codex
+
+- Before: Compact the recent Web UI/frontend progress entries into a shorter summary while preserving the substantive implementation and verification history.
+- Areas: `docs/progress.md`.
+- After: Completed at 15:41. Replaced four detailed Web UI/frontend entries from 2026-06-07 with one compact implementation summary and retained verification/follow-up highlights.
+- Verification: `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-07 19:09-22:28 Europe/Vilnius - Codex
+
+- Before: Implement and iterate on the first Web UI slice from `docs/web-ui.md`: FastAPI event query API plus React/Vite/Mantine SPA at `/event/`.
+- Areas: `apps/pino-web`, `web`, storage event query helpers, tests, `pyproject.toml`, `uv.lock`, `docs/progress.md`.
+- After: Added `pino-web` FastAPI app with `/api/events`, 60 rpm in-memory throttling, bounded query validation, local-time event serialization, explicit `--config`/host/port CLI options, and storage-backed filtering by date overlap, category, score, and text. Added Vite React/Mantine SPA at `/event/` with amber/wood styling, filters, English UI with `en-LT` regional date/time formatting and `YYYY-MM-DD HH:mm` picker display, calendar-style multi-day expansion, per-event `Hide event` controls that hide all occurrences, and one-step per-day `Hide back` restore for the last hidden event.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv lock`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun install`; `UV_CACHE_DIR=/tmp/uv-cache uv sync --all-packages`; targeted backend/frontend tests; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`; local `curl` smoke checks for API and `/event/`.
+- Follow-up: Vite build succeeds but reports a React/Mantine bundle-size warning; consider code splitting if the UI grows. If expanded long-running events make the default one-year view too dense, add a narrower default end date or an ongoing-events lane.
+
+## 2026-06-05 01:57 Europe/Vilnius - Codex
+
+- Before: Fix confusing chat follow-ups where Pino contradicts a previous `records.relevant` result instead of resolving a named event from prior context or targeted lookup.
+- Areas: Chat prompt/tool guidance, relevant-record lookup behavior, tests, progress log.
+- After: Completed at 01:59. Added a `query` filter to `records.relevant` so named follow-up events can be resolved inside the known date window, kept URLs in the filtered result for `web.open`, and updated the chat prompt to resolve named events before opening their URLs instead of rerunning broad lists.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_tools.py packages/pino-core/tests/test_chat.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/tools.py packages/pino-core/src/pino_core/chat.py packages/pino-core/tests/test_tools.py packages/pino-core/tests/test_chat.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: Watch live chat behavior to confirm the model performs the second `web.open` round after resolving a named event URL.
+
 ## 2026-06-04 01:47 Europe/Vilnius - Codex
 
 - Before: Format non-chat CLI source labels as `{web|tg}:{name}` while leaving Pino chat output unchanged.

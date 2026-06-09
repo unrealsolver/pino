@@ -199,6 +199,64 @@ def test_records_relevant_accepts_single_day_local_date_range(
     assert "Saturday high score" not in output
 
 
+def test_records_relevant_filters_by_text_query(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "pino_core.tools.utc_now",
+        lambda: datetime(2026, 6, 5, 21, 0, tzinfo=timezone.utc),
+    )
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    coffee = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Morning coffee tour: Vilnius hidden treasures",
+            text="Coffee walk text",
+            url="https://example.test/coffee",
+        ),
+    )
+    pool = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Pool for Everyone",
+            text="Pool event text",
+            url="https://example.test/pool",
+        ),
+    )
+    for inserted in [coffee, pool]:
+        store.replace_refinements(
+            inserted.record.id,
+            [
+                Refinement(
+                    record_id=inserted.record.id,
+                    content_kind="event",
+                    summary=inserted.record.title,
+                    relevant_from=datetime(2026, 6, 7, 6, 0, tzinfo=timezone.utc),
+                    category_scores={"social": 0.0},
+                    refiner="test",
+                ),
+            ],
+        )
+
+    output = build_tools(store, sources=[])["records.relevant"].run(
+        {
+            "limit": 20,
+            "date_from": "2026-06-07",
+            "date_to": "2026-06-07",
+            "min_score": 0,
+            "query": "Morning coffee tour",
+        },
+    )
+
+    assert "Morning coffee tour" in output
+    assert "[url: https://example.test/coffee]" in output
+    assert "Pool for Everyone" not in output
+
+
 def test_records_relevant_excludes_unrefined_records(
     tmp_path: Path,
     monkeypatch,
@@ -310,6 +368,7 @@ def test_tool_descriptions_include_records_relevant_as_preferred_path(tmp_path: 
 
     assert "records.relevant" in descriptions
     assert "Preferred for event recommendations" in descriptions
+    assert '"query": "Morning coffee tour"' in descriptions
     assert "records.list" in descriptions
     assert "inspection/debug only" in descriptions
     assert "web.open" in descriptions

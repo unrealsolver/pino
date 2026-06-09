@@ -116,6 +116,13 @@ class RecordRefinementStatus:
         return bool(self.refinements)
 
 
+@dataclass(frozen=True)
+class EventQueryResult:
+    record: Record
+    refinement: Refinement
+    score: float
+
+
 class DatabaseStore:
     def __init__(self, database_url: str) -> None:
         url = make_url(database_url)
@@ -251,6 +258,43 @@ class DatabaseStore:
             )
             return [_record_with_refinement_from_row(row) for row in result]
 
+    def query_events(
+        self,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        categories: list[str] | None = None,
+        min_score: float = 0.0,
+        text_query: str = "",
+        limit: int = 200,
+        scan_limit: int = 2000,
+    ) -> list[EventQueryResult]:
+        categories = [category for category in categories or [] if category]
+        limit = max(1, min(limit, 500))
+        scan_limit = max(limit, min(scan_limit, 5000))
+        min_score = max(0.0, min(float(min_score), 1.0))
+        query = text_query.strip().casefold()
+        rows = self.list_relevant_refinements(
+            window_start=window_start,
+            window_end=window_end,
+            limit=scan_limit,
+        )
+        results: list[EventQueryResult] = []
+        for record, refinement in rows:
+            score = _matching_category_score(
+                refinement,
+                categories=categories,
+                min_score=min_score,
+            )
+            if score is None:
+                continue
+            if query and query not in _event_search_text(record, refinement):
+                continue
+            results.append(EventQueryResult(record=record, refinement=refinement, score=score))
+            if len(results) >= limit:
+                break
+        return results
+
     def replace_refinements(self, record_id: str, refinements: list[Refinement]) -> None:
         with Session(self.engine) as session:
             session.execute(
@@ -347,3 +391,36 @@ def _record_with_refinement_from_row(row: Any) -> tuple[Record, Refinement]:
         {column.name: mapping[column] for column in refinements_table.columns},
     )
     return record, refinement
+
+
+def _matching_category_score(
+    refinement: Refinement,
+    *,
+    categories: list[str],
+    min_score: float,
+) -> float | None:
+    scores = refinement.category_scores
+    if categories:
+        selected_scores = [scores.get(category, 0.0) for category in categories]
+        best_score = max(selected_scores, default=0.0)
+        if best_score <= 0.0 or best_score < min_score:
+            return None
+        return best_score
+    best_score = max(scores.values(), default=0.0)
+    if min_score > 0.0 and best_score < min_score:
+        return None
+    return best_score
+
+
+def _event_search_text(record: Record, refinement: Refinement) -> str:
+    return "\n".join(
+        part
+        for part in (
+            record.title,
+            record.text,
+            refinement.summary,
+            refinement.location,
+            record.url,
+        )
+        if part
+    ).casefold()

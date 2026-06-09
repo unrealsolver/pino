@@ -75,6 +75,7 @@ def build_tools(
         window_days = int(arguments.get("days", arguments.get("window_days", 14)))
         min_score = float(arguments.get("min_score", 0.0))
         categories = _coerce_categories(arguments.get("categories", []))
+        query = str(arguments.get("query", arguments.get("q", ""))).strip()
         scan_limit = _coerce_int(arguments.get("scan_limit"), default=1000)
         scan_limit = max(limit, min(scan_limit, 5000))
         window = _resolve_relevant_window(arguments, default_days=window_days)
@@ -90,10 +91,12 @@ def build_tools(
             (record, refinement)
             for record, refinement in records
             if _matches_relevant_filters(refinement, min_score=min_score, categories=categories)
+            and _matches_text_query(record, refinement, query)
         ]
-        if categories or min_score > 0:
+        if query or categories or min_score > 0:
             filtered.sort(
                 key=lambda item: (
+                    -_text_query_score(item[0], item[1], query),
                     -_relevant_filter_score(
                         item[1],
                         min_score=min_score,
@@ -171,7 +174,7 @@ def build_tools(
         ),
         Tool(
             "records.relevant",
-            'Preferred for event recommendations and upcoming/current plans. Returns refinement-backed records with taxonomy scores, local time, location, URL, and summary. For calendar-specific queries, pass local inclusive ISO dates in "date_from" and "date_to"; use the same date for a single day such as next Friday. Arguments JSON example: {"limit": 20, "date_from": "2026-06-05", "date_to": "2026-06-05", "min_score": 0.3, "categories": ["metal_music"], "scan_limit": 1000}.',
+            'Preferred for event recommendations and upcoming/current plans. Returns refinement-backed records with taxonomy scores, local time, location, URL, and summary. For calendar-specific queries, pass local inclusive ISO dates in "date_from" and "date_to"; use the same date for a single day such as next Friday. For follow-up questions about a named event, pass "query". Arguments JSON example: {"limit": 20, "date_from": "2026-06-05", "date_to": "2026-06-05", "min_score": 0.3, "categories": ["metal_music"], "query": "Morning coffee tour", "scan_limit": 1000}.',
             records_relevant,
         ),
         Tool(
@@ -281,6 +284,50 @@ def _matches_relevant_filters(
     if min_score > 0:
         return any(score >= min_score for score in refinement.category_scores.values())
     return True
+
+
+def _matches_text_query(record: Record, refinement: Refinement, query: str) -> bool:
+    if not query:
+        return True
+    terms = [term for term in query.lower().split() if term]
+    if not terms:
+        return True
+    haystack = _record_search_text(record, refinement)
+    return all(term in haystack for term in terms)
+
+
+def _text_query_score(record: Record, refinement: Refinement, query: str) -> float:
+    if not query:
+        return 0.0
+    normalized_query = query.lower().strip()
+    if not normalized_query:
+        return 0.0
+    title = (record.title or "").lower()
+    summary = (refinement.summary or "").lower()
+    location = (refinement.location or "").lower()
+    score = 0.0
+    if normalized_query in title:
+        score += 3.0
+    if normalized_query in summary:
+        score += 2.0
+    if normalized_query in location:
+        score += 1.0
+    score += sum(1.0 for term in normalized_query.split() if term in title)
+    return score
+
+
+def _record_search_text(record: Record, refinement: Refinement) -> str:
+    return " ".join(
+        value.lower()
+        for value in [
+            record.title or "",
+            record.text,
+            record.url or "",
+            refinement.summary or "",
+            refinement.location or "",
+        ]
+        if value
+    )
 
 
 def _relevant_filter_score(

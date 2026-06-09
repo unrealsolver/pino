@@ -364,6 +364,8 @@ def test_chat_agent_prompt_forbids_tool_call_wrapper_syntax(tmp_path: Path) -> N
     assert "You may request up to 3 bounded local tool calls at a time." in prompt
     assert "For a calendar-specific request such as next Friday or weekend" in prompt
     assert "Use the same date for both fields for a single-day request." in prompt
+    assert "For follow-up questions about a named event" in prompt
+    assert "then call web.open on its URL when a URL is available" in prompt
     assert '{"tools": [{"tool": "tool.name", "arguments": {}}' in prompt
     assert "do not use markdown fences, provider-specific tool-call wrappers" in prompt
     assert "CLI-style flags" in prompt

@@ -246,6 +246,69 @@ def test_list_relevant_refinements_filters_by_overlap_and_kind(tmp_path: Path) -
     ]
 
 
+def test_query_events_filters_by_category_score_and_text(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    matching = store.add_record(
+        Record(kind="event", source="test", title="Synth workshop", text="Hands-on synth jam")
+    )
+    wrong_category = store.add_record(
+        Record(kind="event", source="test", title="Metal show", text="Concert")
+    )
+    weak_score = store.add_record(
+        Record(kind="event", source="test", title="Synth lecture", text="Lecture")
+    )
+    store.replace_refinements(
+        matching.record.id,
+        [
+            Refinement(
+                record_id=matching.record.id,
+                content_kind="event",
+                summary="Open synth jam",
+                relevant_from=datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc),
+                category_scores={"electronic_music": 0.9, "workshop": 0.4},
+                refiner="test",
+            ),
+        ],
+    )
+    store.replace_refinements(
+        wrong_category.record.id,
+        [
+            Refinement(
+                record_id=wrong_category.record.id,
+                content_kind="event",
+                summary="Metal concert",
+                relevant_from=datetime(2026, 5, 23, 13, 0, tzinfo=timezone.utc),
+                category_scores={"metal_music": 0.9},
+                refiner="test",
+            ),
+        ],
+    )
+    store.replace_refinements(
+        weak_score.record.id,
+        [
+            Refinement(
+                record_id=weak_score.record.id,
+                content_kind="event",
+                summary="Synth talk",
+                relevant_from=datetime(2026, 5, 23, 14, 0, tzinfo=timezone.utc),
+                category_scores={"electronic_music": 0.2},
+                refiner="test",
+            ),
+        ],
+    )
+
+    rows = store.query_events(
+        window_start=datetime(2026, 5, 23, 0, 0, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 24, 0, 0, tzinfo=timezone.utc),
+        categories=["electronic_music"],
+        min_score=0.8,
+        text_query="jam",
+    )
+
+    assert [(row.record.id, row.score) for row in rows] == [(matching.record.id, 0.9)]
+
+
 def test_source_cursor_round_trip(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()

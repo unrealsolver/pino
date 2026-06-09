@@ -170,6 +170,9 @@ def render_chat_system_prompt(
         "For a calendar-specific request such as next Friday or weekend, compute the local "
         'inclusive range from Current time and call records.relevant with "date_from" and "date_to". '
         "Use the same date for both fields for a single-day request.\n"
+        "For follow-up questions about a named event, do not rerun a broad event list and guess. "
+        "Resolve the specific event with records.relevant using query and the known date window; "
+        "then call web.open on its URL when a URL is available.\n"
         "For tool calls, do not use markdown fences, provider-specific tool-call wrappers, "
         "=> syntax, single quotes, or CLI-style flags.\n"
         "Use these forms for tool calls:\n"
