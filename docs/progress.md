@@ -2,6 +2,22 @@
 
 Newest entries go first.
 
+## 2026-06-11 01:46 Europe/Vilnius - Codex
+
+- Before: Implement optional refinement schedules with backend occurrence projection and API/frontend naming using `refinement_id` plus `occurrence_id`.
+- Areas: Refinement specs, core model/storage/refinement parsing, Web API event projection, frontend event row identity, tests, docs/progress.
+- After: Completed at 01:54. Added validated optional `schedule` JSON to refinements, SQLite schedule column migration, LLM schedule extraction/prompt support, backend occurrence projection for unscheduled multiday events plus `opening_hours` and `recurrence` schedules, Web API rows with `refinement_id`/`occurrence_id` and `relevant_from`/`relevant_to`, and frontend row/hide identity updates.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `git diff --check`.
+- Follow-up: Vite still reports the existing large bundle chunk warning during build.
+
+## 2026-06-11 01:11 Europe/Vilnius - Codex
+
+- Before: Update refinement specs with the first optional schedule shape for event opening-hours and weekly recurrence, using `days` rules only.
+- Areas: Refinement design docs, docs/progress.
+- After: Completed at 01:11. Added optional `schedule` to the refinement schema, documented all-day fallback, specified first-version `opening_hours` and `recurrence` JSON shapes with `days` rules only, and changed the backlog item to implementation of extraction/storage/projection.
+- Verification: `git diff --check`.
+- Follow-up: None.
+
 ## 2026-06-11 00:55 Europe/Vilnius - Codex
 
 - Before: Add a refinement todo to research embedding-generated vectors for deriving categories and category scores instead of direct LLM categorization/scoring.

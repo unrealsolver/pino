@@ -66,7 +66,7 @@ export function EventLine({
         <Text size="xs" c="wood.6">
           ID{" "}
           <Text component="span" inherit c="wood.7" style={{ userSelect: "all" }}>
-            {event.id}
+            {event.refinement_id}
           </Text>
         </Text>
       </div>

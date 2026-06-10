@@ -90,6 +90,12 @@ def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
     inserted = store.add_record(Record(kind="event", source="test", title="A", text="A"))
     relevant_from = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
     relevant_to = datetime(2026, 5, 23, 14, 0, tzinfo=timezone.utc)
+    schedule = {
+        "timezone": "Europe/Vilnius",
+        "kind": "recurrence",
+        "rules": [{"days": ["TU"], "start": "19:00", "end": None}],
+        "exceptions": [],
+    }
 
     assert [record.id for record in store.list_unrefined_records()] == [inserted.record.id]
 
@@ -102,6 +108,7 @@ def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
                 summary="A refined",
                 relevant_from=relevant_from,
                 relevant_to=relevant_to,
+                schedule=schedule,
                 location="Loftas",
                 category_scores={"metal_music": 0.75},
                 refiner="test",
@@ -114,6 +121,7 @@ def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
     assert refinement.summary == "A refined"
     assert refinement.relevant_from == relevant_from
     assert refinement.relevant_to == relevant_to
+    assert refinement.schedule == schedule
     assert refinement.category_scores == {"metal_music": 0.75}
     assert store.get_record(inserted.record.id) == inserted.record
     assert store.get_record("missing") is None

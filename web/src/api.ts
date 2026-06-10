@@ -1,6 +1,6 @@
 export type EventItem = {
-  id: string;
-  record_id: string;
+  refinement_id: string;
+  occurrence_id: string;
   title: string;
   source: string;
   url: string | null;
@@ -8,8 +8,8 @@ export type EventItem = {
   location: string | null;
   starts_at: string;
   ends_at: string | null;
-  original_starts_at?: string | null;
-  original_ends_at?: string | null;
+  relevant_from: string;
+  relevant_to: string | null;
   category_scores: Record<string, number>;
   matching_score: number;
 };

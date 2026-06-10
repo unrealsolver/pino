@@ -10,7 +10,7 @@ from typing import Any, Literal
 from pino_llm import LLMClient, LLMMessage
 
 from pino_core.config import RefinementConfig
-from pino_core.models import Record, Refinement
+from pino_core.models import Record, Refinement, normalize_schedule
 from pino_core.storage import DatabaseStore
 
 
@@ -180,6 +180,7 @@ class RefinementService:
             summary=_optional_string(raw_item.get("summary")),
             relevant_from=_optional_datetime(raw_item.get("relevant_from")),
             relevant_to=_optional_datetime(raw_item.get("relevant_to")),
+            schedule=_optional_schedule(raw_item.get("schedule")),
             location=_optional_string(raw_item.get("location")),
             category_scores=_category_scores(raw_item.get("category_scores"), self.config),
             refiner=f"llm:{self.config.model}",
@@ -218,6 +219,7 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         "Return strict JSON only. No markdown, no prose outside JSON.\n"
         "A source record may describe multiple events: return one item per event.\n"
         "Use ISO 8601 timestamps with timezone offsets. Use null when unknown.\n"
+        "For event schedules, use null when unavailable. If present, use only the documented schedule shapes and rules with days; do not include a frequency field.\n"
         "Use only configured category keys and scores from 0 to 1.\n\n"
         "Categories:\n"
         f"{categories}\n\n"
@@ -229,6 +231,7 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         '      "summary": "concise normalized summary",\n'
         '      "relevant_from": "ISO 8601 timestamp or null",\n'
         '      "relevant_to": "ISO 8601 timestamp or null",\n'
+        '      "schedule": null,\n'
         '      "location": "venue or useful human-readable place, or null",\n'
         '      "category_scores": {"category_name": 0.0}\n'
         "    }\n"
@@ -303,6 +306,10 @@ def _optional_datetime(value: Any) -> datetime | None:
         return datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _optional_schedule(value: Any) -> dict[str, Any] | None:
+    return normalize_schedule(value)
 
 
 def _emit_progress(

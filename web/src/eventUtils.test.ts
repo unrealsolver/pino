@@ -14,35 +14,41 @@ import type { EventItem } from "./api";
 describe("event utilities", () => {
   it("groups events by local day and sorts by start time", () => {
     const days = groupEventsByDay([
-      event({ id: "late", starts_at: "2026-06-10T20:00:00+03:00" }),
-      event({ id: "early", starts_at: "2026-06-10T10:00:00+03:00" }),
-      event({ id: "next", starts_at: "2026-06-11T09:00:00+03:00" })
+      event({ refinement_id: "late", starts_at: "2026-06-10T20:00:00+03:00" }),
+      event({ refinement_id: "early", starts_at: "2026-06-10T10:00:00+03:00" }),
+      event({ refinement_id: "next", starts_at: "2026-06-11T09:00:00+03:00" })
     ]);
 
     expect(days).toHaveLength(2);
-    expect(days[0].events.map((row) => row.event.id)).toEqual(["early", "late"]);
-    expect(days[1].events.map((row) => row.event.id)).toEqual(["next"]);
+    expect(days[0].events.map((row) => row.event.refinement_id)).toEqual(["early", "late"]);
+    expect(days[1].events.map((row) => row.event.refinement_id)).toEqual(["next"]);
   });
 
-  it("expands ongoing events across each visible day", () => {
+  it("uses backend-projected occurrence rows as-is", () => {
     const days = groupEventsByDay(
       [
         event({
-          id: "ongoing",
-          starts_at: "2025-01-01T02:00:00+02:00",
-          ends_at: "2027-01-01T01:59:59+02:00"
+          refinement_id: "ongoing",
+          occurrence_id: "ongoing:2026-06-07",
+          starts_at: "2026-06-07T00:00:00+03:00",
+          ends_at: "2026-06-08T00:00:00+03:00"
         }),
-        event({ id: "today", starts_at: "2026-06-07T10:00:00+03:00" })
+        event({
+          refinement_id: "ongoing",
+          occurrence_id: "ongoing:2026-06-08",
+          starts_at: "2026-06-08T00:00:00+03:00",
+          ends_at: "2026-06-09T00:00:00+03:00"
+        }),
+        event({ refinement_id: "today", starts_at: "2026-06-07T10:00:00+03:00" })
       ],
       new Date("2026-06-07T00:00:00+03:00"),
       new Date("2026-06-09T00:00:00+03:00")
     );
 
     expect(days[0].key).toBe("2026-06-07");
-    expect(days).toHaveLength(3);
-    expect(days[0].events.map((row) => row.event.id)).toEqual(["ongoing", "today"]);
-    expect(days[1].events.map((row) => row.event.id)).toEqual(["ongoing"]);
-    expect(days[2].events.map((row) => row.event.id)).toEqual(["ongoing"]);
+    expect(days).toHaveLength(2);
+    expect(days[0].events.map((row) => row.event.refinement_id)).toEqual(["ongoing", "today"]);
+    expect(days[1].events.map((row) => row.event.refinement_id)).toEqual(["ongoing"]);
   });
 
   it("formats time ranges and top categories", () => {
@@ -80,8 +86,8 @@ describe("event utilities", () => {
     const row = event({
       starts_at: "2026-06-08T00:00:00+03:00",
       ends_at: "2026-06-28T00:00:00+03:00",
-      original_starts_at: "2026-06-03T00:00:00+03:00",
-      original_ends_at: "2026-07-18T00:00:00+03:00"
+      relevant_from: "2026-06-03T00:00:00+03:00",
+      relevant_to: "2026-07-18T00:00:00+03:00"
     });
 
     expect(formatEventOverflow(row)).toBe("-5d | +20d");
@@ -91,8 +97,8 @@ describe("event utilities", () => {
     const row = event({
       starts_at: "2026-06-08T00:00:00+03:00",
       ends_at: "2026-06-28T00:00:00+03:00",
-      original_starts_at: undefined,
-      original_ends_at: undefined
+      relevant_from: "",
+      relevant_to: null
     });
 
     expect(formatEventOverflow(row)).toBeNull();
@@ -102,8 +108,8 @@ describe("event utilities", () => {
     const row = event({
       starts_at: "2026-06-08T00:00:00+03:00",
       ends_at: "2026-06-28T00:00:00+03:00",
-      original_starts_at: "not-a-date",
-      original_ends_at: "also-not-a-date"
+      relevant_from: "not-a-date",
+      relevant_to: "also-not-a-date"
     });
 
     expect(formatEventOverflow(row)).toBeNull();
@@ -126,8 +132,8 @@ describe("event utilities", () => {
 
 function event(overrides: Partial<EventItem> = {}): EventItem {
   return {
-    id: "event",
-    record_id: "record",
+    refinement_id: "event",
+    occurrence_id: "event:2026-06-10T1000",
     title: "Event",
     source: "test",
     url: null,
@@ -135,8 +141,8 @@ function event(overrides: Partial<EventItem> = {}): EventItem {
     location: null,
     starts_at: "2026-06-10T10:00:00+03:00",
     ends_at: null,
-    original_starts_at: "2026-06-10T10:00:00+03:00",
-    original_ends_at: null,
+    relevant_from: "2026-06-10T10:00:00+03:00",
+    relevant_to: null,
     category_scores: {},
     matching_score: 0,
     ...overrides

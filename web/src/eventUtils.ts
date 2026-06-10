@@ -44,11 +44,11 @@ export function defaultDateTo(dateFrom: Date): Date {
 
 export function groupEventsByDay(
   events: EventItem[],
-  windowStart?: Date,
-  windowEnd?: Date
+  _windowStart?: Date,
+  _windowEnd?: Date
 ): EventDay[] {
   const grouped = new Map<string, EventOccurrence[]>();
-  const rows = events.flatMap((event) => expandEventOccurrences(event, windowStart, windowEnd));
+  const rows = events.flatMap((event) => eventOccurrence(event));
   rows.sort(compareOccurrences);
   for (const row of rows) {
     const key = localDateKey(row.day);
@@ -63,31 +63,12 @@ export function groupEventsByDay(
   }));
 }
 
-function expandEventOccurrences(
-  event: EventItem,
-  windowStart?: Date,
-  windowEnd?: Date
-): EventOccurrence[] {
+function eventOccurrence(event: EventItem): EventOccurrence[] {
   const start = new Date(event.starts_at);
-  if (!event.ends_at) {
-    if ((windowStart && start < windowStart) || (windowEnd && start > windowEnd)) {
-      return [];
-    }
-    const day = startOfLocalDay(start);
-    return [{ key: `${event.id}:${localDateKey(day)}`, event, day }];
-  }
-  const end = new Date(event.ends_at);
-  const firstDay = startOfLocalDay(maxDate(start, windowStart));
-  const lastDay = startOfLocalDay(minDate(end, windowEnd));
-  if (lastDay < firstDay) {
+  if (Number.isNaN(start.getTime())) {
     return [];
   }
-
-  const occurrences: EventOccurrence[] = [];
-  for (let day = firstDay; day <= lastDay; day = addDays(day, 1)) {
-    occurrences.push({ key: `${event.id}:${localDateKey(day)}`, event, day });
-  }
-  return occurrences;
+  return [{ key: event.occurrence_id, event, day: startOfLocalDay(start) }];
 }
 
 export function formatTimeRange(event: EventItem, occurrenceDay?: Date): string {
@@ -120,10 +101,10 @@ export function formatEventOverflow(event: EventItem): string | null {
   if (!visibleStart) {
     return null;
   }
-  const originalStart = parseValidDate(event.original_starts_at);
+  const originalStart = parseValidDate(event.relevant_from);
   const beforeDays = originalStart ? diffCalendarDays(originalStart, visibleStart) : 0;
   const visibleEnd = parseValidDate(event.ends_at);
-  const originalEnd = parseValidDate(event.original_ends_at);
+  const originalEnd = parseValidDate(event.relevant_to);
   const afterDays = visibleEnd && originalEnd ? diffCalendarDays(visibleEnd, originalEnd) : 0;
   if (beforeDays <= 0 && afterDays <= 0) {
     return null;
@@ -144,20 +125,6 @@ function compareOccurrences(a: EventOccurrence, b: EventOccurrence): number {
     a.day.getTime() - b.day.getTime() ||
     new Date(a.event.starts_at).getTime() - new Date(b.event.starts_at).getTime()
   );
-}
-
-function maxDate(left: Date, right?: Date): Date {
-  if (!right || left >= right) {
-    return left;
-  }
-  return right;
-}
-
-function minDate(left: Date, right?: Date): Date {
-  if (!right || left <= right) {
-    return left;
-  }
-  return right;
 }
 
 function startOfLocalDay(value: Date): Date {

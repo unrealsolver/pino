@@ -8,7 +8,13 @@ from fastapi import HTTPException
 from pino_core.config import PinoConfig, RefinementConfig, StorageConfig, TaxonomyCategoryConfig
 from pino_core.models import Record, Refinement
 from pino_core.storage import SQLiteStore
-from pino_web.app import MAX_QUERY_DAYS, _resolve_window, _to_event_item, _validate_categories, create_app
+from pino_web.app import (
+    MAX_QUERY_DAYS,
+    _resolve_window,
+    _to_event_items,
+    _validate_categories,
+    create_app,
+)
 
 
 def test_app_registers_event_route_and_configured_store(tmp_path: Path) -> None:
@@ -52,13 +58,20 @@ def test_event_item_serializes_refinement_with_local_time(tmp_path: Path) -> Non
         min_score=0.7,
     )
 
-    item = _to_event_item(result[0], timezone.utc)
+    item = _to_event_items(
+        result[0],
+        timezone.utc,
+        window_start=datetime(2026, 6, 10, 0, 0, tzinfo=timezone.utc),
+        window_end=datetime(2026, 6, 11, 0, 0, tzinfo=timezone.utc),
+    )[0]
 
+    assert item.refinement_id == result[0].refinement.id
+    assert item.occurrence_id.startswith(result[0].refinement.id)
     assert item.title == "Synth workshop"
     assert item.summary == "Open synth jam"
     assert item.matching_score == 0.8
     assert item.starts_at == datetime(2026, 6, 10, 15, 0, tzinfo=timezone.utc)
-    assert item.original_starts_at == datetime(2026, 6, 10, 15, 0, tzinfo=timezone.utc)
+    assert item.relevant_from == datetime(2026, 6, 10, 15, 0, tzinfo=timezone.utc)
 
 
 def test_event_item_clips_multiday_event_to_query_window(tmp_path: Path) -> None:
@@ -83,17 +96,114 @@ def test_event_item_clips_multiday_event_to_query_window(tmp_path: Path) -> None
     window_end = datetime(2026, 7, 8, 21, 0, tzinfo=timezone.utc)
     result = store.query_events(window_start=window_start, window_end=window_end)
 
-    item = _to_event_item(
+    items = _to_event_items(
         result[0],
         timezone.utc,
         window_start=window_start,
         window_end=window_end,
     )
 
-    assert item.starts_at == window_start
-    assert item.ends_at == window_end
-    assert item.original_starts_at == datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
-    assert item.original_ends_at == datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc)
+    assert len(items) == 32
+    assert items[0].starts_at == window_start
+    assert items[0].ends_at == datetime(2026, 6, 8, 0, 0, tzinfo=timezone.utc)
+    assert items[-1].starts_at == datetime(2026, 7, 8, 0, 0, tzinfo=timezone.utc)
+    assert items[-1].ends_at == window_end
+    assert items[0].relevant_from == datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    assert items[0].relevant_to == datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc)
+
+
+def test_event_items_expand_opening_hours_schedule(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Museum exhibition", text="Open daily.")
+    )
+    store.replace_refinements(
+        inserted.record.id,
+        [
+            Refinement(
+                record_id=inserted.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc),
+                relevant_to=datetime(2026, 6, 30, 21, 0, tzinfo=timezone.utc),
+                schedule={
+                    "timezone": "Europe/Vilnius",
+                    "kind": "opening_hours",
+                    "rules": [
+                        {"days": ["MO", "TU", "WE", "TH", "FR"], "start": "10:00", "end": "21:00"},
+                        {"days": ["SA", "SU"], "start": "10:00", "end": "18:00"},
+                    ],
+                    "exceptions": [],
+                },
+                refiner="test",
+            ),
+        ],
+    )
+    window_start = datetime(2026, 6, 7, 0, 0, tzinfo=ZoneInfo("Europe/Vilnius"))
+    window_end = datetime(2026, 6, 8, 23, 59, tzinfo=ZoneInfo("Europe/Vilnius"))
+    result = store.query_events(
+        window_start=window_start.astimezone(timezone.utc),
+        window_end=window_end.astimezone(timezone.utc),
+    )
+
+    items = _to_event_items(
+        result[0],
+        ZoneInfo("Europe/Vilnius"),
+        window_start=window_start,
+        window_end=window_end,
+    )
+
+    assert [item.starts_at for item in items] == [
+        datetime(2026, 6, 7, 10, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
+        datetime(2026, 6, 8, 10, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
+    ]
+    assert [item.ends_at for item in items] == [
+        datetime(2026, 6, 7, 18, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
+        datetime(2026, 6, 8, 21, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
+    ]
+
+
+def test_event_items_expand_weekly_recurrence_schedule(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Tuesday meetup", text="Each Tuesday.")
+    )
+    store.replace_refinements(
+        inserted.record.id,
+        [
+            Refinement(
+                record_id=inserted.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc),
+                relevant_to=datetime(2026, 6, 30, 21, 0, tzinfo=timezone.utc),
+                schedule={
+                    "timezone": "Europe/Vilnius",
+                    "kind": "recurrence",
+                    "rules": [{"days": ["TU"], "start": "19:00", "end": None}],
+                    "exceptions": [],
+                },
+                refiner="test",
+            ),
+        ],
+    )
+    window_start = datetime(2026, 6, 7, 0, 0, tzinfo=ZoneInfo("Europe/Vilnius"))
+    window_end = datetime(2026, 6, 15, 23, 59, tzinfo=ZoneInfo("Europe/Vilnius"))
+    result = store.query_events(
+        window_start=window_start.astimezone(timezone.utc),
+        window_end=window_end.astimezone(timezone.utc),
+    )
+
+    items = _to_event_items(
+        result[0],
+        ZoneInfo("Europe/Vilnius"),
+        window_start=window_start,
+        window_end=window_end,
+    )
+
+    assert len(items) == 1
+    assert items[0].starts_at == datetime(2026, 6, 9, 19, 0, tzinfo=ZoneInfo("Europe/Vilnius"))
+    assert items[0].ends_at is None
 
 
 def test_events_endpoint_rejects_unknown_category(tmp_path: Path) -> None:

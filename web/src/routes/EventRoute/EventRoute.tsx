@@ -47,7 +47,7 @@ export function EventRoute() {
   );
   const listRevision = useMemo(() => buildListRevision(listItems), [listItems]);
   const visibleEventCount = (
-    eventsQuery.data?.events.filter((event) => !hiddenEventIds.has(event.id)) ?? []
+    eventsQuery.data?.events.filter((event) => !hiddenEventIds.has(event.refinement_id)) ?? []
   ).length;
   const errorMessage = eventsQuery.error instanceof Error
     ? eventsQuery.error.message

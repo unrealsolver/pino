@@ -56,6 +56,7 @@ refinements
   summary
   relevant_from
   relevant_to
+  schedule (optional structured JSON)
   location
   category_scores (optional cached projection)
   embedding (optional dense vector)
@@ -134,9 +135,65 @@ The extraction stage should return only normalized facts:
   "summary": "Open modular synth jam in Vilnius.",
   "relevant_from": "2026-06-05T16:00:00Z",
   "relevant_to": "2026-06-05T20:00:00Z",
+  "schedule": null,
   "location": "Example venue"
 }
 ```
+
+`schedule` is optional. Missing schedule data is valid and should keep the
+current all-day/coarse-window behavior. Use `relevant_from` and `relevant_to` as
+the coarse searchable envelope; use `schedule` only for availability or
+occurrence detail inside that envelope.
+
+Start with these schedule shapes:
+
+```json
+{
+  "timezone": "Europe/Vilnius",
+  "kind": "opening_hours",
+  "rules": [
+    { "days": ["MO", "TU", "WE", "TH", "FR"], "start": "10:00", "end": "21:00" },
+    { "days": ["SA", "SU"], "start": "10:00", "end": "18:00" }
+  ],
+  "exceptions": [],
+  "source_text": "Working hours: Monday 10:00 - 21:00 ..."
+}
+```
+
+```json
+{
+  "timezone": "Europe/Vilnius",
+  "kind": "recurrence",
+  "rules": [
+    { "days": ["TU"], "start": "19:00", "end": null }
+  ],
+  "exceptions": [],
+  "source_text": "Every Tuesday at 19:00"
+}
+```
+
+Rules must use `days`; do not add a `frequency` field for the first version.
+`days` is enough to express the weekly recurrence shape Pino currently needs.
+Times are local to `timezone`. The Web API should project schedules into
+per-day or per-occurrence display rows inside the requested window, keeping the
+canonical refinement row as source of truth. Add a derived occurrence
+cache/table only if query-time projection becomes too slow.
+
+Projected Web API event rows should expose row identity separately from
+canonical refinement identity:
+
+```text
+refinement_id  canonical refinement/event id
+occurrence_id  stable projected row id
+starts_at      projected/clipped occurrence start
+ends_at        projected/clipped occurrence end, or null
+relevant_from  canonical coarse envelope start
+relevant_to    canonical coarse envelope end, or null
+```
+
+Frontend row keys should use `occurrence_id`. Event-level preferences and debug
+actions should use `refinement_id` so hiding or rerunning a refinement applies
+to all projected occurrences of the same event.
 
 For a structured event source, use deterministic extraction where trustworthy.
 For Telegram and other prose-heavy sources, use an LLM extraction pass.
@@ -243,30 +300,20 @@ Implemented:
 4. Telegram publication time remains raw payload metadata rather than event relevance.
 5. Upcoming-event queries and digests read refinements.
 6. Goal-specific evaluations no longer drive active queries.
+7. Optional event schedules are stored on refinements and projected by the Web
+   API into display occurrences with separate `refinement_id` and
+   `occurrence_id` fields.
 
 Remaining:
 
 1. Add deterministic refinement shortcuts for trustworthy structured sources if
    LLM cost or quality measurements justify them.
-2. Research calendar/event schedule modeling for source-provided recurrence or
-   opening-hours details that do not belong in `relevant_from`/`relevant_to`.
-   Vilnius Events can publish multiday exhibitions with weekday working hours
-   such as Monday-Friday 10:00-21:00 and Saturday-Sunday 10:00-18:00, while
-   other sources may say "each Tuesday 19:00". Add an abstract schedule field
-   to refinement items only after deciding how to represent both weekly
-   opening-hours grids and simpler recurrence phrases without overfitting to
-   one source. Prefer one canonical refinement row with an optional structured
-   `schedule` JSON field; keep `relevant_from`/`relevant_to` as the coarse
-   searchable envelope. Project schedules into per-day/per-occurrence rows for
-   Web UI display at query time, and add a derived occurrence cache/table only
-   if performance requires it. Missing schedule data should be valid and should
-   continue to render as the current default all-day event.
-3. Add a normalized display title or short summary for Web UI event rows. The
+2. Add a normalized display title or short summary for Web UI event rows. The
    refined item should provide an English display string with bounded length,
    no embedded dates, and no source/title garbage so the frontend does not have
    to show raw source titles when they are noisy or overly long.
-4. Define query-time private profile weighting beyond explicit category filters.
-5. Research using an embedding model to generate dense vectors for refined
+3. Define query-time private profile weighting beyond explicit category filters.
+4. Research using an embedding model to generate dense vectors for refined
    items and derive categories/category scores later from vector similarity or
    another projection step. The goal is to keep GPT-OSS-120b focused on
    extraction, normalization, and summaries instead of making it directly do
@@ -274,6 +321,6 @@ Remaining:
    Try local dense embeddings with Ollama `bge-m3`, then benchmark taxonomy
    projections on a labeled sample before making embeddings part of the default
    pipeline.
-6. Remove inert legacy `records.relevant_from`, `records.relevant_to`, and
+5. Remove inert legacy `records.relevant_from`, `records.relevant_to`, and
    `evaluations` columns/tables from existing SQLite files with an explicit
    migration if physical cleanup becomes worthwhile.

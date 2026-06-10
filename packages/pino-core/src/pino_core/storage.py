@@ -82,6 +82,7 @@ refinements_table = Table(
     Column("summary", Text),
     Column("relevant_from", DateTime(timezone=True)),
     Column("relevant_to", DateTime(timezone=True)),
+    Column("schedule", JSON),
     Column("location", String),
     Column("category_scores", JSON, nullable=False),
     Column("embedding", JSON),
@@ -139,6 +140,7 @@ class DatabaseStore:
         metadata.create_all(self.engine)
         if self.engine.dialect.name == "sqlite":
             self._migrate_legacy_sqlite_records_table()
+            self._migrate_legacy_sqlite_refinements_table()
 
     def add_record(self, record: Record) -> InsertResult:
         record = record.with_fingerprint()
@@ -388,6 +390,13 @@ class DatabaseStore:
                 connection.exec_driver_sql(
                     "CREATE UNIQUE INDEX uq_records_fingerprint ON records(fingerprint)",
                 )
+
+    def _migrate_legacy_sqlite_refinements_table(self) -> None:
+        with self.engine.begin() as connection:
+            rows = connection.exec_driver_sql("PRAGMA table_info(refinements)").mappings().all()
+            columns = {row["name"] for row in rows}
+            if "schedule" not in columns:
+                connection.exec_driver_sql("ALTER TABLE refinements ADD COLUMN schedule JSON")
 
 
 class SQLiteStore(DatabaseStore):

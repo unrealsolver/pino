@@ -11,7 +11,7 @@ export function HiddenDayControl({
 }) {
   const hiddenIds = new Set(
     occurrences
-      .map((occurrence) => occurrence.event.id)
+      .map((occurrence) => occurrence.event.refinement_id)
       .filter((eventId) => hiddenEventIds.has(eventId))
   );
   if (hiddenIds.size === 0) {

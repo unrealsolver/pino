@@ -69,11 +69,11 @@ export function VirtualEventList({
             ) : (
               <EventLine
                 occurrence={item.occurrence}
-                isHidden={hiddenEventIds.has(item.occurrence.event.id)}
+                isHidden={hiddenEventIds.has(item.occurrence.event.refinement_id)}
                 onToggleHidden={() =>
-                  hiddenEventIds.has(item.occurrence.event.id)
-                    ? onShowEvent(item.occurrence.event.id)
-                    : onHideEvent(item.occurrence.event.id)
+                  hiddenEventIds.has(item.occurrence.event.refinement_id)
+                    ? onShowEvent(item.occurrence.event.refinement_id)
+                    : onHideEvent(item.occurrence.event.refinement_id)
                 }
               />
             )}

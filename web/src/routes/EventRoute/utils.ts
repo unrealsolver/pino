@@ -29,7 +29,7 @@ export function buildVirtualListItems(
   return days.flatMap((day) => [
     { key: `day:${day.key}`, type: "day" as const, day },
     ...day.events
-      .filter((occurrence) => showHidden || !hiddenEventIds.has(occurrence.event.id))
+      .filter((occurrence) => showHidden || !hiddenEventIds.has(occurrence.event.refinement_id))
       .map((occurrence) => ({
         key: `event:${occurrence.key}`,
         type: "event" as const,

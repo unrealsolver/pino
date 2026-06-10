@@ -123,6 +123,67 @@ def test_refinement_service_filters_unknown_categories(tmp_path: Path) -> None:
     assert store.list_refinements(inserted.record.id)[0].category_scores == {"metal_music": 0.8}
 
 
+def test_refinement_service_stores_valid_schedule_without_frequency(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Tuesday", text="Every Tuesday at 19:00")
+    )
+    client = StaticClient(
+        """
+        {"items": [{
+          "content_kind": "event",
+          "summary": "Tuesday event",
+          "schedule": {
+            "timezone": "Europe/Vilnius",
+            "kind": "recurrence",
+            "rules": [{"days": ["TU"], "start": "19:00", "end": null}],
+            "exceptions": [],
+            "source_text": "Every Tuesday at 19:00"
+          },
+          "category_scores": {}
+        }]}
+        """,
+    )
+
+    RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+
+    assert store.list_refinements(inserted.record.id)[0].schedule == {
+        "timezone": "Europe/Vilnius",
+        "kind": "recurrence",
+        "rules": [{"days": ["TU"], "start": "19:00", "end": None}],
+        "exceptions": [],
+        "source_text": "Every Tuesday at 19:00",
+    }
+
+
+def test_refinement_service_drops_schedule_rules_with_frequency(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Tuesday", text="Every Tuesday at 19:00")
+    )
+    client = StaticClient(
+        """
+        {"items": [{
+          "content_kind": "event",
+          "summary": "Tuesday event",
+          "schedule": {
+            "timezone": "Europe/Vilnius",
+            "kind": "recurrence",
+            "rules": [{"frequency": "weekly", "days": ["TU"], "start": "19:00"}],
+            "exceptions": []
+          },
+          "category_scores": {}
+        }]}
+        """,
+    )
+
+    RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+
+    assert store.list_refinements(inserted.record.id)[0].schedule is None
+
+
 def test_refinement_service_debug_refine_record_does_not_update_store(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
