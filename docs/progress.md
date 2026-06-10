@@ -2,6 +2,46 @@
 
 Newest entries go first.
 
+## 2026-06-11 00:55 Europe/Vilnius - Codex
+
+- Before: Add a refinement todo to research embedding-generated vectors for deriving categories and category scores instead of direct LLM categorization/scoring.
+- Areas: Refinement design docs, docs/progress.
+- After: Completed at 00:55. Expanded the embeddings todo to research deriving category scores from dense vectors/projection steps so GPT-OSS-120b can focus on extraction, normalization, and summaries rather than direct categorization for every taxonomy version.
+- Verification: `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-10 02:33 Europe/Vilnius - Codex
+
+- Before: Add a source-adapter todo for capturing event images with shared on-disk PNG normalization.
+- Areas: Source adapter docs, docs/progress.
+- After: Completed at 02:33. Added a `Source Capture TODO` item for source-provided event images, year-grouped disk storage, shared PNG normalization/optimization, 92x92 px max scaling, and independent normalization utility tests.
+- Verification: `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-10 02:23 Europe/Vilnius - Codex
+
+- Before: Expand the refinement schedule todo with the intended optional JSON-plus-derived-occurrences design and default all-day behavior.
+- Areas: Refinement design docs, docs/progress.
+- After: Completed at 02:23. Expanded the schedule todo to prefer an optional structured `schedule` JSON field on the canonical refinement row, query-time Web UI occurrence projection, a derived occurrence cache/table only if needed for performance, and all-day rendering when schedule data is absent.
+- Verification: `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-10 02:19 Europe/Vilnius - Codex
+
+- Before: Add a refinement/Web UI todo for normalized English event titles suitable for event row display.
+- Areas: Refinement design docs, docs/progress.
+- After: Completed at 02:19. Added a remaining todo in `docs/refinements.md` for a normalized English display title/summary with bounded length and source-noise cleanup for Web UI event rows.
+- Verification: `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-10 02:18 Europe/Vilnius - Codex
+
+- Before: Add a refinement-model todo for abstract event schedules/opening-hours captured from sources such as Vilnius Events.
+- Areas: Refinement design docs, docs/progress.
+- After: Completed at 02:18. Added a remaining todo in `docs/refinements.md` for researching and adding abstract schedule modeling for source opening-hours/recurrence data while keeping `relevant_from`/`relevant_to` unchanged.
+- Verification: `git diff --check`.
+- Follow-up: Research iCalendar/RFC 5545 recurrence concepts, schema.org `EventSchedule`/opening-hours modeling, and common opening-hours formats before choosing the representation.
+
 ## 2026-06-10 01:28 Europe/Vilnius - Codex
 
 - Before: Add a debug workflow to rerun a selected event/refinement id without updating the database, returning comprehensive output.

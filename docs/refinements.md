@@ -248,10 +248,32 @@ Remaining:
 
 1. Add deterministic refinement shortcuts for trustworthy structured sources if
    LLM cost or quality measurements justify them.
-2. Define query-time private profile weighting beyond explicit category filters.
-3. Try local dense embeddings with Ollama `bge-m3`, then benchmark taxonomy
+2. Research calendar/event schedule modeling for source-provided recurrence or
+   opening-hours details that do not belong in `relevant_from`/`relevant_to`.
+   Vilnius Events can publish multiday exhibitions with weekday working hours
+   such as Monday-Friday 10:00-21:00 and Saturday-Sunday 10:00-18:00, while
+   other sources may say "each Tuesday 19:00". Add an abstract schedule field
+   to refinement items only after deciding how to represent both weekly
+   opening-hours grids and simpler recurrence phrases without overfitting to
+   one source. Prefer one canonical refinement row with an optional structured
+   `schedule` JSON field; keep `relevant_from`/`relevant_to` as the coarse
+   searchable envelope. Project schedules into per-day/per-occurrence rows for
+   Web UI display at query time, and add a derived occurrence cache/table only
+   if performance requires it. Missing schedule data should be valid and should
+   continue to render as the current default all-day event.
+3. Add a normalized display title or short summary for Web UI event rows. The
+   refined item should provide an English display string with bounded length,
+   no embedded dates, and no source/title garbage so the frontend does not have
+   to show raw source titles when they are noisy or overly long.
+4. Define query-time private profile weighting beyond explicit category filters.
+5. Research using an embedding model to generate dense vectors for refined
+   items and derive categories/category scores later from vector similarity or
+   another projection step. The goal is to keep GPT-OSS-120b focused on
+   extraction, normalization, and summaries instead of making it directly do
+   the poorly scalable categorization/scoring task for every taxonomy version.
+   Try local dense embeddings with Ollama `bge-m3`, then benchmark taxonomy
    projections on a labeled sample before making embeddings part of the default
    pipeline.
-4. Remove inert legacy `records.relevant_from`, `records.relevant_to`, and
+6. Remove inert legacy `records.relevant_from`, `records.relevant_to`, and
    `evaluations` columns/tables from existing SQLite files with an explicit
    migration if physical cleanup becomes worthwhile.

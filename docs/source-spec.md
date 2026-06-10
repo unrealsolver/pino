@@ -193,6 +193,15 @@ sources:
 - Tolerate empty pages and missing optional fields.
 - Deduplicate within the source by returning stable `external_id` and URL-derived identity where possible.
 
+## Source Capture TODO
+
+- Capture source-provided event images when available. Store normalized image
+  assets on disk grouped by captured year. Image normalization should be a
+  common utility used by all sources, not adapter-local code: convert inputs to
+  PNG, optimize output, and scale to fit within a 92x92 px max dimension while
+  preserving aspect ratio. Add independent unit tests for the normalization
+  utility before wiring it into individual source adapters.
+
 ## Test Checklist
 
 Add focused tests under `packages/pino-integration/tests/`:
