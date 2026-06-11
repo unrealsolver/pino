@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Core services and models for Pino."
 requires-python = ">=3.12"
 dependencies = [
+    "alembic",
     "httpx",
     "pino-llm",
     "psycopg[binary]",

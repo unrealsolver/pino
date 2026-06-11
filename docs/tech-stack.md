@@ -75,7 +75,13 @@ Set `storage.use: pg_vps` to select a named PostgreSQL backend configured with
 `type: postgres` and `url: env:PINO_DATABASE_URL`. The default named `local`
 backend uses `type: sqlite` and `path: .pino/pino.sqlite`. Unselected backends
 are lazy; plain `postgresql://` URLs use Psycopg 3. Fresh-database schema
-creation is supported. Cross-database schema migrations remain future work.
+creation is supported.
+
+Use Alembic for schema migrations. The migration environment lives with
+`pino-core` storage metadata, and `pino db upgrade` applies migrations to the
+configured storage backend. Migrations should use Alembic operations and
+SQLAlchemy inspection instead of handwritten SQL so SQLite and PostgreSQL stay
+on the same path where practical.
 
 Avoid making the storage schema mirror the first event-ingestion pipeline too closely. Source-specific concepts should live in source adapters or typed payloads, not in top-level storage tables.
 

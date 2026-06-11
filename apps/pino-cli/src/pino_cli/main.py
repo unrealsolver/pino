@@ -33,6 +33,8 @@ from pino_core import (
     render_chat_system_prompt,
     render_refinement_system_prompt,
 )
+from pino_core.db import current_database_revision, show_migration_history, upgrade_database
+from pino_core.storage import normalize_database_url
 from pino_integration import build_sources
 
 app = typer.Typer(no_args_is_help=True)
@@ -40,10 +42,12 @@ chat_app = typer.Typer(no_args_is_help=False, invoke_without_command=True)
 memory_app = typer.Typer(no_args_is_help=True)
 sources_app = typer.Typer(no_args_is_help=True)
 debug_app = typer.Typer(no_args_is_help=True)
+db_app = typer.Typer(no_args_is_help=True)
 app.add_typer(chat_app, name="chat")
 app.add_typer(memory_app, name="memory")
 app.add_typer(sources_app, name="sources")
 app.add_typer(debug_app, name="debug")
+app.add_typer(db_app, name="db")
 
 console = Console()
 
@@ -139,6 +143,48 @@ def evaluate(
 ) -> None:
     """Deprecated alias for `pino refine`."""
     _run_refine(config_path=config_path, limit=limit, debug=debug, selected_id=None)
+
+
+@db_app.command("upgrade")
+def db_upgrade(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    revision: Annotated[str, typer.Argument()] = "head",
+) -> None:
+    """Upgrade the configured storage database with Alembic."""
+    config = get_config(config_path)
+    upgrade_database(config.storage.database_url(), revision)
+    console.print(Text(f"Database upgraded to {revision}.", style="green"))
+
+
+@db_app.command("current")
+def db_current(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Print the configured storage database migration revision."""
+    config = get_config(config_path)
+    current_database_revision(config.storage.database_url())
+
+
+@db_app.command("history")
+def db_history(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Print known Alembic migration history."""
+    config = get_config(config_path)
+    show_migration_history(config.storage.database_url())
+
+
+@db_app.command("url")
+def db_url(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Print the configured storage database URL with the password hidden."""
+    config = get_config(config_path)
+    url = normalize_database_url(config.storage.database_url())
+    table = Table("Field", "Value")
+    table.add_row("storage.use", plain_text(config.storage.use))
+    table.add_row("database_url", plain_text(url.render_as_string(hide_password=True)))
+    console.print(table)
 
 
 def _run_refine(

@@ -193,6 +193,63 @@ def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:
     assert "JSON schema:" in rendered
 
 
+def test_db_upgrade_uses_configured_database_url(tmp_path, monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    config = PinoConfig(
+        storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"}),
+    )
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+    monkeypatch.setattr(
+        main,
+        "upgrade_database",
+        lambda database_url, revision: calls.append((database_url, revision)),
+    )
+
+    main.db_upgrade(revision="head")
+
+    assert calls == [(config.storage.database_url(), "head")]
+    assert "Database upgraded to head." in output.getvalue()
+
+
+def test_db_current_uses_configured_database_url(tmp_path, monkeypatch) -> None:
+    config = PinoConfig(
+        storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"}),
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+    monkeypatch.setattr(main, "current_database_revision", calls.append)
+
+    main.db_current()
+
+    assert calls == [config.storage.database_url()]
+
+
+def test_db_url_prints_redacted_configured_database_url(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    config = PinoConfig(
+        storage=StorageConfig.model_validate(
+            {
+                "use": "pg_vps",
+                "pg_vps": {
+                    "type": "postgres",
+                    "url": "postgresql://pino:secret@example.test/pino",
+                },
+            }
+        ),
+    )
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+
+    main.db_url()
+
+    rendered = output.getvalue()
+    assert "pg_vps" in rendered
+    assert "postgresql+psycopg://pino:***@example.test/pino" in rendered
+    assert "secret" not in rendered
+
+
 def test_recent_chat_history_formats_stored_markdown(tmp_path, monkeypatch) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()

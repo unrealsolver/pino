@@ -2,6 +2,38 @@
 
 Newest entries go first.
 
+## 2026-06-11 03:03 Europe/Vilnius - Codex
+
+- Before: Make Alembic migrations use the same database engine construction as `pino check` after PostgreSQL worked for check but failed for migration.
+- Areas: Alembic migration engine wiring, migration tests, docs/progress.
+- After: Completed at 03:04. Changed `pino db upgrade/current` to inject a `DatabaseStore(database_url).engine` into Alembic, so CLI migrations use the same SQLAlchemy engine construction path as `pino check`; direct Alembic still uses config-based URL resolution.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_db.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino db --help`; `UV_CACHE_DIR=/tmp/uv-cache uv run alembic -c alembic.ini history`; `git diff --check`.
+- Follow-up: Prefer `pino db upgrade` over direct `alembic upgrade head` for configured Pino databases.
+
+## 2026-06-11 02:45 Europe/Vilnius - Codex
+
+- Before: Add safe database URL diagnostics for migration/check target mismatches after PostgreSQL auth failure during Alembic upgrade.
+- Areas: CLI database commands, tests, docs/progress.
+- After: Completed at 02:46. Added `pino db url` to print the selected storage backend and redacted normalized database URL without connecting, making it easy to compare migration and check targets after auth/network failures.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-cli/tests/test_main.py packages/pino-core/tests/test_db.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino db --help`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino db url`; `git diff --check`.
+- Follow-up: Fix the PostgreSQL credential or server-side auth for `postgresql+psycopg://pino:***@based.lt/pino`, then rerun `pino db upgrade`.
+
+## 2026-06-11 02:41 Europe/Vilnius - Codex
+
+- Before: Fix direct `alembic upgrade head` using the placeholder SQLite URL instead of the configured Pino storage database.
+- Areas: Alembic config/env, migration tests, docs/progress.
+- After: Completed at 02:42. Removed the misleading `sqlite:///.pino/pino.sqlite` Alembic URL, changed direct Alembic runs to resolve the database from Pino config unless an explicit URL is passed, and added a second idempotent head migration that ensures `refinements.schedule` exists even if a database was already stamped at the first schedule migration.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_db.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run alembic -c alembic.ini history`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino db --help`; `git diff --check`.
+- Follow-up: Re-run `UV_CACHE_DIR=/tmp/uv-cache uv run pino db upgrade` or `UV_CACHE_DIR=/tmp/uv-cache uv run alembic -c alembic.ini upgrade head` against the configured PostgreSQL database.
+
+## 2026-06-11 02:34 Europe/Vilnius - Codex
+
+- Before: Add Alembic migration support and a migration for the new `refinements.schedule` column without manual SQL.
+- Areas: Python dependencies, Alembic config/env, storage schema bootstrapping, CLI database command, tests, docs/progress.
+- After: Completed at 02:39. Added Alembic as a `pino-core` dependency, packaged a migration environment against `pino_core.storage.metadata`, added a guarded `refinements.schedule` migration using Alembic operations/SQLAlchemy inspection, removed the ad hoc SQLite schedule-column migration helper, added `pino db upgrade/current/history`, and documented Alembic as the storage migration path.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv lock`; `UV_CACHE_DIR=/tmp/uv-cache uv sync --all-packages`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino db --help`; `UV_CACHE_DIR=/tmp/uv-cache uv run alembic -c alembic.ini history`; `git diff --check`.
+- Follow-up: Current first migration is a guarded schema-change migration for existing DBs; fresh DB bootstrapping still uses existing `metadata.create_all` path.
+
 ## 2026-06-11 01:46 Europe/Vilnius - Codex
 
 - Before: Implement optional refinement schedules with backend occurrence projection and API/frontend naming using `refinement_id` plus `occurrence_id`.

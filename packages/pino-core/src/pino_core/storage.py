@@ -126,9 +126,7 @@ class EventQueryResult:
 
 class DatabaseStore:
     def __init__(self, database_url: str) -> None:
-        url = make_url(database_url)
-        if url.drivername == "postgresql":
-            url = url.set(drivername="postgresql+psycopg")
+        url = normalize_database_url(database_url)
         if url.get_backend_name() not in {"sqlite", "postgresql"}:
             raise ValueError(f"Unsupported storage database: {url.get_backend_name()}")
         if url.get_backend_name() == "sqlite" and url.database not in {None, "", ":memory:"}:
@@ -140,7 +138,6 @@ class DatabaseStore:
         metadata.create_all(self.engine)
         if self.engine.dialect.name == "sqlite":
             self._migrate_legacy_sqlite_records_table()
-            self._migrate_legacy_sqlite_refinements_table()
 
     def add_record(self, record: Record) -> InsertResult:
         record = record.with_fingerprint()
@@ -391,13 +388,6 @@ class DatabaseStore:
                     "CREATE UNIQUE INDEX uq_records_fingerprint ON records(fingerprint)",
                 )
 
-    def _migrate_legacy_sqlite_refinements_table(self) -> None:
-        with self.engine.begin() as connection:
-            rows = connection.exec_driver_sql("PRAGMA table_info(refinements)").mappings().all()
-            columns = {row["name"] for row in rows}
-            if "schedule" not in columns:
-                connection.exec_driver_sql("ALTER TABLE refinements ADD COLUMN schedule JSON")
-
 
 class SQLiteStore(DatabaseStore):
     def __init__(self, path: Path | str) -> None:
@@ -414,6 +404,13 @@ def _record_with_refinement_from_row(row: Any) -> tuple[Record, Refinement]:
         {column.name: mapping[column] for column in refinements_table.columns},
     )
     return record, refinement
+
+
+def normalize_database_url(database_url: str):
+    url = make_url(database_url)
+    if url.drivername == "postgresql":
+        return url.set(drivername="postgresql+psycopg")
+    return url
 
 
 def _matching_category_score(
