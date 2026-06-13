@@ -18,6 +18,14 @@ def new_id() -> str:
     return str(uuid4())
 
 
+def ensure_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 class Record(BaseModel):
     """Persistable unit of captured or derived information.
 
@@ -49,9 +57,7 @@ class Record(BaseModel):
     @field_validator("captured_at")
     @classmethod
     def _assume_utc_for_naive_datetimes(cls, value: datetime | None) -> datetime | None:
-        if value is not None and value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value
+        return ensure_utc_datetime(value)
 
 
 class MemoryEntry(BaseModel):
@@ -66,6 +72,11 @@ class MemoryEntry(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def _normalize_datetimes_to_utc(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc_datetime(value)
+
 
 class ChatMessage(BaseModel):
     """Durable chat history message exchanged by the user, Pino, or tools."""
@@ -77,6 +88,11 @@ class ChatMessage(BaseModel):
     content: str
     created_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("created_at")
+    @classmethod
+    def _normalize_datetimes_to_utc(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc_datetime(value)
 
 
 class Refinement(BaseModel):
@@ -106,9 +122,7 @@ class Refinement(BaseModel):
     @field_validator("relevant_from", "relevant_to", "refined_at")
     @classmethod
     def _assume_utc_for_naive_datetimes(cls, value: datetime | None) -> datetime | None:
-        if value is not None and value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value
+        return ensure_utc_datetime(value)
 
     @field_validator("category_scores")
     @classmethod

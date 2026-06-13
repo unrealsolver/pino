@@ -203,7 +203,12 @@ def _to_event_items(
         raise ValueError("event query returned an undated refinement")
     occurrences = _expand_scheduled_occurrences(refinement, window_start, window_end)
     if not occurrences:
-        occurrences = _expand_default_occurrences(refinement, window_start, window_end)
+        occurrences = _expand_default_occurrences(
+            refinement,
+            window_start,
+            window_end,
+            display_timezone=local_timezone,
+        )
     return [
         EventItem(
             refinement_id=refinement.id,
@@ -213,10 +218,10 @@ def _to_event_items(
             url=record.url,
             summary=refinement.summary,
             location=refinement.location,
-            starts_at=starts_at.astimezone(local_timezone),
-            ends_at=ends_at.astimezone(local_timezone) if ends_at is not None else None,
-            relevant_from=refinement.relevant_from.astimezone(local_timezone),
-            relevant_to=refinement.relevant_to.astimezone(local_timezone)
+            starts_at=starts_at.astimezone(timezone.utc),
+            ends_at=ends_at.astimezone(timezone.utc) if ends_at is not None else None,
+            relevant_from=refinement.relevant_from.astimezone(timezone.utc),
+            relevant_to=refinement.relevant_to.astimezone(timezone.utc)
             if refinement.relevant_to is not None
             else None,
             category_scores=refinement.category_scores,
@@ -331,6 +336,8 @@ def _expand_default_occurrences(
     refinement: Refinement,
     window_start: datetime,
     window_end: datetime,
+    *,
+    display_timezone: tzinfo,
 ) -> list[tuple[str, datetime, datetime | None]]:
     relevant_from = refinement.relevant_from
     relevant_to = refinement.relevant_to
@@ -344,7 +351,7 @@ def _expand_default_occurrences(
     ends_at = min(relevant_to, window_end)
     if ends_at < starts_at:
         return []
-    window_timezone = window_start.tzinfo or timezone.utc
+    window_timezone = display_timezone
     starts_at = starts_at.astimezone(window_timezone)
     ends_at = ends_at.astimezone(window_timezone)
     if starts_at.date() == ends_at.date():

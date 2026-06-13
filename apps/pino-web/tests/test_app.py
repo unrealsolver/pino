@@ -26,7 +26,7 @@ def test_app_registers_event_route_and_configured_store(tmp_path: Path) -> None:
     assert any(route.path == "/api/events" for route in app.routes)
 
 
-def test_event_item_serializes_refinement_with_local_time(tmp_path: Path) -> None:
+def test_event_item_serializes_refinement_with_utc_time(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     inserted = store.add_record(
@@ -112,6 +112,48 @@ def test_event_item_clips_multiday_event_to_query_window(tmp_path: Path) -> None
     assert items[0].relevant_to == datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc)
 
 
+def test_unscheduled_multiday_projection_outputs_utc_for_local_days(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Long exhibition", text="Runs for months.")
+    )
+    store.replace_refinements(
+        inserted.record.id,
+        [
+            Refinement(
+                record_id=inserted.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+                relevant_to=datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc),
+                refiner="test",
+            ),
+        ],
+    )
+    local_timezone = ZoneInfo("Europe/Vilnius")
+    window_start = datetime(2026, 6, 7, 0, 0, tzinfo=local_timezone)
+    window_end = datetime(2026, 6, 9, 0, 0, tzinfo=local_timezone)
+    result = store.query_events(
+        window_start=window_start.astimezone(timezone.utc),
+        window_end=window_end.astimezone(timezone.utc),
+    )
+
+    items = _to_event_items(
+        result[0],
+        local_timezone,
+        window_start=window_start.astimezone(timezone.utc),
+        window_end=window_end.astimezone(timezone.utc),
+    )
+
+    assert len(items) == 3
+    assert items[0].starts_at == datetime(2026, 6, 6, 21, 0, tzinfo=timezone.utc)
+    assert items[0].ends_at == datetime(2026, 6, 7, 21, 0, tzinfo=timezone.utc)
+    assert items[1].starts_at == datetime(2026, 6, 7, 21, 0, tzinfo=timezone.utc)
+    assert items[1].ends_at == datetime(2026, 6, 8, 21, 0, tzinfo=timezone.utc)
+    assert items[2].starts_at == datetime(2026, 6, 8, 21, 0, tzinfo=timezone.utc)
+    assert items[2].ends_at == datetime(2026, 6, 8, 21, 0, tzinfo=timezone.utc)
+
+
 def test_event_items_expand_opening_hours_schedule(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
@@ -154,12 +196,12 @@ def test_event_items_expand_opening_hours_schedule(tmp_path: Path) -> None:
     )
 
     assert [item.starts_at for item in items] == [
-        datetime(2026, 6, 7, 10, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
-        datetime(2026, 6, 8, 10, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
+        datetime(2026, 6, 7, 7, 0, tzinfo=timezone.utc),
+        datetime(2026, 6, 8, 7, 0, tzinfo=timezone.utc),
     ]
     assert [item.ends_at for item in items] == [
-        datetime(2026, 6, 7, 18, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
-        datetime(2026, 6, 8, 21, 0, tzinfo=ZoneInfo("Europe/Vilnius")),
+        datetime(2026, 6, 7, 15, 0, tzinfo=timezone.utc),
+        datetime(2026, 6, 8, 18, 0, tzinfo=timezone.utc),
     ]
 
 
@@ -202,7 +244,7 @@ def test_event_items_expand_weekly_recurrence_schedule(tmp_path: Path) -> None:
     )
 
     assert len(items) == 1
-    assert items[0].starts_at == datetime(2026, 6, 9, 19, 0, tzinfo=ZoneInfo("Europe/Vilnius"))
+    assert items[0].starts_at == datetime(2026, 6, 9, 16, 0, tzinfo=timezone.utc)
     assert items[0].ends_at is None
 
 

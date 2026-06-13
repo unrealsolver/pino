@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-06-12 02:36 Europe/Vilnius - Codex
+
+- Before: Make Web API event datetimes UTC-aware on output and add regression coverage for unscheduled multi-day event projection.
+- Areas: Core datetime normalization, Web API event projection, tests, docs/progress.
+- After: Completed at 02:42. Core models now normalize aware datetimes to UTC, Web API event rows emit `starts_at`/`ends_at`/`relevant_from`/`relevant_to` as UTC-aware instants, and unscheduled multi-day projection splits rows on the configured display timezone instead of the request timestamp timezone so frontend-style UTC windows do not render `00:00-03:00` fragments.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py packages/pino-core/tests/test_storage.py`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `git diff --check`.
+- Follow-up: Vite still reports the existing large bundle chunk warning during build.
+
 ## 2026-06-11 03:03 Europe/Vilnius - Codex
 
 - Before: Make Alembic migrations use the same database engine construction as `pino check` after PostgreSQL worked for check but failed for migration.

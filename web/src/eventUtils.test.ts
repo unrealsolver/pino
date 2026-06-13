@@ -30,14 +30,14 @@ describe("event utilities", () => {
         event({
           refinement_id: "ongoing",
           occurrence_id: "ongoing:2026-06-07",
-          starts_at: "2026-06-07T00:00:00+03:00",
-          ends_at: "2026-06-08T00:00:00+03:00"
+          starts_at: "2026-06-06T21:00:00Z",
+          ends_at: "2026-06-07T21:00:00Z"
         }),
         event({
           refinement_id: "ongoing",
           occurrence_id: "ongoing:2026-06-08",
-          starts_at: "2026-06-08T00:00:00+03:00",
-          ends_at: "2026-06-09T00:00:00+03:00"
+          starts_at: "2026-06-07T21:00:00Z",
+          ends_at: "2026-06-08T21:00:00Z"
         }),
         event({ refinement_id: "today", starts_at: "2026-06-07T10:00:00+03:00" })
       ],
@@ -75,8 +75,8 @@ describe("event utilities", () => {
 
   it("formats daily multi-day occurrences as all-day entries", () => {
     const row = event({
-      starts_at: "2025-01-01T02:00:00+02:00",
-      ends_at: "2027-01-01T01:59:59+02:00"
+      starts_at: "2024-12-31T22:00:00Z",
+      ends_at: "2026-12-31T21:59:59Z"
     });
 
     expect(formatTimeRange(row, new Date("2026-06-07T00:00:00+03:00"))).toBe("All day");
@@ -84,10 +84,10 @@ describe("event utilities", () => {
 
   it("formats clipped long-event overflow metadata", () => {
     const row = event({
-      starts_at: "2026-06-08T00:00:00+03:00",
-      ends_at: "2026-06-28T00:00:00+03:00",
-      relevant_from: "2026-06-03T00:00:00+03:00",
-      relevant_to: "2026-07-18T00:00:00+03:00"
+      starts_at: "2026-06-07T21:00:00Z",
+      ends_at: "2026-06-27T21:00:00Z",
+      relevant_from: "2026-06-02T21:00:00Z",
+      relevant_to: "2026-07-17T21:00:00Z"
     });
 
     expect(formatEventOverflow(row)).toBe("-5d | +20d");

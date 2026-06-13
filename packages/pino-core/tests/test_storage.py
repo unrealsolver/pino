@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from pino_core import ChatMessage, DatabaseStore, MemoryEntry, Record, Refinement, SQLiteStore
 
@@ -127,6 +128,30 @@ def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
     assert store.get_record("missing") is None
     assert store.get_refinement(refinement.id) == refinement
     assert store.get_refinement("missing") is None
+
+
+def test_refinement_datetimes_are_normalized_to_utc(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="A", text="A"))
+    local_timezone = ZoneInfo("Europe/Vilnius")
+
+    store.replace_refinements(
+        inserted.record.id,
+        [
+            Refinement(
+                record_id=inserted.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 6, 10, 10, 0, tzinfo=local_timezone),
+                relevant_to=datetime(2026, 6, 10, 12, 0, tzinfo=local_timezone),
+                refiner="test",
+            ),
+        ],
+    )
+
+    refinement = store.list_refinements(inserted.record.id)[0]
+    assert refinement.relevant_from == datetime(2026, 6, 10, 7, 0, tzinfo=timezone.utc)
+    assert refinement.relevant_to == datetime(2026, 6, 10, 9, 0, tzinfo=timezone.utc)
 
 
 def test_refinement_status_is_derived_from_left_join(tmp_path: Path) -> None:
