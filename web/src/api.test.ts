@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { eventQueryKey, fetchEvents, type EventFilters } from "./api";
+import { eventQueryKey, fetchEvents, serializeEventFilters, type EventFilters } from "./api";
 
 describe("events API", () => {
   afterEach(() => {
@@ -20,6 +20,16 @@ describe("events API", () => {
         dateTo: null
       }
     ]);
+  });
+
+  it("serializes event filters for query keys and requests", () => {
+    expect(serializeEventFilters(eventFilters())).toEqual({
+      categories: ["social"],
+      minScore: 0.5,
+      query: "jam",
+      dateFrom: "2026-06-08T07:00:00.000Z",
+      dateTo: null
+    });
   });
 
   it("forwards abort signals to fetch", async () => {

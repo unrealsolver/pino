@@ -8,12 +8,18 @@ from fastapi import HTTPException
 from pino_core.config import PinoConfig, RefinementConfig, StorageConfig, TaxonomyCategoryConfig
 from pino_core.models import Record, Refinement
 from pino_core.storage import SQLiteStore
-from pino_web.app import (
+from pino_web.app import create_app
+from pino_web.deps import get_event_repository, get_event_service
+from pino_web.repositories.events import EventRepository
+from pino_web.routes.events import list_events
+from pino_web.services.events import (
+    EventFilters,
+    EventQueryError,
+    EventService,
     MAX_QUERY_DAYS,
     _resolve_window,
     _to_event_items,
     _validate_categories,
-    create_app,
 )
 
 
@@ -24,6 +30,46 @@ def test_app_registers_event_route_and_configured_store(tmp_path: Path) -> None:
 
     assert app.state.store is store
     assert any(route.path == "/api/events" for route in app.routes)
+
+
+def test_events_endpoint_translates_service_query_error(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    service = EventService(config=_config(tmp_path), repository=EventRepository(store))
+    with pytest.raises(HTTPException) as exc_info:
+        list_events(service=service, category=["unknown"])
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "unknown category: unknown"
+
+
+def test_event_dependency_providers_construct_service(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    repository = get_event_repository(store)
+    service = get_event_service(_config(tmp_path), repository)
+
+    assert isinstance(repository, EventRepository)
+    assert repository.store is store
+    assert isinstance(service, EventService)
+    assert service.repository is repository
+
+
+def test_event_filters_group_route_to_service_inputs() -> None:
+    date_from = datetime(2026, 6, 8, 10, 0, tzinfo=timezone.utc)
+    filters = EventFilters(
+        date_from=date_from,
+        categories=["social"],
+        min_score=0.5,
+        query="jam",
+        limit=25,
+    )
+
+    assert filters.date_from is date_from
+    assert filters.date_to is None
+    assert filters.categories == ["social"]
+    assert filters.min_score == 0.5
+    assert filters.query == "jam"
+    assert filters.limit == 25
 
 
 def test_event_item_serializes_refinement_with_utc_time(tmp_path: Path) -> None:
@@ -250,12 +296,44 @@ def test_event_items_expand_weekly_recurrence_schedule(tmp_path: Path) -> None:
 
 def test_events_endpoint_rejects_unknown_category(tmp_path: Path) -> None:
     known = [category.name for category in _config(tmp_path).refinement.categories]
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(EventQueryError) as exc_info:
         _validate_categories(["unknown"], known)
 
     assert known == ["electronic_music", "metal_music"]
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "unknown category: unknown"
+    assert str(exc_info.value) == "unknown category: unknown"
+
+
+def test_event_repository_delegates_to_store_query_events() -> None:
+    calls: list[dict[str, object]] = []
+
+    class Store:
+        def query_events(self, **kwargs: object) -> list[str]:
+            calls.append(kwargs)
+            return ["event"]
+
+    window_start = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    window_end = datetime(2026, 6, 2, 0, 0, tzinfo=timezone.utc)
+
+    result = EventRepository(Store()).query_events(
+        window_start=window_start,
+        window_end=window_end,
+        categories=["electronic_music"],
+        min_score=0.4,
+        text_query="jam",
+        limit=25,
+    )
+
+    assert result == ["event"]
+    assert calls == [
+        {
+            "window_start": window_start,
+            "window_end": window_end,
+            "categories": ["electronic_music"],
+            "min_score": 0.4,
+            "text_query": "jam",
+            "limit": 25,
+        }
+    ]
 
 
 def test_missing_end_date_uses_bounded_future_window() -> None:

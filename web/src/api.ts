@@ -28,47 +28,49 @@ export type EventFilters = {
   dateTo: Date | null;
 };
 
-export type EventQueryKey = [
-  "events",
-  {
-    categories: string[];
-    minScore: number;
-    query: string;
-    dateFrom: string;
-    dateTo: string | null;
-  }
-];
+export type SerializedEventFilters = {
+  categories: string[];
+  minScore: number;
+  query: string;
+  dateFrom: string;
+  dateTo: string | null;
+};
+
+export type EventQueryKey = ["events", SerializedEventFilters];
+
+export function serializeEventFilters(filters: EventFilters): SerializedEventFilters {
+  return {
+    categories: filters.categories,
+    minScore: filters.minScore,
+    query: filters.query,
+    dateFrom: filters.dateFrom.toISOString(),
+    dateTo: filters.dateTo?.toISOString() ?? null
+  };
+}
 
 export function eventQueryKey(filters: EventFilters): EventQueryKey {
-  return [
-    "events",
-    {
-      categories: filters.categories,
-      minScore: filters.minScore,
-      query: filters.query,
-      dateFrom: filters.dateFrom.toISOString(),
-      dateTo: filters.dateTo?.toISOString() ?? null
-    }
-  ];
+  return ["events", serializeEventFilters(filters)];
 }
 
 export async function fetchEvents(
   filters: EventFilters,
   options: { signal?: AbortSignal } = {}
 ): Promise<EventListResponse> {
+  const serializedFilters = serializeEventFilters(filters);
   const params = new URLSearchParams();
-  params.set("date_from", filters.dateFrom.toISOString());
-  if (filters.dateTo) {
-    params.set("date_to", filters.dateTo.toISOString());
+  params.set("date_from", serializedFilters.dateFrom);
+  if (serializedFilters.dateTo) {
+    params.set("date_to", serializedFilters.dateTo);
   }
-  for (const category of filters.categories) {
+  for (const category of serializedFilters.categories) {
     params.append("category", category);
   }
-  if (filters.minScore > 0) {
-    params.set("min_score", String(filters.minScore));
+  if (serializedFilters.minScore > 0) {
+    params.set("min_score", String(serializedFilters.minScore));
   }
-  if (filters.query.trim()) {
-    params.set("q", filters.query.trim());
+  const query = serializedFilters.query.trim();
+  if (query) {
+    params.set("q", query);
   }
 
   const response = await fetch(`/api/events?${params.toString()}`, {
