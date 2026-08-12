@@ -2,6 +2,7 @@ from pino_llm.config import (
     EchoConfig,
     InfercomConfig,
     LLMConfig,
+    MinimaxConfig,
     OllamaConfig,
     ProviderConfigs,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "LLMConfig",
     "LLMError",
     "LLMMessage",
+    "MinimaxConfig",
     "OllamaConfig",
     "ProviderConfigs",
     "build_llm_client",

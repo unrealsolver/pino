@@ -62,6 +62,11 @@ def test_infercom_client_requires_api_key_when_selected() -> None:
         build_llm_client(LLMConfig(default_provider="infercom"))
 
 
+def test_minimax_client_requires_api_key_when_selected() -> None:
+    with pytest.raises(LLMError, match="llm.providers.minimax.api_key"):
+        build_llm_client(LLMConfig(default_provider="minimax"))
+
+
 def test_echo_client_can_request_web_open_for_urls() -> None:
     response = EchoClient().complete(
         [LLMMessage(role="user", content="open https://example.com/event")],

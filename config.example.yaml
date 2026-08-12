@@ -13,6 +13,13 @@ llm:
   temperature: 0.1
   top_p: 0.1
   providers:
+    minimax:
+      base_url: https://api.minimax.io/v1
+      api_key: env:MINIMAX_API_KEY
+      models:
+        smart: MiniMax-M3
+        simple: MiniMax-M3
+      default_model: smart
     infercom:
       base_url: https://api.infercom.ai/v1
       api_key: env:INFERCOM_API_KEY

@@ -129,7 +129,8 @@ Use `pino-llm` as the single internal provider interface and keep provider-speci
 
 Providers:
 
-- Infercom as the primary remote provider.
+- MiniMax as the primary remote provider.
+- Infercom as a supported OpenAI-compatible provider.
 - Ollama as the local fallback and integration-test provider.
 
 The package should wrap request/response quirks and normalize provider errors. For example, providers that do not support raw `tool` role history should receive tool results as ordinary context rather than OpenAI tool-call protocol messages.
@@ -138,7 +139,7 @@ The package also owns the simple JSON action protocol used by `pino chat`: model
 
 The application should still be partly useful without LLM calls. Fetching, storing, listing, simple filtering, and deterministic tests should not require a remote model.
 
-Record refinement is LLM-assisted. Deterministic code controls batching, config, persistence, and caching; the configured model extracts reusable multilingual normalized items and versioned taxonomy scores. The default refinement model alias is `simple`, which resolves to Infercom `gpt-oss-120b` in the current config.
+Record refinement is LLM-assisted. Deterministic code controls batching, config, persistence, and caching; the configured model extracts reusable multilingual normalized items and versioned taxonomy scores. The default refinement model alias is `simple`, which resolves to MiniMax `MiniMax-M3` in the current config.
 
 ## Interactive Agent Shape
 
@@ -167,7 +168,7 @@ Do not add targeted `records.get` in v1. `records.relevant` should return enough
 
 Do not expose shell execution, arbitrary filesystem access, browser automation, or generic Python execution to the LLM. Add real-world tools one at a time after the bounded local loop works.
 
-`pino chat` is part of the product direction because Pino should handle user requests through a natural-language interface. It is also the first practical proof of Infercom and Ollama provider integration.
+`pino chat` is part of the product direction because Pino should handle user requests through a natural-language interface. It is also the first practical proof of remote and local provider integration.
 
 Operational controls should include debug output, per-request history limits, visible recent chat history in interactive mode, and chat history reset so provider behavior can be inspected without manually editing the database.
 

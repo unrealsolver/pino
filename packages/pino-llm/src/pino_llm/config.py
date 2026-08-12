@@ -19,6 +19,20 @@ class InfercomConfig(BaseModel):
     default_model: str = "smart"
 
 
+class MinimaxConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str = "https://api.minimax.io/v1"
+    api_key: str | None = None
+    models: dict[str, str] = Field(
+        default_factory=lambda: {
+            "smart": "MiniMax-M3",
+            "simple": "MiniMax-M3",
+        },
+    )
+    default_model: str = "smart"
+
+
 class OllamaConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -43,6 +57,7 @@ class ProviderConfigs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     infercom: InfercomConfig = Field(default_factory=InfercomConfig)
+    minimax: MinimaxConfig = Field(default_factory=MinimaxConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     echo: EchoConfig = Field(default_factory=EchoConfig)
 
@@ -50,7 +65,7 @@ class ProviderConfigs(BaseModel):
 class LLMConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    default_provider: Literal["echo", "infercom", "ollama"] = "echo"
+    default_provider: Literal["echo", "infercom", "minimax", "ollama"] = "echo"
     model: str | None = None
     temperature: float = 0.1
     top_p: float = 0.1
@@ -61,6 +76,11 @@ class LLMConfig(BaseModel):
             return _resolve_model_alias(
                 self.providers.infercom.models,
                 self.model or self.providers.infercom.default_model,
+            )
+        if self.default_provider == "minimax":
+            return _resolve_model_alias(
+                self.providers.minimax.models,
+                self.model or self.providers.minimax.default_model,
             )
         if self.default_provider == "ollama":
             return _resolve_model_alias(

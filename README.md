@@ -50,7 +50,7 @@ The first coherent version should do the following:
 5. Rank items against the current goals.
 6. Produce a concise CLI digest.
 7. Store raw observations, processed items, chat history, and active memory in persistent local storage.
-8. Support Infercom as the primary LLM provider and Ollama as a local fallback/test provider.
+8. Support MiniMax as the primary LLM provider and Ollama as a local fallback/test provider.
 
 The MVP does not need a web admin panel, Logseq integration, or a large autonomy framework. Those can be added after the ingestion, memory, and digest loop is useful.
 
@@ -61,7 +61,7 @@ Keep the app split into an abstract core and replaceable interfaces.
 Suggested boundaries:
 
 - `core`: scheduling-independent business logic, item models, memory APIs, ranking, deduplication, digest generation.
-- `providers`: LLM provider adapters, currently Infercom and Ollama.
+- `providers`: LLM provider adapters, currently MiniMax, Infercom, and Ollama.
 - `integrations`: source-specific adapters in `pino-integration`, kept out of `pino-core`.
 - `storage`: persistent memory and event/item storage.
 - `cli`: user-facing commands for running checks, viewing digests, and inspecting memory.
@@ -87,14 +87,21 @@ Target machine:
 
 ## LLM Providers
 
-### Infercom
+### MiniMax
 
-Infercom is the primary provider.
+MiniMax is the primary provider for local config. Pino calls its OpenAI-compatible API.
 
 Default models:
 
-- Smart/default model: `MiniMax-M2.5`.
-- Simpler tasks: `gpt-oss-120b`.
+- Smart/default model: `MiniMax-M3`.
+- Simpler tasks: `MiniMax-M3`.
+
+The API key should be referenced from local config with `api_key: env:MINIMAX_API_KEY`
+and stored in `.env` or the process environment.
+
+### Infercom
+
+Infercom remains a supported OpenAI-compatible provider.
 
 Example client usage:
 
@@ -260,7 +267,7 @@ stored source cursor as Telethon `min_id` and fetch all newer messages.
 
 ## Refinement
 
-`pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. The default local config uses the `simple` model alias, which resolves to Infercom `gpt-oss-120b`.
+`pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. The default local config uses the `simple` model alias, which resolves to MiniMax `MiniMax-M3`.
 
 Refinements are cached by record ID. `pino evaluate` remains as a temporary alias for `pino refine`.
 

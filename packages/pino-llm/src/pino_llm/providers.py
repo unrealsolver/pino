@@ -46,21 +46,22 @@ class EchoClient:
         return "Boss, echo provider is configured. I can test local tools, but not real language reasoning."
 
 
-class InfercomClient:
-    def __init__(self, config: LLMConfig) -> None:
+class _OpenAICompatibleClient:
+    def __init__(self, config: LLMConfig, *, provider: str) -> None:
+        provider_config = getattr(config.providers, provider)
         self.model = config.selected_model()
-        infercom = config.providers.infercom
-        self.base_url = infercom.base_url.rstrip("/")
+        self.provider = provider
+        self.base_url = provider_config.base_url.rstrip("/")
         self.temperature = config.temperature
         self.top_p = config.top_p
-        if not infercom.api_key:
+        if not provider_config.api_key:
             raise LLMError(
-                "infercom provider requires llm.providers.infercom.api_key",
-                provider="infercom",
+                f"{provider} provider requires llm.providers.{provider}.api_key",
+                provider=provider,
                 model=self.model,
                 url=f"{self.base_url}/chat/completions",
             )
-        self.api_key = infercom.api_key
+        self.api_key = provider_config.api_key
 
     def complete(self, messages: list[LLMMessage]) -> str:
         url = f"{self.base_url}/chat/completions"
@@ -81,20 +82,30 @@ class InfercomClient:
         except httpx.HTTPStatusError as exc:
             raise _provider_http_error(
                 exc,
-                provider="infercom",
+                provider=self.provider,
                 model=self.model,
                 request_body=request_body,
             ) from exc
         except httpx.HTTPError as exc:
             raise LLMError(
-                f"infercom request failed: {exc}",
-                provider="infercom",
+                f"{self.provider} request failed: {exc}",
+                provider=self.provider,
                 model=self.model,
                 url=url,
                 request=_diagnostic_request(request_body),
             ) from exc
         data = response.json()
         return data["choices"][0]["message"]["content"]
+
+
+class InfercomClient(_OpenAICompatibleClient):
+    def __init__(self, config: LLMConfig) -> None:
+        super().__init__(config, provider="infercom")
+
+
+class MinimaxClient(_OpenAICompatibleClient):
+    def __init__(self, config: LLMConfig) -> None:
+        super().__init__(config, provider="minimax")
 
 
 class OllamaClient:
@@ -146,6 +157,8 @@ def build_llm_client(config: LLMConfig) -> LLMClient:
         return EchoClient()
     if config.default_provider == "infercom":
         return InfercomClient(config)
+    if config.default_provider == "minimax":
+        return MinimaxClient(config)
     if config.default_provider == "ollama":
         return OllamaClient(config)
     raise ValueError(f"Unsupported LLM provider: {config.default_provider}")

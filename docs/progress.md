@@ -2,6 +2,46 @@
 
 Newest entries go first.
 
+## 2026-08-12 23:12 Europe/Vilnius - Codex
+
+- Before: Add Minimax API key compatibility without reading `.env`, and check current Minimax pricing for cheaper simple-task models than M3.
+- Areas: LLM provider config, local/example config, tests/docs as needed, docs/progress.
+- After: Completed at 23:20. Added a first-class `minimax` OpenAI-compatible provider, switched local config to `env:MINIMAX_API_KEY`, documented MiniMax as the primary provider, and kept `simple` mapped to `MiniMax-M3` because current MiniMax text pricing does not show a substantially cheaper M-series option.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-llm/tests packages/pino-core/tests/test_config.py packages/pino-core/tests/test_refinement.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-llm packages/pino-core/tests/test_config.py packages/pino-core/tests/test_refinement.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run python -c 'from pathlib import Path; import yaml; from pino_core.config import PinoConfig; [PinoConfig.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8"))) for path in ("config.yaml", "config.example.yaml")]; print("config yaml validates without env resolution")'`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-15 03:47 Europe/Vilnius - Codex
+
+- Before: Group repeated event filter parameters into reusable request/filter types across the Web API and frontend where useful.
+- Areas: Web API route/service/repository filter types, frontend API filter types, tests, docs/progress.
+- After: Completed at 03:49. Added a backend `EventFilters` dataclass for route-to-service event query input, changed `EventService.list_events` to take that object, and added frontend `SerializedEventFilters` plus `serializeEventFilters` so query keys and request building share one conversion.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `git diff --check`.
+- Follow-up: Vite still reports the existing large bundle chunk warning during build.
+
+## 2026-06-15 03:12 Europe/Vilnius - Codex
+
+- Before: Move event repository/service construction into FastAPI dependency providers instead of constructing them inside the route.
+- Areas: Web API dependencies, event route, tests, docs/progress.
+- After: Completed at 03:12. Added `get_event_repository` and `get_event_service` dependency providers, changed the `/api/events` route to depend on `EventService`, and covered provider construction in Web API tests.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-06-15 03:05 Europe/Vilnius - Codex
+
+- Before: Follow up on the Web API split by making the events route use a DB repository through an event service instead of calling the store directly.
+- Areas: Web event route/service/repository modules, Web API tests, docs/progress.
+- After: Completed at 03:05. Added the `/api/events` route module back as a thin HTTP boundary, wired `EventService` to `EventRepository`, exported the new service/repository packages, moved route validation tests to service errors, and added coverage for route error translation plus repository delegation.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `git diff --check`.
+- Follow-up: Vite still reports the existing large bundle chunk warning during build.
+
+## 2026-06-14 02:53 Europe/Vilnius - Codex
+
+- Before: Refactor `pino_web.app` into a focused app factory with separate schemas, middleware, dependencies, event routes, event service, and event repository while preserving test injection.
+- Areas: Web API module structure, event route/service/repository imports/tests, docs/progress.
+- After: Completed at 02:55. Split Web API schemas, dependencies, rate-limit middleware, and event route/projection helpers into separate modules; kept `app.py` focused on `create_app`, route inclusion, app state, and hardening headers; changed `main.py` to pass `config_path` through the factory.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run test`; `BUN_TMPDIR=/tmp BUN_INSTALL=/tmp/bun-install bun run build`; `git diff --check`.
+- Follow-up: Vite still reports the existing large bundle chunk warning during build.
+
 ## 2026-06-12 02:36 Europe/Vilnius - Codex
 
 - Before: Make Web API event datetimes UTC-aware on output and add regression coverage for unscheduled multi-day event projection.
