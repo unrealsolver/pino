@@ -269,6 +269,8 @@ stored source cursor as Telethon `min_id` and fetch all newer messages.
 
 `pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. The default local config uses the `simple` model alias, which resolves to MiniMax `MiniMax-M3`.
 
+Refinement prompts are arranged for MiniMax automatic prompt caching: the stable system prompt with schema and category definitions is sent first, and the per-record source payload is sent last. MiniMax reports cache reads in response usage as `prompt_tokens_details.cached_tokens`.
+
 Refinements are cached by record ID. `pino evaluate` remains as a temporary alias for `pino refine`.
 
 Current config entry point:

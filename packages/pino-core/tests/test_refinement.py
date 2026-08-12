@@ -12,9 +12,11 @@ class StaticClient:
     def __init__(self, response: str) -> None:
         self.response = response
         self.calls = 0
+        self.messages: list[list[LLMMessage]] = []
 
     def complete(self, messages: list[LLMMessage]) -> str:
         self.calls += 1
+        self.messages.append(messages)
         return self.response
 
 
@@ -92,6 +94,28 @@ def test_refinement_service_uses_cached_refinements(tmp_path: Path) -> None:
 
     assert second.requested == 0
     assert client.calls == 1
+
+
+def test_refinement_messages_keep_static_prompt_before_dynamic_record_data(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    first = store.add_record(Record(kind="event", source="test", title="One", text="First event"))
+    second = store.add_record(
+        Record(kind="event", source="test", title="Two", text="Different event")
+    )
+    client = StaticClient('{"items": [{"content_kind": "event", "category_scores": {}}]}')
+    service = RefinementService(store, client, RefinementConfig())
+
+    service.refine_record(first.record)
+    service.refine_record(second.record)
+
+    assert len(client.messages) == 2
+    assert [message.role for message in client.messages[0]] == ["system", "user"]
+    assert [message.role for message in client.messages[1]] == ["system", "user"]
+    assert client.messages[0][0].content == client.messages[1][0].content
+    assert client.messages[0][1].content != client.messages[1][1].content
 
 
 def test_refinement_service_skips_unusable_model_response(tmp_path: Path) -> None:

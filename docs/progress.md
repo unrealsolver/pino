@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-08-12 23:29 Europe/Vilnius - Codex
+
+- Before: Make refinement calls cache-friendly for MiniMax token economy by preserving static prompt prefixes and surfacing cache-hit usage diagnostics.
+- Areas: Refinement prompt tests/docs, MiniMax/OpenAI-compatible provider diagnostics, docs/progress.
+- After: Completed at 23:35. Cached the rendered refinement system prompt per service instance, added regression coverage that the static system message stays first while per-record payloads stay last, documented MiniMax prompt-cache expectations, and added OpenAI-compatible response usage diagnostics for cached tokens.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_refinement.py packages/pino-llm/tests/test_llm_providers.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-llm/tests packages/pino-core/tests/test_config.py packages/pino-core/tests/test_refinement.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-llm packages/pino-core/src/pino_core/refinement.py packages/pino-core/tests/test_config.py packages/pino-core/tests/test_refinement.py`; `git diff --check`.
+- Follow-up: Confirm live MiniMax responses report nonzero `prompt_tokens_details.cached_tokens` during repeated refinement calls within the cache window.
+
 ## 2026-08-12 23:12 Europe/Vilnius - Codex
 
 - Before: Add Minimax API key compatibility without reading `.env`, and check current Minimax pricing for cheaper simple-task models than M3.

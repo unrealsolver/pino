@@ -4,7 +4,13 @@ import pytest
 from pino_llm.config import LLMConfig
 from pino_llm.errors import LLMError
 from pino_llm.messages import LLMMessage
-from pino_llm.providers import EchoClient, build_llm_client, _openai_messages, _provider_http_error
+from pino_llm.providers import (
+    EchoClient,
+    build_llm_client,
+    _openai_messages,
+    _provider_http_error,
+    _response_usage_diagnostics,
+)
 
 
 def test_openai_messages_convert_tool_roles_to_user_context() -> None:
@@ -54,6 +60,26 @@ def test_provider_http_error_contains_sanitized_request_diagnostics() -> None:
         "top_p": 0.1,
         "message_count": 2,
         "message_roles": ["system", "user"],
+    }
+
+
+def test_response_usage_diagnostics_include_cached_tokens() -> None:
+    diagnostics = _response_usage_diagnostics(
+        {
+            "usage": {
+                "prompt_tokens": 1200,
+                "completion_tokens": 300,
+                "total_tokens": 1500,
+                "prompt_tokens_details": {"cached_tokens": 800},
+            },
+        },
+    )
+
+    assert diagnostics == {
+        "prompt_tokens": 1200,
+        "completion_tokens": 300,
+        "total_tokens": 1500,
+        "cached_tokens": 800,
     }
 
 

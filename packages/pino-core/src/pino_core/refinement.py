@@ -58,6 +58,7 @@ class RefinementService:
         self.store = store
         self.client = client
         self.config = config
+        self._static_system_prompt = render_refinement_system_prompt(config)
 
     def refine_pending(
         self,
@@ -188,7 +189,7 @@ class RefinementService:
         )
 
     def _system_prompt(self) -> str:
-        return render_refinement_system_prompt(self.config)
+        return self._static_system_prompt
 
     def _record_prompt(self, record: Record) -> str:
         payload = {

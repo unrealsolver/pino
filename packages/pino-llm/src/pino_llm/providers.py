@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, Protocol
 
@@ -9,6 +10,8 @@ import httpx
 from pino_llm.config import LLMConfig
 from pino_llm.errors import LLMError
 from pino_llm.messages import LLMMessage
+
+logger = logging.getLogger(__name__)
 
 
 class LLMClient(Protocol):
@@ -95,6 +98,13 @@ class _OpenAICompatibleClient:
                 request=_diagnostic_request(request_body),
             ) from exc
         data = response.json()
+        usage = _response_usage_diagnostics(data)
+        if usage:
+            logger.debug(
+                "%s response usage: %s",
+                self.provider,
+                usage,
+            )
         return data["choices"][0]["message"]["content"]
 
 
@@ -221,3 +231,22 @@ def _diagnostic_request(request_body: dict[str, Any]) -> dict[str, Any]:
             if isinstance(message, dict)
         ]
     return diagnostic
+
+
+def _response_usage_diagnostics(data: dict[str, Any]) -> dict[str, Any]:
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+
+    diagnostics = {
+        key: usage[key]
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+        if key in usage
+    }
+    prompt_details = usage.get("prompt_tokens_details")
+    if isinstance(prompt_details, dict) and "cached_tokens" in prompt_details:
+        diagnostics["cached_tokens"] = prompt_details["cached_tokens"]
+    for key in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
+        if key in usage:
+            diagnostics[key] = usage[key]
+    return diagnostics
