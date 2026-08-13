@@ -2,6 +2,54 @@
 
 Newest entries go first.
 
+## 2026-08-14 00:54 Europe/Vilnius - Codex
+
+- Before: Fix the full-suite failure caused by the debug prompts test still expecting the old refinement prompt label.
+- Areas: CLI tests, docs/progress.
+- After: Completed at 00:56. Updated the CLI debug prompts test to expect `Response JSON object shape:` after the refinement prompt wording change.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-cli/tests/test_main.py::test_debug_prompts_prints_rendered_prompts`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `git diff --check`.
+- Follow-up: None.
+
+## 2026-08-13 03:29 Europe/Vilnius - Codex
+
+- Before: Trim high-entropy storage/source telemetry from refinement prompts to reduce token use and avoid noisy LLM input.
+- Areas: Refinement record prompt, prompt regression tests, docs/progress.
+- After: Completed at 03:33. Refinement prompts now omit record storage IDs and source transport/engagement telemetry, keep core text fields, and include only whitelisted semantic payload keys such as `location`, `date`, `display_time`, `timezone`, and `location_scopes`.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_refinement.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/refinement.py packages/pino-core/tests`; `git diff --check`; manual prompt smoke for a Telegram-style record.
+- Follow-up: Review future source payload keys and add them to the refinement whitelist only when they carry extraction semantics.
+
+## 2026-08-13 03:22 Europe/Vilnius - Codex
+
+- Before: Harden refinement JSON parsing after MiniMax debug showed JSON-looking raw output but parsed response was `{}`.
+- Areas: Refinement response parser/tests, docs/progress.
+- After: Completed at 03:25. Replaced the greedy regex fallback with balanced JSON object candidate extraction that respects strings/escapes and can skip invalid brace blocks before the real object.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_refinement.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/refinement.py packages/pino-core/tests`; `git diff --check`.
+- Follow-up: If live parsed response still shows `{}`, capture the exact raw response text before Rich panel wrapping.
+
+## 2026-08-13 03:17 Europe/Vilnius - Codex
+
+- Before: Fix Web event schedule parsing/import failure after a valid recurrence schedule normalized in core but the app could not parse/project it.
+- Areas: Web event schedule projection, docs/progress.
+- After: Completed at 03:20. No parser change was needed: the exact `Europe/Vilnius` recurrence with `days: ["TH"]`, `20:00-23:00`, `exceptions: []`, and `source_text` normalizes in core and projects in Web as 12 Thursday occurrences from 2026-06-11 through 2026-08-27.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run python -m py_compile apps/pino-web/src/pino_web/services/events.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest apps/pino-web/tests/test_app.py -q`; direct `_expand_scheduled_occurrences` smoke with the copied schedule.
+- Follow-up: Need the exact error/raw response if the live app still rejects it; the panel-rendered schedule shape shown is valid.
+
+## 2026-08-13 00:24 Europe/Vilnius - Codex
+
+- Before: Add an explicit refinement response object shape for scheduled output because MiniMax M3 does not appear to support native JSON-schema response_format.
+- Areas: Refinement prompt/tests, docs/progress.
+- After: Completed at 00:25. Replaced the vague `JSON schema` label with an explicit response object shape and expanded `schedule` from `null` only to the full `null | {timezone, kind, rules, exceptions, source_text}` shape.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_refinement.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/refinement.py packages/pino-core/tests/test_refinement.py`; `git diff --check`.
+- Follow-up: Native `response_format` remains unavailable for MiniMax M3 based on current MiniMax docs; consider a tool-call based structured-output path later if prompt-plus-validation is not enough.
+
+## 2026-08-13 00:07 Europe/Vilnius - Codex
+
+- Before: Stop recurring event refinement from expanding many dates into many duplicate items when a compact `schedule` can represent the same source record.
+- Areas: Refinement prompt, weekly occurrence coalescing, schedule docs/tests, docs/progress.
+- After: Completed at 00:13. Changed the refinement prompt to prefer one scheduled item for repeated instances, added a conservative fallback that coalesces 3+ homogeneous weekly model-produced occurrences into one `recurrence` schedule, and documented that repeated instances should stay one canonical refinement row.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_refinement.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check packages/pino-core/src/pino_core/refinement.py packages/pino-core/tests`; `git diff --check`.
+- Follow-up: Re-run live MiniMax refinement on the swing-dance record and confirm it now returns/stores one scheduled refinement rather than many dated copies.
+
 ## 2026-08-12 23:29 Europe/Vilnius - Codex
 
 - Before: Make refinement calls cache-friendly for MiniMax token economy by preserving static prompt prefixes and surfacing cache-hit usage diagnostics.

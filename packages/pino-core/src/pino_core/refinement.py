@@ -6,10 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from pino_llm import LLMClient, LLMMessage
 
 from pino_core.config import RefinementConfig
+from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Record, Refinement, normalize_schedule
 from pino_core.storage import DatabaseStore
 
@@ -131,6 +133,7 @@ class RefinementService:
         raw_items = data.get("items")
         if not isinstance(raw_items, list) or not raw_items:
             raise RefinementResponseError("refinement response is missing items")
+        raw_items = _coalesce_recurring_items(raw_items)
         refinements = [
             self._build_refinement(record, item_index, raw_item)
             for item_index, raw_item in enumerate(raw_items)
@@ -150,6 +153,7 @@ class RefinementService:
         if not isinstance(raw_items, list) or not raw_items:
             error = "refinement response is missing items"
         else:
+            raw_items = _coalesce_recurring_items(raw_items)
             refinements = [
                 self._build_refinement(record, item_index, raw_item)
                 for item_index, raw_item in enumerate(raw_items)
@@ -193,15 +197,16 @@ class RefinementService:
 
     def _record_prompt(self, record: Record) -> str:
         payload = {
-            "id": record.id,
             "kind": record.kind,
             "source": record.source,
             "title": record.title,
             "text": record.text,
             "url": record.url,
-            "payload": record.payload,
         }
-        return json.dumps(payload, ensure_ascii=False, indent=2)
+        semantic_payload = _semantic_record_payload(record.payload)
+        if semantic_payload:
+            payload["payload"] = semantic_payload
+        return json.dumps(_drop_empty_values(payload), ensure_ascii=False, indent=2)
 
     def _record_messages(self, record: Record) -> list[LLMMessage]:
         return [
@@ -218,13 +223,16 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         "You refine captured source records into reusable normalized items.\n"
         "Do not personalize output for one user's goals. Evaluate multilingual text.\n"
         "Return strict JSON only. No markdown, no prose outside JSON.\n"
-        "A source record may describe multiple events: return one item per event.\n"
+        "Prefer one item with a recurrence schedule for repeated instances of the same event.\n"
+        "Only return multiple items when the source describes genuinely different events.\n"
         "Use ISO 8601 timestamps with timezone offsets. Use null when unknown.\n"
-        "For event schedules, use null when unavailable. If present, use only the documented schedule shapes and rules with days; do not include a frequency field.\n"
+        "For weekly event schedules, use kind recurrence, timezone Europe/Vilnius unless the source says otherwise, rules with days/start/end, and no frequency field.\n"
+        "For scheduled items, use relevant_from/relevant_to as the coarse envelope covering the schedule, not as duplicate individual occurrences.\n"
+        "Use schedule null only when no schedule or recurrence can be inferred.\n"
         "Use only configured category keys and scores from 0 to 1.\n\n"
         "Categories:\n"
         f"{categories}\n\n"
-        "JSON schema:\n"
+        "Response JSON object shape:\n"
         "{\n"
         '  "items": [\n'
         "    {\n"
@@ -232,13 +240,179 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         '      "summary": "concise normalized summary",\n'
         '      "relevant_from": "ISO 8601 timestamp or null",\n'
         '      "relevant_to": "ISO 8601 timestamp or null",\n'
-        '      "schedule": null,\n'
+        '      "schedule": null | {\n'
+        '        "timezone": "IANA timezone, e.g. Europe/Vilnius",\n'
+        '        "kind": "opening_hours|recurrence",\n'
+        '        "rules": [\n'
+        '          {"days": ["MO|TU|WE|TH|FR|SA|SU"], "start": "HH:MM", "end": "HH:MM or null"}\n'
+        "        ],\n"
+        '        "exceptions": [],\n'
+        '        "source_text": "source schedule wording, optional"\n'
+        "      },\n"
         '      "location": "venue or useful human-readable place, or null",\n'
         '      "category_scores": {"category_name": 0.0}\n'
         "    }\n"
         "  ]\n"
         "}"
     )
+
+
+def _coalesce_recurring_items(raw_items: list[Any]) -> list[Any]:
+    groups: dict[tuple[Any, ...], list[tuple[int, dict[str, Any], _Occurrence]]] = {}
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            continue
+        occurrence = _raw_occurrence(raw_item)
+        key = _recurrence_group_key(raw_item, occurrence)
+        if key is None or occurrence is None:
+            continue
+        groups.setdefault(key, []).append((index, raw_item, occurrence))
+
+    collapsed_by_index: dict[int, dict[str, Any]] = {}
+    skipped_indexes: set[int] = set()
+    for rows in groups.values():
+        collapsed = _collapse_weekly_group(rows)
+        if collapsed is None:
+            continue
+        first_index = rows[0][0]
+        collapsed_by_index[first_index] = collapsed
+        skipped_indexes.update(index for index, _item, _occurrence in rows[1:])
+
+    if not collapsed_by_index:
+        return raw_items
+    return [
+        collapsed_by_index.get(index, raw_item)
+        for index, raw_item in enumerate(raw_items)
+        if index not in skipped_indexes
+    ]
+
+
+@dataclass(frozen=True)
+class _Occurrence:
+    start: datetime
+    end: datetime | None
+    day_code: str
+    start_time: str
+    end_time: str | None
+
+
+def _raw_occurrence(raw_item: dict[str, Any]) -> _Occurrence | None:
+    start = _optional_datetime(raw_item.get("relevant_from"))
+    if start is None:
+        return None
+    end = _optional_datetime(raw_item.get("relevant_to"))
+    timezone_info = ZoneInfo(DEFAULT_SOURCE_TIMEZONE)
+    local_start = start.astimezone(timezone_info)
+    local_end = end.astimezone(timezone_info) if end is not None else None
+    return _Occurrence(
+        start=start,
+        end=end,
+        day_code=_weekday_code(local_start),
+        start_time=f"{local_start:%H:%M}",
+        end_time=f"{local_end:%H:%M}" if local_end is not None else None,
+    )
+
+
+def _recurrence_group_key(
+    raw_item: dict[str, Any],
+    occurrence: _Occurrence | None,
+) -> tuple[Any, ...] | None:
+    if occurrence is None or normalize_schedule(raw_item.get("schedule")) is not None:
+        return None
+    return (
+        _optional_string(raw_item.get("content_kind")) or "unknown",
+        _normalized_key_text(raw_item.get("summary")),
+        _normalized_key_text(raw_item.get("location")),
+        _normalized_category_scores(raw_item.get("category_scores")),
+        occurrence.day_code,
+        occurrence.start_time,
+        occurrence.end_time,
+    )
+
+
+def _collapse_weekly_group(
+    rows: list[tuple[int, dict[str, Any], _Occurrence]],
+) -> dict[str, Any] | None:
+    if len(rows) < 3:
+        return None
+    rows = sorted(rows, key=lambda row: row[2].start)
+    starts = [occurrence.start for _index, _item, occurrence in rows]
+    if any((later.date() - earlier.date()).days % 7 != 0 for earlier, later in zip(starts, starts[1:])):
+        return None
+
+    first_item = dict(rows[0][1])
+    last_occurrence = rows[-1][2]
+    first_occurrence = rows[0][2]
+    first_item["relevant_from"] = first_occurrence.start.isoformat()
+    first_item["relevant_to"] = (
+        last_occurrence.end.isoformat()
+        if last_occurrence.end is not None
+        else last_occurrence.start.isoformat()
+    )
+    first_item["schedule"] = {
+        "timezone": DEFAULT_SOURCE_TIMEZONE,
+        "kind": "recurrence",
+        "rules": [
+            {
+                "days": [first_occurrence.day_code],
+                "start": first_occurrence.start_time,
+                "end": first_occurrence.end_time,
+            }
+        ],
+        "exceptions": [],
+    }
+    return first_item
+
+
+def _weekday_code(value: datetime) -> str:
+    return ("MO", "TU", "WE", "TH", "FR", "SA", "SU")[value.weekday()]
+
+
+def _normalized_key_text(value: Any) -> str | None:
+    text = _optional_string(value)
+    if text is None:
+        return None
+    return re.sub(r"\s+", " ", text).casefold()
+
+
+def _normalized_category_scores(value: Any) -> str:
+    if not isinstance(value, dict):
+        return "{}"
+    comparable = {
+        str(key): float(score)
+        for key, score in value.items()
+        if isinstance(score, int | float)
+    }
+    return json.dumps(comparable, sort_keys=True, separators=(",", ":"))
+
+
+_REFINEMENT_PAYLOAD_KEYS = {
+    "date",
+    "display_time",
+    "location",
+    "location_scopes",
+    "source_date",
+    "source_time",
+    "timezone",
+}
+
+
+def _semantic_record_payload(value: dict[str, Any]) -> dict[str, Any]:
+    return _drop_empty_values(
+        {
+            key: item
+            for key, item in value.items()
+            if key in _REFINEMENT_PAYLOAD_KEYS
+        }
+    )
+
+
+def _drop_empty_values(value: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item
+        for key, item in value.items()
+        if item is not None and item != "" and item != [] and item != {}
+    }
 
 
 def build_refinement_llm_config(config, refinement_config: RefinementConfig):
@@ -252,21 +426,50 @@ def build_refinement_llm_config(config, refinement_config: RefinementConfig):
 
 def _parse_json_object(raw_response: str) -> dict[str, Any]:
     stripped = raw_response.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.strip("`")
-        if stripped.startswith("json"):
-            stripped = stripped[4:].strip()
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
-        if match is None:
-            return {}
+    for candidate in (stripped, *_json_object_candidates(stripped)):
         try:
-            parsed = json.loads(match.group(0))
+            parsed = json.loads(candidate)
         except json.JSONDecodeError:
-            return {}
-    return parsed if isinstance(parsed, dict) else {}
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
+
+
+def _json_object_candidates(value: str) -> list[str]:
+    candidates: list[str] = []
+    start: int | None = None
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for index, char in enumerate(value):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+            continue
+        if char != "}" or depth == 0:
+            continue
+
+        depth -= 1
+        if depth == 0 and start is not None:
+            candidates.append(value[start : index + 1])
+            start = None
+
+    return candidates
 
 
 def _content_kind(value: Any) -> str:

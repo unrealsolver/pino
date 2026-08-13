@@ -190,7 +190,7 @@ def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:
     assert "Current time:" in rendered
     assert "Goals:" in rendered
     assert "Refinement system prompt" in rendered
-    assert "JSON schema:" in rendered
+    assert "Response JSON object shape:" in rendered
 
 
 def test_db_upgrade_uses_configured_database_url(tmp_path, monkeypatch) -> None:

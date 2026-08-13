@@ -145,6 +145,11 @@ current all-day/coarse-window behavior. Use `relevant_from` and `relevant_to` as
 the coarse searchable envelope; use `schedule` only for availability or
 occurrence detail inside that envelope.
 
+When a source record describes repeated instances of the same event, store one
+refinement row with a `recurrence` schedule instead of one refinement row per
+date. Multiple refinement rows are for genuinely different events in the same
+source record, not for occurrences that can be projected from one schedule.
+
 Start with these schedule shapes:
 
 ```json
