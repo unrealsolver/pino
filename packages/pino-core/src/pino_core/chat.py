@@ -66,7 +66,7 @@ class ChatAgent:
                 "message_roles": [message.role for message in messages],
                 "tool_context_count": len(tool_context),
             }
-            raw_response = self.provider.complete(messages)
+            raw_response = self.provider.complete(messages, operation="chat")
             action = parse_action(raw_response)
             round_debug["action"] = action.kind
             if action.tool_calls:

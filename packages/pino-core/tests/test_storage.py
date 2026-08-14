@@ -3,6 +3,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+from pino_llm import LLMUsage
+
 from pino_core import ChatMessage, DatabaseStore, MemoryEntry, Record, Refinement, SQLiteStore
 
 
@@ -70,6 +72,51 @@ def test_clear_chat_messages(tmp_path: Path) -> None:
 
     assert deleted == 2
     assert store.list_chat_messages() == []
+
+
+def test_llm_usage_events_round_trip_and_summary(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+
+    store.add_llm_usage_event(
+        LLMUsage(
+            provider="minimax",
+            model="MiniMax-M3",
+            operation="refinement.extract",
+            input_tokens=1000,
+            output_tokens=120,
+            cached_input_tokens=700,
+            duration_ms=1500,
+        )
+    )
+    store.add_llm_usage_event(
+        LLMUsage(
+            provider="minimax",
+            model="MiniMax-M3",
+            operation="chat",
+            input_tokens=300,
+            output_tokens=80,
+            cached_input_tokens=30,
+            duration_ms=500,
+        )
+    )
+
+    rows = store.list_llm_usage_events()
+    assert [row.operation for row in rows] == ["chat", "refinement.extract"]
+    assert rows[0].input_tokens == 300
+
+    total = store.summarize_llm_usage()["total"]
+    assert total.calls == 2
+    assert total.input_tokens == 1300
+    assert total.cached_input_tokens == 730
+    assert total.uncached_input_tokens == 570
+    assert total.output_tokens == 200
+    assert total.duration_ms == 2000
+    assert total.average_duration_ms == 1000
+
+    by_operation = store.summarize_llm_usage(group_by="operation")
+    assert by_operation["chat"].calls == 1
+    assert by_operation["refinement.extract"].cached_input_tokens == 700
 
 
 def test_add_record_skips_duplicate_fingerprint(tmp_path: Path) -> None:

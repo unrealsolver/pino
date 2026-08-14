@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -43,11 +44,13 @@ memory_app = typer.Typer(no_args_is_help=True)
 sources_app = typer.Typer(no_args_is_help=True)
 debug_app = typer.Typer(no_args_is_help=True)
 db_app = typer.Typer(no_args_is_help=True)
+usage_app = typer.Typer(no_args_is_help=True)
 app.add_typer(chat_app, name="chat")
 app.add_typer(memory_app, name="memory")
 app.add_typer(sources_app, name="sources")
 app.add_typer(debug_app, name="debug")
 app.add_typer(db_app, name="db")
+app.add_typer(usage_app, name="usage")
 
 console = Console()
 
@@ -187,6 +190,73 @@ def db_url(
     console.print(table)
 
 
+@usage_app.command("summary")
+def usage_summary(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    days: Annotated[int, typer.Option("--days", min=1)] = 7,
+    group_by: Annotated[
+        str | None,
+        typer.Option("--group-by", help="One of: provider, model, operation."),
+    ] = None,
+) -> None:
+    """Summarize persisted LLM token usage."""
+    config = get_config(config_path)
+    store = get_store(config)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    try:
+        summaries = store.summarize_llm_usage(since=since, group_by=group_by)
+    except ValueError as exc:
+        console.print(Text(str(exc), style="red"))
+        raise typer.Exit(code=1) from exc
+
+    table = Table(
+        "Key",
+        "Calls",
+        "Input",
+        "Cached Input",
+        "Uncached Input",
+        "Output",
+        "Cache Hit",
+        "Avg Duration",
+    )
+    for key, summary in summaries.items():
+        table.add_row(
+            plain_text(key),
+            plain_text(summary.calls),
+            plain_text(_format_int(summary.input_tokens)),
+            plain_text(_format_int(summary.cached_input_tokens)),
+            plain_text(_format_int(summary.uncached_input_tokens)),
+            plain_text(_format_int(summary.output_tokens)),
+            plain_text(_format_percent(summary.cache_hit_ratio)),
+            plain_text(f"{summary.average_duration_ms} ms"),
+        )
+    console.print(Panel(table, title=f"LLM usage, last {days} day(s)", border_style="blue"))
+
+
+@usage_app.command("recent")
+def usage_recent(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    limit: Annotated[int, typer.Option("--limit", "-n", min=1)] = 20,
+) -> None:
+    """Print recent persisted LLM token usage events."""
+    config = get_config(config_path)
+    store = get_store(config)
+    rows = store.list_llm_usage_events(limit=limit)
+    table = Table("Created", "Provider", "Model", "Operation", "Input", "Cached", "Output", "Duration")
+    for row in rows:
+        table.add_row(
+            plain_text(row.created_at.isoformat()),
+            plain_text(row.provider),
+            plain_text(row.model),
+            plain_text(row.operation),
+            plain_text(_format_int(row.input_tokens)),
+            plain_text(_format_int(row.cached_input_tokens)),
+            plain_text(_format_int(row.output_tokens)),
+            plain_text(f"{row.duration_ms} ms"),
+        )
+    console.print(table)
+
+
 def _run_refine(
     *,
     config_path: Path | None,
@@ -199,7 +269,7 @@ def _run_refine(
     store = get_store(config)
     service = RefinementService(
         store=store,
-        client=build_llm_client(llm_config),
+        client=build_llm_client(llm_config, usage_recorder=store.add_llm_usage_event),
         config=config.refinement,
     )
     if selected_id is not None:
@@ -395,7 +465,7 @@ def chat_main(
     sources = build_sources(config.sources)
     agent = ChatAgent(
         store=store,
-        provider=build_llm_client(config.llm),
+        provider=build_llm_client(config.llm, usage_recorder=store.add_llm_usage_event),
         tools=build_tools(store, sources),
         config=config.chat,
         goals=config.profile.goals,
@@ -591,6 +661,14 @@ def json_dumps_compact(value: object) -> str:
 
 def plain_text(value: object) -> Text:
     return Text(str(value))
+
+
+def _format_int(value: int) -> str:
+    return f"{value:,}"
+
+
+def _format_percent(value: float) -> str:
+    return f"{value:.1%}"
 
 
 def _truncate_inline(value: str, limit: int) -> str:

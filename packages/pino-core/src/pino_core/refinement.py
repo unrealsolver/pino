@@ -128,7 +128,10 @@ class RefinementService:
         )
 
     def refine_record(self, record: Record) -> list[Refinement]:
-        raw_response = self.client.complete(self._record_messages(record))
+        raw_response = self.client.complete(
+            self._record_messages(record),
+            operation="refinement.extract",
+        )
         data = _parse_json_object(raw_response)
         raw_items = data.get("items")
         if not isinstance(raw_items, list) or not raw_items:
@@ -145,7 +148,7 @@ class RefinementService:
 
     def debug_refine_record(self, record: Record) -> RefinementDebugResult:
         messages = self._record_messages(record)
-        raw_response = self.client.complete(messages)
+        raw_response = self.client.complete(messages, operation="refinement.extract")
         data = _parse_json_object(raw_response)
         raw_items = data.get("items")
         refinements: list[Refinement] = []

@@ -16,7 +16,7 @@ class StaticClient:
     def __init__(self, response: str) -> None:
         self.response = response
 
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         return self.response
 
 
@@ -26,7 +26,7 @@ class SequenceClient:
         self.calls = 0
         self.messages: list[list[LLMMessage]] = []
 
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         self.messages.append(messages)
         response = self.responses[self.calls]
         self.calls += 1

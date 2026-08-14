@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from time import perf_counter
 from typing import Any, Protocol
 
 import httpx
@@ -10,17 +11,18 @@ import httpx
 from pino_llm.config import LLMConfig
 from pino_llm.errors import LLMError
 from pino_llm.messages import LLMMessage
+from pino_llm.usage import LLMUsage, UsageRecorder
 
 logger = logging.getLogger(__name__)
 
 
 class LLMClient(Protocol):
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         """Return assistant text for the supplied messages."""
 
 
 class EchoClient:
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         last_user_index = _last_role_index(messages, "user")
         last_tool_index = _last_role_index(messages, "tool")
         if last_tool_index is not None and (
@@ -50,13 +52,20 @@ class EchoClient:
 
 
 class _OpenAICompatibleClient:
-    def __init__(self, config: LLMConfig, *, provider: str) -> None:
+    def __init__(
+        self,
+        config: LLMConfig,
+        *,
+        provider: str,
+        usage_recorder: UsageRecorder | None = None,
+    ) -> None:
         provider_config = getattr(config.providers, provider)
         self.model = config.selected_model()
         self.provider = provider
         self.base_url = provider_config.base_url.rstrip("/")
         self.temperature = config.temperature
         self.top_p = config.top_p
+        self.usage_recorder = usage_recorder
         if not provider_config.api_key:
             raise LLMError(
                 f"{provider} provider requires llm.providers.{provider}.api_key",
@@ -66,7 +75,7 @@ class _OpenAICompatibleClient:
             )
         self.api_key = provider_config.api_key
 
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         url = f"{self.base_url}/chat/completions"
         request_body = {
             "model": self.model,
@@ -74,6 +83,7 @@ class _OpenAICompatibleClient:
             "temperature": self.temperature,
             "top_p": self.top_p,
         }
+        started = perf_counter()
         try:
             response = httpx.post(
                 url,
@@ -98,34 +108,59 @@ class _OpenAICompatibleClient:
                 request=_diagnostic_request(request_body),
             ) from exc
         data = response.json()
-        usage = _response_usage_diagnostics(data)
+        duration_ms = _duration_ms(started)
+        usage = _openai_usage_from_response(
+            data,
+            provider=self.provider,
+            model=self.model,
+            operation=operation,
+            duration_ms=duration_ms,
+        )
         if usage:
             logger.debug(
                 "%s response usage: %s",
                 self.provider,
-                usage,
+                _usage_diagnostics(usage),
             )
+            if self.usage_recorder is not None:
+                self.usage_recorder(usage)
         return data["choices"][0]["message"]["content"]
 
 
 class InfercomClient(_OpenAICompatibleClient):
-    def __init__(self, config: LLMConfig) -> None:
-        super().__init__(config, provider="infercom")
+    def __init__(
+        self,
+        config: LLMConfig,
+        *,
+        usage_recorder: UsageRecorder | None = None,
+    ) -> None:
+        super().__init__(config, provider="infercom", usage_recorder=usage_recorder)
 
 
 class MinimaxClient(_OpenAICompatibleClient):
-    def __init__(self, config: LLMConfig) -> None:
-        super().__init__(config, provider="minimax")
+    def __init__(
+        self,
+        config: LLMConfig,
+        *,
+        usage_recorder: UsageRecorder | None = None,
+    ) -> None:
+        super().__init__(config, provider="minimax", usage_recorder=usage_recorder)
 
 
 class OllamaClient:
-    def __init__(self, config: LLMConfig) -> None:
+    def __init__(
+        self,
+        config: LLMConfig,
+        *,
+        usage_recorder: UsageRecorder | None = None,
+    ) -> None:
         self.model = config.selected_model()
         self.base_url = config.providers.ollama.base_url.rstrip("/")
         self.temperature = config.temperature
         self.top_p = config.top_p
+        self.usage_recorder = usage_recorder
 
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         url = f"{self.base_url}/api/chat"
         request_body = {
             "model": self.model,
@@ -136,6 +171,7 @@ class OllamaClient:
                 "top_p": self.top_p,
             },
         }
+        started = perf_counter()
         try:
             response = httpx.post(
                 url,
@@ -159,18 +195,31 @@ class OllamaClient:
                 request=_diagnostic_request(request_body),
             ) from exc
         data = response.json()
+        usage = _ollama_usage_from_response(
+            data,
+            provider="ollama",
+            model=self.model,
+            operation=operation,
+            duration_ms=_duration_ms(started),
+        )
+        if usage and self.usage_recorder is not None:
+            self.usage_recorder(usage)
         return data["message"]["content"]
 
 
-def build_llm_client(config: LLMConfig) -> LLMClient:
+def build_llm_client(
+    config: LLMConfig,
+    *,
+    usage_recorder: UsageRecorder | None = None,
+) -> LLMClient:
     if config.default_provider == "echo":
         return EchoClient()
     if config.default_provider == "infercom":
-        return InfercomClient(config)
+        return InfercomClient(config, usage_recorder=usage_recorder)
     if config.default_provider == "minimax":
-        return MinimaxClient(config)
+        return MinimaxClient(config, usage_recorder=usage_recorder)
     if config.default_provider == "ollama":
-        return OllamaClient(config)
+        return OllamaClient(config, usage_recorder=usage_recorder)
     raise ValueError(f"Unsupported LLM provider: {config.default_provider}")
 
 
@@ -233,20 +282,84 @@ def _diagnostic_request(request_body: dict[str, Any]) -> dict[str, Any]:
     return diagnostic
 
 
-def _response_usage_diagnostics(data: dict[str, Any]) -> dict[str, Any]:
+def _openai_usage_from_response(
+    data: dict[str, Any],
+    *,
+    provider: str,
+    model: str,
+    operation: str,
+    duration_ms: int,
+) -> LLMUsage | None:
     usage = data.get("usage")
     if not isinstance(usage, dict):
-        return {}
+        return None
 
-    diagnostics = {
-        key: usage[key]
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens")
-        if key in usage
-    }
+    input_tokens = _integer_usage_value(usage.get("prompt_tokens"))
+    output_tokens = _integer_usage_value(usage.get("completion_tokens"))
+    if input_tokens is None or output_tokens is None:
+        input_tokens = _integer_usage_value(usage.get("input_tokens"))
+        output_tokens = _integer_usage_value(usage.get("output_tokens"))
+    if input_tokens is None or output_tokens is None:
+        return None
+
+    cached_input_tokens = 0
     prompt_details = usage.get("prompt_tokens_details")
     if isinstance(prompt_details, dict) and "cached_tokens" in prompt_details:
-        diagnostics["cached_tokens"] = prompt_details["cached_tokens"]
-    for key in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
-        if key in usage:
-            diagnostics[key] = usage[key]
-    return diagnostics
+        cached_input_tokens = _integer_usage_value(prompt_details.get("cached_tokens")) or 0
+    if "cache_read_input_tokens" in usage:
+        cached_input_tokens = _integer_usage_value(usage.get("cache_read_input_tokens")) or 0
+
+    return LLMUsage(
+        provider=provider,
+        model=model,
+        operation=operation,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_input_tokens=cached_input_tokens,
+        duration_ms=duration_ms,
+    )
+
+
+def _ollama_usage_from_response(
+    data: dict[str, Any],
+    *,
+    provider: str,
+    model: str,
+    operation: str,
+    duration_ms: int,
+) -> LLMUsage | None:
+    input_tokens = _integer_usage_value(data.get("prompt_eval_count"))
+    output_tokens = _integer_usage_value(data.get("eval_count"))
+    if input_tokens is None or output_tokens is None:
+        return None
+    return LLMUsage(
+        provider=provider,
+        model=model,
+        operation=operation,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_input_tokens=0,
+        duration_ms=duration_ms,
+    )
+
+
+def _usage_diagnostics(usage: LLMUsage) -> dict[str, int | str]:
+    return {
+        "operation": usage.operation,
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cached_input_tokens": usage.cached_input_tokens,
+        "duration_ms": usage.duration_ms,
+    }
+
+
+def _integer_usage_value(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return max(0, value)
+    return None
+
+
+def _duration_ms(started: float) -> int:
+    return max(0, round((perf_counter() - started) * 1000))

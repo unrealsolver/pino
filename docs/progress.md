@@ -2,6 +2,14 @@
 
 Newest entries go first.
 
+## 2026-08-14 23:44 Europe/Vilnius - Codex
+
+- Before: Add provider-agnostic LLM token usage collection with normalized input/output/cached token counts, storage in the configured database, and CLI text summaries.
+- Areas: LLM provider completion choke point, core usage model/storage, CLI usage commands, migrations/tests/docs, docs/progress.
+- After: Completed at 23:55. Added normalized `LLMUsage` recording at the provider completion choke point, persisted successful calls as `llm_usage_events`, wired refinement/chat operation labels and CLI recorders, added `pino usage summary/recent`, and added an Alembic migration for existing databases.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-llm/tests/test_llm_providers.py packages/pino-core/tests/test_storage.py packages/pino-core/tests/test_db.py apps/pino-cli/tests/test_main.py`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest`; `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .`; `UV_CACHE_DIR=/tmp/uv-cache uv run alembic -c alembic.ini history`; `UV_CACHE_DIR=/tmp/uv-cache uv run pino usage --help`; `git diff --check`.
+- Follow-up: Run `pino db upgrade` on the configured Postgres database before relying on persisted usage there.
+
 ## 2026-08-14 00:54 Europe/Vilnius - Codex
 
 - Before: Fix the full-suite failure caused by the debug prompts test still expecting the old refinement prompt label.

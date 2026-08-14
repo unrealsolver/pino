@@ -27,7 +27,9 @@ from sqlalchemy import (
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from pino_core.models import ChatMessage, MemoryEntry, Record, Refinement, utc_now
+from pino_llm import LLMUsage
+
+from pino_core.models import ChatMessage, LLMUsageEvent, MemoryEntry, Record, Refinement, utc_now
 
 metadata = MetaData()
 
@@ -100,6 +102,20 @@ source_cursors_table = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+llm_usage_events_table = Table(
+    "llm_usage_events",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("provider", String, nullable=False),
+    Column("model", String, nullable=False),
+    Column("operation", String, nullable=False),
+    Column("input_tokens", Integer, nullable=False),
+    Column("output_tokens", Integer, nullable=False),
+    Column("cached_input_tokens", Integer, nullable=False),
+    Column("duration_ms", Integer, nullable=False),
+)
+
 
 @dataclass(frozen=True)
 class InsertResult:
@@ -122,6 +138,31 @@ class EventQueryResult:
     record: Record
     refinement: Refinement
     score: float
+
+
+@dataclass(frozen=True)
+class LLMUsageSummary:
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    duration_ms: int
+
+    @property
+    def uncached_input_tokens(self) -> int:
+        return max(0, self.input_tokens - self.cached_input_tokens)
+
+    @property
+    def cache_hit_ratio(self) -> float:
+        if self.input_tokens <= 0:
+            return 0.0
+        return self.cached_input_tokens / self.input_tokens
+
+    @property
+    def average_duration_ms(self) -> int:
+        if self.calls <= 0:
+            return 0
+        return round(self.duration_ms / self.calls)
 
 
 class DatabaseStore:
@@ -349,6 +390,90 @@ class DatabaseStore:
             result = session.execute(delete(chat_messages_table))
             session.commit()
             return result.rowcount or 0
+
+    def add_llm_usage_event(self, usage: LLMUsage) -> None:
+        event = LLMUsageEvent(
+            provider=usage.provider,
+            model=usage.model,
+            operation=usage.operation,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+            duration_ms=usage.duration_ms,
+        )
+        self._insert_model(llm_usage_events_table, event)
+
+    def list_llm_usage_events(
+        self,
+        *,
+        limit: int = 50,
+        since: datetime | None = None,
+    ) -> list[LLMUsageEvent]:
+        limit = max(1, min(limit, 500))
+        with Session(self.engine) as session:
+            query = select(llm_usage_events_table)
+            if since is not None:
+                query = query.where(llm_usage_events_table.c.created_at >= since)
+            result = session.execute(
+                query.order_by(llm_usage_events_table.c.created_at.desc()).limit(limit),
+            )
+            return [LLMUsageEvent.model_validate(dict(row._mapping)) for row in result]
+
+    def summarize_llm_usage(
+        self,
+        *,
+        since: datetime | None = None,
+        group_by: str | None = None,
+    ) -> dict[str, LLMUsageSummary]:
+        if group_by not in {None, "model", "operation", "provider"}:
+            raise ValueError("group_by must be one of: model, operation, provider")
+
+        with Session(self.engine) as session:
+            columns = [
+                func.count().label("calls"),
+                func.coalesce(func.sum(llm_usage_events_table.c.input_tokens), 0).label(
+                    "input_tokens"
+                ),
+                func.coalesce(func.sum(llm_usage_events_table.c.output_tokens), 0).label(
+                    "output_tokens"
+                ),
+                func.coalesce(func.sum(llm_usage_events_table.c.cached_input_tokens), 0).label(
+                    "cached_input_tokens"
+                ),
+                func.coalesce(func.sum(llm_usage_events_table.c.duration_ms), 0).label(
+                    "duration_ms"
+                ),
+            ]
+            key_column = getattr(llm_usage_events_table.c, group_by) if group_by else None
+            if key_column is not None:
+                columns.insert(0, key_column.label("usage_key"))
+            query = select(*columns)
+            if since is not None:
+                query = query.where(llm_usage_events_table.c.created_at >= since)
+            if key_column is not None:
+                query = query.group_by(key_column).order_by(key_column)
+
+            rows = session.execute(query)
+            summaries: dict[str, LLMUsageSummary] = {}
+            for row in rows:
+                mapping = row._mapping
+                key = str(mapping["usage_key"]) if key_column is not None else "total"
+                summaries[key] = LLMUsageSummary(
+                    calls=int(mapping["calls"] or 0),
+                    input_tokens=int(mapping["input_tokens"] or 0),
+                    output_tokens=int(mapping["output_tokens"] or 0),
+                    cached_input_tokens=int(mapping["cached_input_tokens"] or 0),
+                    duration_ms=int(mapping["duration_ms"] or 0),
+                )
+            if not summaries and key_column is None:
+                summaries["total"] = LLMUsageSummary(
+                    calls=0,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cached_input_tokens=0,
+                    duration_ms=0,
+                )
+            return summaries
 
     def _insert_model(self, table: Table, model: Any) -> None:
         with Session(self.engine) as session:

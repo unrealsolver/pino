@@ -135,6 +135,27 @@ class Refinement(BaseModel):
         return normalize_schedule(value)
 
 
+class LLMUsageEvent(BaseModel):
+    """Persisted token usage for one completed LLM call."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default_factory=new_id)
+    created_at: datetime = Field(default_factory=utc_now)
+    provider: str
+    model: str
+    operation: str
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    cached_input_tokens: int = Field(default=0, ge=0)
+    duration_ms: int = Field(ge=0)
+
+    @field_validator("created_at")
+    @classmethod
+    def _normalize_created_at_to_utc(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc_datetime(value)
+
+
 def compute_record_fingerprint(record: Record) -> str:
     """Compute deterministic storage identity for a record.
 

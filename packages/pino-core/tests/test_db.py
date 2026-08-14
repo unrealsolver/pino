@@ -55,7 +55,11 @@ def test_upgrade_adds_schedule_to_legacy_refinements_table(tmp_path: Path) -> No
     inspector = inspect(engine)
     columns = {column["name"] for column in inspector.get_columns("refinements")}
     assert "schedule" in columns
-    assert inspector.get_table_names() == ["alembic_version", "refinements"]
+    assert inspector.get_table_names() == [
+        "alembic_version",
+        "llm_usage_events",
+        "refinements",
+    ]
 
 
 def test_upgrade_repairs_database_stamped_before_schedule_column(tmp_path: Path) -> None:
@@ -89,4 +93,41 @@ def test_upgrade_repairs_database_stamped_before_schedule_column(tmp_path: Path)
     with engine.begin() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
     assert "schedule" in columns
-    assert revision == "20260611_0241"
+    assert revision == "20260814_2344"
+
+
+def test_upgrade_adds_llm_usage_events_table(tmp_path: Path) -> None:
+    database_path = tmp_path / "pino.sqlite"
+    database_url = f"sqlite:///{database_path}"
+    engine = create_engine(database_url, future=True)
+    legacy_metadata = MetaData()
+    Table(
+        "alembic_version",
+        legacy_metadata,
+        Column("version_num", String, primary_key=True),
+    )
+    legacy_metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+            {"revision": "20260611_0241"},
+        )
+
+    upgrade_database(database_url)
+
+    inspector = inspect(engine)
+    columns = {column["name"] for column in inspector.get_columns("llm_usage_events")}
+    with engine.begin() as connection:
+        revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    assert {
+        "id",
+        "created_at",
+        "provider",
+        "model",
+        "operation",
+        "input_tokens",
+        "output_tokens",
+        "cached_input_tokens",
+        "duration_ms",
+    } <= columns
+    assert revision == "20260814_2344"

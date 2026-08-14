@@ -19,7 +19,7 @@ class StaticClient:
         self.calls = 0
         self.messages: list[list[LLMMessage]] = []
 
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         self.calls += 1
         self.messages.append(messages)
         return self.response

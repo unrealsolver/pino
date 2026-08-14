@@ -346,6 +346,8 @@ UV_CACHE_DIR=/tmp/uv-cache uv run pino digest --days 14
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --message "show memory"
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --debug --message "hello"
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat reset
+UV_CACHE_DIR=/tmp/uv-cache uv run pino usage summary --days 7 --group-by operation
+UV_CACHE_DIR=/tmp/uv-cache uv run pino usage recent --limit 20
 ```
 
 ## Open Questions

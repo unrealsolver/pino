@@ -7,10 +7,12 @@ from pino_llm.messages import LLMMessage
 from pino_llm.providers import (
     EchoClient,
     build_llm_client,
+    _ollama_usage_from_response,
     _openai_messages,
+    _openai_usage_from_response,
     _provider_http_error,
-    _response_usage_diagnostics,
 )
+from pino_llm.usage import LLMUsage
 
 
 def test_openai_messages_convert_tool_roles_to_user_context() -> None:
@@ -63,24 +65,89 @@ def test_provider_http_error_contains_sanitized_request_diagnostics() -> None:
     }
 
 
-def test_response_usage_diagnostics_include_cached_tokens() -> None:
-    diagnostics = _response_usage_diagnostics(
+def test_openai_usage_from_response_normalizes_cached_tokens() -> None:
+    usage = _openai_usage_from_response(
         {
             "usage": {
                 "prompt_tokens": 1200,
                 "completion_tokens": 300,
-                "total_tokens": 1500,
                 "prompt_tokens_details": {"cached_tokens": 800},
             },
         },
+        provider="minimax",
+        model="MiniMax-M3",
+        operation="refinement.extract",
+        duration_ms=1234,
     )
 
-    assert diagnostics == {
-        "prompt_tokens": 1200,
-        "completion_tokens": 300,
-        "total_tokens": 1500,
-        "cached_tokens": 800,
-    }
+    assert usage == LLMUsage(
+        provider="minimax",
+        model="MiniMax-M3",
+        operation="refinement.extract",
+        input_tokens=1200,
+        output_tokens=300,
+        cached_input_tokens=800,
+        duration_ms=1234,
+    )
+
+
+def test_ollama_usage_from_response_normalizes_eval_counts() -> None:
+    usage = _ollama_usage_from_response(
+        {"prompt_eval_count": 42, "eval_count": 12},
+        provider="ollama",
+        model="gpt-oss-20b",
+        operation="chat",
+        duration_ms=99,
+    )
+
+    assert usage == LLMUsage(
+        provider="ollama",
+        model="gpt-oss-20b",
+        operation="chat",
+        input_tokens=42,
+        output_tokens=12,
+        cached_input_tokens=0,
+        duration_ms=99,
+    )
+
+
+def test_openai_compatible_client_records_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded: list[LLMUsage] = []
+    config = LLMConfig.model_validate(
+        {
+            "default_provider": "minimax",
+            "providers": {"minimax": {"api_key": "test-key"}},
+        },
+    )
+
+    def fake_post(*args, **kwargs):
+        request = httpx.Request("POST", "https://api.minimax.io/v1/chat/completions")
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 3,
+                    "prompt_tokens_details": {"cached_tokens": 4},
+                },
+            },
+        )
+
+    monkeypatch.setattr("pino_llm.providers.httpx.post", fake_post)
+
+    client = build_llm_client(config, usage_recorder=recorded.append)
+    result = client.complete([LLMMessage(role="user", content="hello")], operation="chat")
+
+    assert result == "ok"
+    assert len(recorded) == 1
+    assert recorded[0].provider == "minimax"
+    assert recorded[0].model == "MiniMax-M3"
+    assert recorded[0].operation == "chat"
+    assert recorded[0].input_tokens == 10
+    assert recorded[0].output_tokens == 3
+    assert recorded[0].cached_input_tokens == 4
 
 
 def test_infercom_client_requires_api_key_when_selected() -> None:

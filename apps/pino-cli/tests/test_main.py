@@ -3,7 +3,7 @@ from io import StringIO
 from types import SimpleNamespace
 
 from rich.console import Console
-from pino_llm import LLMMessage
+from pino_llm import LLMMessage, LLMUsage
 
 from pino_cli import main
 from pino_core.config import PinoConfig, SourceConfig, StorageConfig
@@ -18,7 +18,7 @@ class StaticRefinementClient:
         self.response = response
         self.messages: list[LLMMessage] = []
 
-    def complete(self, messages: list[LLMMessage]) -> str:
+    def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         self.messages = messages
         return self.response
 
@@ -250,6 +250,68 @@ def test_db_url_prints_redacted_configured_database_url(monkeypatch) -> None:
     assert "secret" not in rendered
 
 
+def test_usage_summary_prints_persisted_token_totals(tmp_path, monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    config = PinoConfig(
+        storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"}),
+    )
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_llm_usage_event(
+        LLMUsage(
+            provider="minimax",
+            model="MiniMax-M3",
+            operation="refinement.extract",
+            input_tokens=1000,
+            output_tokens=200,
+            cached_input_tokens=750,
+            duration_ms=1200,
+        )
+    )
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+
+    main.usage_summary(days=7)
+
+    rendered = output.getvalue()
+    assert "LLM usage, last 7 day(s)" in rendered
+    assert "1,000" in rendered
+    assert "750" in rendered
+    assert "250" in rendered
+    assert "75.0%" in rendered
+
+
+def test_usage_recent_prints_persisted_token_events(tmp_path, monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    config = PinoConfig(
+        storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"}),
+    )
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.add_llm_usage_event(
+        LLMUsage(
+            provider="ollama",
+            model="gpt-oss-20b",
+            operation="chat",
+            input_tokens=42,
+            output_tokens=12,
+            cached_input_tokens=0,
+            duration_ms=99,
+        )
+    )
+    monkeypatch.setattr(main, "get_config", lambda config_path: config)
+
+    main.usage_recent(limit=10)
+
+    rendered = output.getvalue()
+    assert "ollama" in rendered
+    assert "gpt-oss-20b" in rendered
+    assert "chat" in rendered
+    assert "42" in rendered
+    assert "12" in rendered
+
+
 def test_recent_chat_history_formats_stored_markdown(tmp_path, monkeypatch) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
@@ -369,7 +431,11 @@ def test_refine_with_id_reruns_refinement_without_updating_store(tmp_path, monke
     )
     monkeypatch.setattr(main, "get_config", lambda config_path: config)
     monkeypatch.setattr(main, "get_store", lambda actual_config: store)
-    monkeypatch.setattr(main, "build_llm_client", lambda llm_config: client)
+    monkeypatch.setattr(
+        main,
+        "build_llm_client",
+        lambda llm_config, *, usage_recorder=None: client,
+    )
 
     main._run_refine(config_path=None, limit=None, debug=False, selected_id=f"ID {existing.id}")
 

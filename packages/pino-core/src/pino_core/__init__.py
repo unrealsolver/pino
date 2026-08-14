@@ -2,7 +2,7 @@ from pino_llm import LLMError, build_llm_client
 
 from pino_core.chat import ChatAgent, recent_chat_history, render_chat_system_prompt
 from pino_core.config import PinoConfig, load_config
-from pino_core.models import ChatMessage, MemoryEntry, Record, Refinement
+from pino_core.models import ChatMessage, LLMUsageEvent, MemoryEntry, Record, Refinement
 from pino_core.pipeline import CheckPipeline, CheckResult, DigestService, SourceCheckResult
 from pino_core.refinement import (
     RefinementDebugResult,
@@ -23,6 +23,7 @@ __all__ = [
     "DatabaseStore",
     "DigestService",
     "LLMError",
+    "LLMUsageEvent",
     "MemoryEntry",
     "PinoConfig",
     "Record",
