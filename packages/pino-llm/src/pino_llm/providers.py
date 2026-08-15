@@ -159,8 +159,10 @@ class OllamaClient:
         self.temperature = config.temperature
         self.top_p = config.top_p
         self.usage_recorder = usage_recorder
+        self.last_reasoning: str | None = None
 
     def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
+        self.last_reasoning = None
         url = f"{self.base_url}/api/chat"
         request_body = {
             "model": self.model,
@@ -204,7 +206,11 @@ class OllamaClient:
         )
         if usage and self.usage_recorder is not None:
             self.usage_recorder(usage)
-        return data["message"]["content"]
+        message = data["message"]
+        reasoning = message.get("thinking")
+        if isinstance(reasoning, str) and reasoning.strip():
+            self.last_reasoning = reasoning
+        return message["content"]
 
 
 def build_llm_client(

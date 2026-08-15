@@ -14,8 +14,9 @@ from pino_core.storage import SQLiteStore
 
 
 class StaticRefinementClient:
-    def __init__(self, response: str) -> None:
+    def __init__(self, response: str, *, reasoning: str | None = None) -> None:
         self.response = response
+        self.last_reasoning = reasoning
         self.messages: list[LLMMessage] = []
 
     def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
@@ -427,7 +428,8 @@ def test_refine_with_id_reruns_refinement_without_updating_store(tmp_path, monke
         storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"})
     )
     client = StaticRefinementClient(
-        '{"items": [{"content_kind": "event", "summary": "Dry run summary", "category_scores": {}}]}'
+        '{"items": [{"content_kind": "event", "summary": "Dry run summary", "category_scores": {}}]}',
+        reasoning="calendar reasoning trace",
     )
     monkeypatch.setattr(main, "get_config", lambda config_path: config)
     monkeypatch.setattr(main, "get_store", lambda actual_config: store)
@@ -445,6 +447,8 @@ def test_refine_with_id_reruns_refinement_without_updating_store(tmp_path, monke
     assert "False" in rendered
     assert "Prompt: system" in rendered
     assert "Prompt: user" in rendered
+    assert "Reasoning" in rendered
+    assert "calendar reasoning trace" in rendered
     assert "Raw response" in rendered
     assert "Parsed response" in rendered
     assert "Generated refinements" in rendered

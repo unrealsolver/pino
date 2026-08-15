@@ -29,6 +29,7 @@ class RefinementDebugResult:
     record: Record
     messages: list[LLMMessage]
     raw_response: str
+    reasoning: str | None
     parsed_response: dict[str, Any]
     refinements: list[Refinement]
     error: str | None = None
@@ -168,6 +169,7 @@ class RefinementService:
             record=record,
             messages=messages,
             raw_response=raw_response,
+            reasoning=_client_reasoning(self.client),
             parsed_response=data,
             refinements=refinements,
             error=error,
@@ -199,7 +201,8 @@ class RefinementService:
         return self._static_system_prompt
 
     def _record_prompt(self, record: Record) -> str:
-        payload = {
+        record_payload = {
+            "publication_date": _publication_date(record),
             "kind": record.kind,
             "source": record.source,
             "title": record.title,
@@ -208,8 +211,8 @@ class RefinementService:
         }
         semantic_payload = _semantic_record_payload(record.payload)
         if semantic_payload:
-            payload["payload"] = semantic_payload
-        return json.dumps(_drop_empty_values(payload), ensure_ascii=False, indent=2)
+            record_payload["payload"] = semantic_payload
+        return json.dumps(_drop_empty_values(record_payload), ensure_ascii=False, indent=2)
 
     def _record_messages(self, record: Record) -> list[LLMMessage]:
         return [
@@ -229,10 +232,14 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         "Prefer one item with a recurrence schedule for repeated instances of the same event.\n"
         "Only return multiple items when the source describes genuinely different events.\n"
         "Use ISO 8601 timestamps with timezone offsets. Use null when unknown.\n"
+        "When publication_date is present, use it to resolve today, tomorrow, weekdays, and omitted years.\n"
+        "Do not calculate, verify, or correct weekdays from date lists; preserve source dates, weekdays, and recurrence claims as written.\n"
+        "relevant_from is the earliest known start or active searchable datetime for the normalized item.\n"
+        "relevant_to is the latest known end or active searchable datetime for the normalized item.\n"
         "For weekly event schedules, use kind recurrence, timezone Europe/Vilnius unless the source says otherwise, rules with days/start/end, and no frequency field.\n"
-        "For scheduled items, use relevant_from/relevant_to as the coarse envelope covering the schedule, not as duplicate individual occurrences.\n"
+        "For scheduled items, set relevant_from to the first local active date at 00:00:00 and relevant_to to the last local active date at 23:59:59; put exact occurrence times only in schedule rules.\n"
         "Use schedule null only when no schedule or recurrence can be inferred.\n"
-        "Use only configured category keys and scores from 0 to 1.\n\n"
+        "Use only configured category keys with positive evidence and scores from 0 to 1; omit zero-score categories.\n\n"
         "Categories:\n"
         f"{categories}\n\n"
         "Response JSON object shape:\n"
@@ -400,6 +407,13 @@ _REFINEMENT_PAYLOAD_KEYS = {
 }
 
 
+def _publication_date(record: Record) -> str | None:
+    posted_at = _optional_datetime(record.payload.get("posted_at_utc"))
+    if posted_at is None:
+        return None
+    return posted_at.astimezone(ZoneInfo(DEFAULT_SOURCE_TIMEZONE)).date().isoformat()
+
+
 def _semantic_record_payload(value: dict[str, Any]) -> dict[str, Any]:
     return _drop_empty_values(
         {
@@ -429,14 +443,28 @@ def build_refinement_llm_config(config, refinement_config: RefinementConfig):
 
 def _parse_json_object(raw_response: str) -> dict[str, Any]:
     stripped = raw_response.strip()
+    parsed_objects: list[dict[str, Any]] = []
     for candidate in (stripped, *_json_object_candidates(stripped)):
         try:
             parsed = json.loads(candidate)
         except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict):
+            parsed_objects.append(parsed)
+    for parsed in parsed_objects:
+        if isinstance(parsed.get("items"), list):
             return parsed
+    if parsed_objects:
+        return parsed_objects[0]
     return {}
+
+
+def _client_reasoning(client: LLMClient) -> str | None:
+    value = getattr(client, "last_reasoning", None)
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _json_object_candidates(value: str) -> list[str]:

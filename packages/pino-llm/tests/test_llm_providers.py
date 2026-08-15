@@ -111,6 +111,37 @@ def test_ollama_usage_from_response_normalizes_eval_counts() -> None:
     )
 
 
+def test_ollama_client_preserves_native_thinking(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = LLMConfig(default_provider="ollama", model="simple")
+    seen_request = {}
+
+    def fake_post(*args, **kwargs):
+        seen_request.update(kwargs["json"])
+        request = httpx.Request("POST", "http://localhost:11434/api/chat")
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "message": {
+                    "role": "assistant",
+                    "thinking": "check the calendar claims",
+                    "content": '{"items": []}',
+                },
+                "prompt_eval_count": 10,
+                "eval_count": 5,
+            },
+        )
+
+    monkeypatch.setattr("pino_llm.providers.httpx.post", fake_post)
+
+    client = build_llm_client(config)
+    result = client.complete([LLMMessage(role="user", content="hello")], operation="refine")
+
+    assert result == '{"items": []}'
+    assert getattr(client, "last_reasoning") == "check the calendar claims"
+    assert "think" not in seen_request
+
+
 def test_openai_compatible_client_records_usage(monkeypatch: pytest.MonkeyPatch) -> None:
     recorded: list[LLMUsage] = []
     config = LLMConfig.model_validate(

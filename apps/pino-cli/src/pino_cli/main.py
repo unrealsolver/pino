@@ -384,6 +384,8 @@ def print_refinement_debug_rerun(
                 border_style="blue",
             )
         )
+    if result.reasoning is not None:
+        console.print(Panel(plain_text(result.reasoning), title="Reasoning", border_style="blue"))
     console.print(Panel(plain_text(result.raw_response), title="Raw response", border_style="blue"))
     console.print(
         Panel(plain_text(json_dumps(result.parsed_response)), title="Parsed response", border_style="blue")

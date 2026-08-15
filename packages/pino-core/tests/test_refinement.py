@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from pino_llm import LLMMessage
@@ -14,8 +15,9 @@ from pino_core.storage import SQLiteStore
 
 
 class StaticClient:
-    def __init__(self, response: str) -> None:
+    def __init__(self, response: str, *, reasoning: str | None = None) -> None:
         self.response = response
+        self.last_reasoning = reasoning
         self.calls = 0
         self.messages: list[list[LLMMessage]] = []
 
@@ -152,6 +154,10 @@ def test_refinement_record_prompt_omits_storage_ids_and_source_telemetry(
     RefinementService(store, client, RefinementConfig()).refine_record(inserted.record)
 
     record_prompt = client.messages[0][1].content
+    prompt_payload = json.loads(record_prompt)
+    assert prompt_payload["publication_date"] == "2026-06-09"
+    assert prompt_payload["kind"] == "telegram_message"
+    assert prompt_payload["source"] == "afisha-vilnius"
     assert inserted.record.id not in record_prompt
     assert "message_id" not in record_prompt
     assert "posted_at_utc" not in record_prompt
@@ -160,6 +166,27 @@ def test_refinement_record_prompt_omits_storage_ids_and_source_telemetry(
     assert "forwards" not in record_prompt
     assert "post_author" not in record_prompt
     assert '"location_scopes": [' in record_prompt
+
+
+def test_refinement_record_prompt_omits_publication_date_when_post_date_is_missing(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Today event",
+            text="Happening today at 19:00.",
+        )
+    )
+    client = StaticClient('{"items": [{"content_kind": "event", "category_scores": {}}]}')
+
+    RefinementService(store, client, RefinementConfig()).refine_record(inserted.record)
+
+    prompt_payload = json.loads(client.messages[0][1].content)
+    assert "publication_date" not in prompt_payload
 
 
 def test_refinement_service_skips_unusable_model_response(tmp_path: Path) -> None:
@@ -318,7 +345,14 @@ def test_refinement_prompt_prefers_schedule_for_repeated_instances() -> None:
 
     assert "Prefer one item with a recurrence schedule" in prompt
     assert "Only return multiple items when the source describes genuinely different events" in prompt
-    assert "not as duplicate individual occurrences" in prompt
+    assert "When publication_date is present" in prompt
+    assert "Do not calculate, verify, or correct weekdays from date lists" in prompt
+    assert "relevant_from is the earliest known start or active searchable datetime" in prompt
+    assert "relevant_to is the latest known end or active searchable datetime" in prompt
+    assert "first local active date at 00:00:00" in prompt
+    assert "last local active date at 23:59:59" in prompt
+    assert "put exact occurrence times only in schedule rules" in prompt
+    assert "omit zero-score categories" in prompt
     assert '"schedule": null | {' in prompt
     assert '"kind": "opening_hours|recurrence"' in prompt
     assert '"rules": [' in prompt
@@ -361,6 +395,25 @@ def test_refinement_service_debug_refine_record_returns_parse_error(tmp_path: Pa
     assert result.error == "refinement response is missing items"
 
 
+def test_refinement_service_debug_refine_record_includes_provider_reasoning(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="Debug", text="Debug me"))
+    client = StaticClient(
+        '{"items": [{"content_kind": "event", "summary": "Dry run", "category_scores": {}}]}',
+        reasoning="provider thinking trace",
+    )
+
+    result = RefinementService(store, client, RefinementConfig()).debug_refine_record(
+        inserted.record
+    )
+
+    assert result.reasoning == "provider thinking trace"
+    assert result.refinements[0].summary == "Dry run"
+
+
 def test_parse_json_object_reads_markdown_fenced_model_json() -> None:
     parsed = _parse_json_object(
         """
@@ -391,6 +444,29 @@ def test_parse_json_object_skips_invalid_brace_blocks_before_valid_json() -> Non
     )
 
     assert parsed["items"][0]["summary"] == "Valid object"
+
+
+def test_parse_json_object_prefers_items_over_reasoning_json_fragments() -> None:
+    parsed = _parse_json_object(
+        """
+        <think>
+        Schedule should be:
+        - rules: [{"days": ["TH"], "start": "20:00", "end": "23:00"}]
+        </think>
+
+        {
+          "items": [
+            {
+              "content_kind": "event",
+              "summary": "Valid response",
+              "category_scores": {}
+            }
+          ]
+        }
+        """,
+    )
+
+    assert parsed["items"][0]["summary"] == "Valid response"
 
 
 def test_build_refinement_llm_config_selects_simple_model() -> None:
