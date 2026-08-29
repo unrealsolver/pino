@@ -1,0 +1,19 @@
+source_id: d28d5ec1-6489-420a-bfae-b0b0444df3e2
+url: https://t.me/afishavilnius/11982
+publication_date: '2026-06-02'
+text: 'Концерт трио Julija Ritčik в Lucille: вечер авторской музыки с глубокими текстами
+  и красивыми аранжировками. Вход свободный, столик по бронированию по телефону. Где:
+  Rūdninkų g. 20, LT-1306 Дата: #4июня (четверг) ⏰20:00, добавить в 📆 На EN/LT, подробности
+  Теги: #концерт #МТ #неЛТ #Вильнюс'
+schedule:
+  kind: occurrence
+  timezone: Europe/Vilnius
+  occurrences:
+  - date: '2026-06-04'
+    start: '20:00'
+ok: true
+rest_tags:
+- '#концерт'
+- '#МТ'
+- '#неЛТ'
+- '#Вильнюс'

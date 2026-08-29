@@ -1,0 +1,20 @@
+source_id: 10b037d7-ad24-40bf-9c45-797b1e7b8cfa
+url: https://t.me/afishavilnius/12008
+publication_date: '2026-06-04'
+text: 'Концерт современной хоровой музыки под открытым небом: смешанный хор Momentum
+  исполнит произведения современных литовских и зарубежных композиторов (Šimkus, Alekna,
+  Zakaras, Lauridsen, Forrest) в историческом Траку Вокės дворе 7 июня в 14:00. Вход
+  свободный. 📍Адрес: Žalioji a. 2A Дата: #7июня (воскресенье) ⏰14:00-15:00, добавить
+  в 📆 На LT языке, подробности Теги: #концерт #МТ #Вильнюс'
+schedule:
+  kind: occurrence
+  timezone: Europe/Vilnius
+  occurrences:
+  - date: '2026-06-07'
+    start: '14:00'
+    end: '15:00'
+rest_tags:
+- '#концерт'
+- '#МТ'
+- '#Вильнюс'
+ok: true

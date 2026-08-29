@@ -1,0 +1,19 @@
+source_id: 721bfb32-18ec-4781-8438-172f739a54d3
+url: https://t.me/afishavilnius/12043
+publication_date: '2026-06-09'
+text: 'Концерт-открытие бесплатной летней серии «Амерikos balsai» в Вильнюсе: 12 июня
+  в 18:00 в Шв. Йоно (Св. Иоанна) церкви выступит школьный хор Newsome High School
+  Choir из Флориды (США) с программой из классической, современной и мировой хоровой
+  музыки. Где: Vilniaus Šv. Jonų bažnyčia Дата: #12июня (пятница) ⏰18:00, добавить
+  в 📆 На LT языке, подробности Теги: #концерт #МТ #Вильнюс'
+schedule:
+  kind: occurrence
+  timezone: Europe/Vilnius
+  occurrences:
+  - date: '2026-06-12'
+    start: '18:00'
+rest_tags:
+- '#концерт'
+- '#МТ'
+- '#Вильнюс'
+ok: true

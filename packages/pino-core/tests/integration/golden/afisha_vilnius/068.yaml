@@ -1,0 +1,18 @@
+source_id: 8e1fc39a-ed16-482c-986e-58d6fbbfeb66
+url: https://t.me/afishavilnius/12026
+publication_date: '2026-06-05'
+text: '👩‍🏫 Литовский Красный Kрест приглашает мигрантов к изучению литовского языка
+  с нуля в онлайн-клуб, занятия которого будут проходить онлайн по четвергам в 18:00,
+  начнутся 18 июня и продлятся 4 месяца. ✍️ Подробности и регистрация: https://forms.office.com/e/VrXxxbJnyx'
+schedule:
+  kind: recurrence
+  timezone: Europe/Vilnius
+  frequency: weekly
+  weekdays:
+  - thursday
+  times:
+  - start: '18:00'
+  from: '2026-06-18'
+  until: '2026-10-18'
+rest_tags: []
+ok: true
