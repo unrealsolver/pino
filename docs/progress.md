@@ -2,8 +2,51 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-29 18:56 EEST — /root
+
+- Intended: step 1 only—document the reviewed schedule v1 JSON contract, `relevant_from`/`relevant_to` semantics, and planned PostgreSQL/SQLite query behavior; no code or schema changes.
+- Areas: `docs/refinements.md` and this progress log.
+- Result (18:57 EEST): documented versioned `occurrences`/weekly `recurrence` JSON, local-time and overnight rules, derived-envelope semantics, exact no-fallback behavior, and the planned PostgreSQL multirange/SQLite fallback split.
+- Verification: reviewed the focused documentation diff and ran `git diff --check`; no code or schema changed. Follow-up: await review before implementing schedule normalization.
+
+## 2026-08-28 02:01 EEST — /root
+
+- Intended: independently review every `afisha_vilnius` golden fixture with the configured local LLM, then set each `ok` marker to match whether its `schedule` is supported by the entire message text.
+- Areas: `packages/pino-core/tests/integration/golden/afisha_vilnius/` and this progress log.
+- Result (02:06 EEST): three independent Codex Terra reviews covered all 100 fixtures; 90 are marked `ok: true` and 10 are marked `ok: false` for incomplete, unsupported, or malformed schedules. No marker is missing.
+- Verification: parsed all YAML fixtures and counted markers (`100 files; 90 true; 10 false; 0 missing`); `git diff --check` passed. Follow-up: false fixtures retain their extracted schedules intentionally, as human-review failure examples.
+
+## 2026-08-19
+
+- Intended: retain exactly three `#список` fixtures in the generated Afisha corpus as ignored edge cases, always with `schedule: null`, while preserving coverage floors and total size 100.
+- Result: regenerated 100 fixtures with exactly 3 `#список` items, all with null schedules; coverage remains 12 `каждый` and 86 weekday-stem items. Corpus now has 81 occurrence, 8 recurrence, and 11 null schedules.
+- Verification: selector smoke test, Ruff, Python compilation, and automated validation of all 100 YAML files passed.
+
+- Intended: extend the ad-hoc exporter to generate 100 deterministic `afisha-vilnius` golden fixtures under `packages/pino-core/tests/integration/golden/afisha_vilnius/`. Each fixture will contain source ID, URL, publication date, text, schedule, and non-date tags; schedules use correctly spelled `occurrence` or `recurrence`. Enforce at least 10% `каждый`, at least 10% Russian weekday stems, at most 5% `#список`, and no schedule for `#список`. No LLM or manual content review.
+- Result: generated 100 fixtures with 12 `каждый`, 84 weekday-stem, 0 `#список`, 83 occurrence, 8 recurrence, and 9 null schedules. Selection only forced minimum coverage, then filled ordinary records chronologically. Date hashtags are excluded from `rest_tags`; list digests are coded to receive no schedule.
+- Verification: deterministic schema/invariant pass over all 100 YAML files, script smoke tests and compilation, `pytest` (153 passed), Ruff, and `git diff --check`. Follow-up: stitch and manually verify expected schedules before treating the corpus as authoritative gold.
+
+## 2026-08-18
+
+- Intended: normalize Afisha date hashtags into ISO dates under provisional `schedule.matches.dates_refine`, using publication year; leave times and canonical records unchanged.
+- Result: Russian date hashtags are now validated and normalized to ISO dates using `payload.posted_at_utc`'s year; times remain raw. Invalid dates are skipped and missing publication metadata produces an empty list.
+- Verification: ruff, Python compilation, date-normalization/non-mutation smoke test, and `git diff --check` passed.
+
+- Intended: add temporary Afisha source-token extraction to the ad-hoc DB YAML exporter. Touch only the script and this log; do not change models or schedule rules.
+- Result: `afisha-vilnius` source exports now include provisional `schedule.matches` for raw date hashtags, time/range tokens, Russian weekday phrases, and hashtags; the same matches print to stderr. No model or schedule interpretation was added.
+- Verification: `ruff check scripts/export_db_yaml.py`, `py_compile`, regex smoke test, and `git diff --check` passed. Follow-up: add recurrence/occurrence rules later.
+
+- Intended: keep provisional schedule extraction outside the canonical source record in exporter output.
+- Result: `schedule` is now a top-level export field; `record` remains unchanged.
+- Verification: ruff, Python compilation, non-mutation smoke test, and `git diff --check` passed. No remaining risk beyond the intentionally provisional token-only shape.
+
+## 2026-08-16
+
+- Switched LLM-facing schedule weekdays from `MO/TU/...` abbreviations to full lowercase names, while normalizing back to internal day codes. Verification: core/refinement tests, full pytest, ruff.
+
 ## 2026-08-15
 
+- Explained `recurrence` versus `opening_hours` in the refinement prompt. Verification: refinement tests, full pytest, ruff.
 - Tightened refinement prompt to reduce reasoning loops: explicit scheduled day bounds, no weekday calculation, and no zero category scores. Verification: refinement tests, full pytest, ruff.
 - Added Ollama reasoning diagnostics to `pino refine <id>` by preserving `message.thinking` separately from response content. Verification: provider/refinement/CLI tests, full pytest, ruff.
 - Patched refinement prompt so scheduled items use day-level `relevant_from/to` envelopes while exact occurrence times stay in `schedule`. Verification: refinement tests, full pytest, ruff.
