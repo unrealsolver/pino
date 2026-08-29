@@ -236,7 +236,9 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         "Do not calculate, verify, or correct weekdays from date lists; preserve source dates, weekdays, and recurrence claims as written.\n"
         "relevant_from is the earliest known start or active searchable datetime for the normalized item.\n"
         "relevant_to is the latest known end or active searchable datetime for the normalized item.\n"
-        "For weekly event schedules, use kind recurrence, timezone Europe/Vilnius unless the source says otherwise, rules with days/start/end, and no frequency field.\n"
+        "Use schedule kind recurrence for discrete repeated event sessions such as classes, dance nights, meetups, screenings, or workshops.\n"
+        "Use schedule kind opening_hours for ongoing availability windows such as venue, exhibition, shop, museum, or service hours.\n"
+        "For weekly event schedules, use kind recurrence, timezone Europe/Vilnius unless the source says otherwise, rules with full lowercase weekday names/start/end, and no frequency field.\n"
         "For scheduled items, set relevant_from to the first local active date at 00:00:00 and relevant_to to the last local active date at 23:59:59; put exact occurrence times only in schedule rules.\n"
         "Use schedule null only when no schedule or recurrence can be inferred.\n"
         "Use only configured category keys with positive evidence and scores from 0 to 1; omit zero-score categories.\n\n"
@@ -254,7 +256,7 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         '        "timezone": "IANA timezone, e.g. Europe/Vilnius",\n'
         '        "kind": "opening_hours|recurrence",\n'
         '        "rules": [\n'
-        '          {"days": ["MO|TU|WE|TH|FR|SA|SU"], "start": "HH:MM", "end": "HH:MM or null"}\n'
+        '          {"days": ["monday|tuesday|wednesday|thursday|friday|saturday|sunday"], "start": "HH:MM", "end": "HH:MM or null"}\n'
         "        ],\n"
         '        "exceptions": [],\n'
         '        "source_text": "source schedule wording, optional"\n'

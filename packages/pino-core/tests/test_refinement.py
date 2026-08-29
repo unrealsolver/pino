@@ -232,7 +232,7 @@ def test_refinement_service_stores_valid_schedule_without_frequency(tmp_path: Pa
           "schedule": {
             "timezone": "Europe/Vilnius",
             "kind": "recurrence",
-            "rules": [{"days": ["TU"], "start": "19:00", "end": null}],
+            "rules": [{"days": ["tuesday"], "start": "19:00", "end": null}],
             "exceptions": [],
             "source_text": "Every Tuesday at 19:00"
           },
@@ -349,6 +349,8 @@ def test_refinement_prompt_prefers_schedule_for_repeated_instances() -> None:
     assert "Do not calculate, verify, or correct weekdays from date lists" in prompt
     assert "relevant_from is the earliest known start or active searchable datetime" in prompt
     assert "relevant_to is the latest known end or active searchable datetime" in prompt
+    assert "Use schedule kind recurrence for discrete repeated event sessions" in prompt
+    assert "Use schedule kind opening_hours for ongoing availability windows" in prompt
     assert "first local active date at 00:00:00" in prompt
     assert "last local active date at 23:59:59" in prompt
     assert "put exact occurrence times only in schedule rules" in prompt
@@ -356,7 +358,8 @@ def test_refinement_prompt_prefers_schedule_for_repeated_instances() -> None:
     assert '"schedule": null | {' in prompt
     assert '"kind": "opening_hours|recurrence"' in prompt
     assert '"rules": [' in prompt
-    assert '"days": ["MO|TU|WE|TH|FR|SA|SU"]' in prompt
+    assert '"days": ["monday|tuesday|wednesday|thursday|friday|saturday|sunday"]' in prompt
+    assert "MO|TU|WE|TH|FR|SA|SU" not in prompt
 
 
 def test_refinement_service_debug_refine_record_does_not_update_store(tmp_path: Path) -> None:

@@ -212,8 +212,8 @@ def _normalize_schedule_rule(value: Any) -> dict[str, Any] | None:
     raw_days = value.get("days")
     if not isinstance(raw_days, list):
         return None
-    days = [str(day).strip().upper() for day in raw_days]
-    days = [day for day in days if day in {"MO", "TU", "WE", "TH", "FR", "SA", "SU"}]
+    days = [_normalize_weekday(day) for day in raw_days]
+    days = [day for day in days if day is not None]
     if not days:
         return None
     start = _non_empty_string(value.get("start"))
@@ -223,6 +223,28 @@ def _normalize_schedule_rule(value: Any) -> dict[str, Any] | None:
     if end is not None and not _is_hhmm_time(end):
         return None
     return {"days": days, "start": start, "end": end}
+
+
+_WEEKDAY_CODES = {
+    "MO": "MO",
+    "MONDAY": "MO",
+    "TU": "TU",
+    "TUESDAY": "TU",
+    "WE": "WE",
+    "WEDNESDAY": "WE",
+    "TH": "TH",
+    "THURSDAY": "TH",
+    "FR": "FR",
+    "FRIDAY": "FR",
+    "SA": "SA",
+    "SATURDAY": "SA",
+    "SU": "SU",
+    "SUNDAY": "SU",
+}
+
+
+def _normalize_weekday(value: Any) -> str | None:
+    return _WEEKDAY_CODES.get(str(value).strip().upper())
 
 
 def _non_empty_string(value: Any) -> str | None:
