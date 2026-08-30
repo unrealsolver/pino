@@ -58,11 +58,15 @@ def test_upgrade_adds_schedule_to_legacy_refinements_table(tmp_path: Path) -> No
     inspector = inspect(engine)
     columns = {column["name"] for column in inspector.get_columns("refinements")}
     assert "schedule" in columns
-    assert inspector.get_table_names() == [
+    assert set(inspector.get_table_names()) == {
+        "active_memory",
         "alembic_version",
+        "chat_messages",
         "llm_usage_events",
+        "records",
         "refinements",
-    ]
+        "source_cursors",
+    }
 
 
 def test_upgrade_repairs_database_stamped_before_schedule_column(tmp_path: Path) -> None:
@@ -136,7 +140,7 @@ def test_upgrade_adds_llm_usage_events_table(tmp_path: Path) -> None:
     assert revision == "20260830_0323"
 
 
-def test_schedule_search_index_migration_is_a_sqlite_noop(tmp_path: Path) -> None:
+def test_upgrade_bootstraps_empty_sqlite_without_schedule_index(tmp_path: Path) -> None:
     database_path = tmp_path / "pino.sqlite"
     database_url = f"sqlite:///{database_path}"
 
@@ -146,7 +150,19 @@ def test_schedule_search_index_migration_is_a_sqlite_noop(tmp_path: Path) -> Non
     inspector = inspect(engine)
     with engine.begin() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert "refinement_schedule_index" not in inspector.get_table_names()
+    assert set(inspector.get_table_names()) == {
+        "active_memory",
+        "alembic_version",
+        "chat_messages",
+        "llm_usage_events",
+        "records",
+        "refinements",
+        "source_cursors",
+    }
+    assert "schedule" in {
+        column["name"] for column in inspector.get_columns("refinements")
+    }
+    assert "fingerprint" in {column["name"] for column in inspector.get_columns("records")}
     assert revision == "20260830_0323"
 
 

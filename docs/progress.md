@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-30 22:24 EEST — /root
+
+- Intended: schema-lifecycle cleanup step 1 only—add an idempotent portable Alembic baseline so an empty SQLite or PostgreSQL database can enter the existing migration chain; do not change runtime `init_schema` behavior yet.
+- Areas: migration baseline/ancestry, fresh-database migration tests, and this progress log.
+- Result (22:26 EEST): added base revision `20260610_0000` for the five portable pre-schedule tables and linked the existing migration chain to it. The baseline creates missing tables but tolerates pre-Alembic tables, while later revisions still add schedule and usage storage. Runtime `init_schema` is unchanged.
+- Verification: full `pytest` passed (169 tests), Ruff passed for all packages/apps, migration history resolves as one base-to-head chain, and `git diff --check` passed. PostgreSQL execution remains untested without a live server. Follow-up: await review before legacy-column reconciliation.
+
 ## 2026-08-30 21:36 EEST — /root
 
 - Intended: final schedule-query step—stream bounded coarse candidates, perform exact schedule matching in Core before page limits, and keep Web projection consistent; no occurrence table, SQLite index, or canonical-model change.

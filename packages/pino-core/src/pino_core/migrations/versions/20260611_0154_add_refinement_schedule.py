@@ -1,7 +1,7 @@
 """Add refinement schedule.
 
 Revision ID: 20260611_0154
-Revises:
+Revises: 20260610_0000
 Create Date: 2026-06-11 01:54:00.000000
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20260611_0154"
-down_revision = None
+down_revision = "20260610_0000"
 branch_labels = None
 depends_on = None
 
