@@ -2,12 +2,35 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-31 00:32 EEST — /root
+
+- Intended: finalize the reset migration history as a single revision literally named `0000`, retaining Alembic for deterministic current-schema creation and future evolution; no schema or runtime-bootstrap change.
+- Areas: initial migration identity/filename, migration assertions/history, prior squash log wording, and this progress log.
+- Result (00:33 EEST): the only migration is now `versions/0000_initial_schema.py` with revision `0000`; it remains the complete SQLite/PostgreSQL baseline and has no compatibility history. Schema behavior is unchanged from the reviewed squash.
+- Verification: full `pytest` passed (166 tests), Ruff passed for all packages/apps, Alembic reports `0000` as both base and head, and `git diff --check` passed. Follow-up: await review before making runtime bootstrap migration-backed.
+
+## 2026-08-31 00:28 EEST — /root
+
+- Intended: reset-oriented schema cleanup—replace the compatibility migration chain with one fresh current-schema baseline for SQLite/PostgreSQL, including the PostgreSQL-only schedule index; discard the uncommitted reconciliation migration, but leave runtime bootstrap unchanged until the next review point.
+- Areas: Alembic versions/history, fresh-schema migration tests, superseded phase-2 log outcome, and this progress log.
+- Result (00:30 EEST): replaced all historical revisions with one current-schema baseline, which creates the complete portable schema and conditionally creates the PostgreSQL multirange table plus GiST index. Removed legacy backfills and compatibility-only tests. Runtime `init_schema` is still unchanged.
+- Verification: full `pytest` passed (166 tests), Ruff passed for all packages/apps, SQLite migration output matches every portable metadata column, offline PostgreSQL DDL contains `INT4MULTIRANGE` and `USING gist`, migration history has one revision, and `git diff --check` passed. Follow-up: await review before migration-backed runtime bootstrap.
+
+## 2026-08-30 23:47 EEST — /root
+
+- Intended: schema-lifecycle cleanup phase 2—add a cross-database Alembic reconciliation for legacy `records.external_id`/`fingerprint` storage and its unique index; keep the manual SQLite repair until migration-backed runtime bootstrap lands in phase 3.
+- Areas: new head migration, legacy SQLite/PostgreSQL-compatible backfill behavior, migration tests, and this progress log.
+- Result (23:50 EEST): added head revision `20260830_2347`, which adds missing record-identity columns, deterministically backfills fingerprints, preserves duplicate legacy rows with stable fallback identities, enforces non-null fingerprints, and ensures uniqueness using portable Alembic/SQLAlchemy operations. The manual SQLite repair remains active until phase 3.
+- Verification: full `pytest` passed (170 tests), Ruff passed for all packages/apps, the migration graph resolves to the new head, and `git diff --check` passed. The prior-head upgrade path is covered on SQLite; live PostgreSQL execution remains untested. Follow-up: await review before migration-backed `init_schema` and manual-repair removal.
+- Superseded (2026-08-31 00:28 EEST): this uncommitted reconciliation was discarded after the user confirmed all databases will be recreated from scratch.
+
 ## 2026-08-30 22:24 EEST — /root
 
 - Intended: schema-lifecycle cleanup step 1 only—add an idempotent portable Alembic baseline so an empty SQLite or PostgreSQL database can enter the existing migration chain; do not change runtime `init_schema` behavior yet.
 - Areas: migration baseline/ancestry, fresh-database migration tests, and this progress log.
 - Result (22:26 EEST): added base revision `20260610_0000` for the five portable pre-schedule tables and linked the existing migration chain to it. The baseline creates missing tables but tolerates pre-Alembic tables, while later revisions still add schedule and usage storage. Runtime `init_schema` is unchanged.
 - Verification: full `pytest` passed (169 tests), Ruff passed for all packages/apps, migration history resolves as one base-to-head chain, and `git diff --check` passed. PostgreSQL execution remains untested without a live server. Follow-up: await review before legacy-column reconciliation.
+- Superseded (2026-08-31 00:28 EEST): replaced by the current-schema baseline after database-reset compatibility became unnecessary.
 
 ## 2026-08-30 21:36 EEST — /root
 
