@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-31 01:28 EEST — /root
+
+- Intended: finish schema lifecycle cleanup—make `DatabaseStore.init_schema()` apply Alembic revision `0000` on its existing engine, remove `metadata.create_all()` and the manual SQLite repair, update storage documentation, and verify SQLite plus PostgreSQL-oriented bootstrap paths.
+- Areas: Core database/bootstrap helpers, storage tests, README/tech-stack guidance, and this progress log.
+- Result (01:30 EEST): `init_schema()` now upgrades revision `0000` through Alembic on the store's existing engine, including in-memory SQLite; removed runtime `create_all()` and the PRAGMA-based legacy repair. Updated storage documentation to describe the shared SQLite/PostgreSQL lifecycle.
+- Verification: full `pytest` passed (167 tests), Ruff passed for all packages/apps, no legacy schema-repair references remain, and `git diff --check` passed. PostgreSQL bootstrap is covered by engine-delegation and offline DDL tests but not a live server. Follow-up: drop old databases, create an empty target, and run acceptance testing.
+
 ## 2026-08-31 00:32 EEST — /root
 
 - Intended: finalize the reset migration history as a single revision literally named `0000`, retaining Alembic for deterministic current-schema creation and future evolution; no schema or runtime-bootstrap change.

@@ -79,9 +79,11 @@ creation is supported.
 
 Use Alembic for schema migrations. The migration environment lives with
 `pino-core` storage metadata, and `pino db upgrade` applies migrations to the
-configured storage backend. Migrations should use Alembic operations and
-SQLAlchemy inspection instead of handwritten SQL so SQLite and PostgreSQL stay
-on the same path where practical.
+configured storage backend. `DatabaseStore.init_schema()` applies the same
+history on its existing engine, so zero-config SQLite startup and PostgreSQL
+startup share one bootstrap path. Migrations should use Alembic operations
+instead of separate runtime schema-repair code so both databases stay on the
+same path where practical.
 
 Avoid making the storage schema mirror the first event-ingestion pipeline too closely. Source-specific concepts should live in source adapters or typed payloads, not in top-level storage tables.
 

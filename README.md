@@ -247,8 +247,10 @@ PINO_DATABASE_URL=postgresql://pino:secret@db.example.net/pino
 
 Unselected backends are lazy, so `pg_vps.url` may remain unset while
 `storage.use: local`. Plain `postgresql://` URLs use the Psycopg 3 driver.
-PostgreSQL schema creation is supported for a fresh database; this project does
-not yet ship cross-database schema migrations.
+SQLite and PostgreSQL use the same Alembic history. Runtime store initialization
+upgrades the selected backend to the current revision; `pino db upgrade` applies
+the same migration explicitly. Use `pino db url` first when you need to confirm
+the selected target.
 
 Current source types:
 

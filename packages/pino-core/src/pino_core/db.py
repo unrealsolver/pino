@@ -4,6 +4,7 @@ from importlib.resources import files
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.engine import Engine
 
 from pino_core.storage import DatabaseStore
 from pino_core.storage import normalize_database_url
@@ -17,8 +18,13 @@ def alembic_config(database_url: str) -> Config:
     return config
 
 
-def upgrade_database(database_url: str, revision: str = "head") -> None:
-    command.upgrade(_engine_config(database_url), revision)
+def upgrade_database(
+    database_url: str,
+    revision: str = "head",
+    *,
+    engine: Engine | None = None,
+) -> None:
+    command.upgrade(_engine_config(database_url, engine=engine), revision)
 
 
 def current_database_revision(database_url: str) -> None:
@@ -29,7 +35,9 @@ def show_migration_history(database_url: str) -> None:
     command.history(alembic_config(database_url), verbose=True)
 
 
-def _engine_config(database_url: str) -> Config:
+def _engine_config(database_url: str, *, engine: Engine | None = None) -> Config:
     config = alembic_config(database_url)
-    config.attributes["connection"] = DatabaseStore(database_url).engine
+    config.attributes["connection"] = (
+        engine if engine is not None else DatabaseStore(database_url).engine
+    )
     return config

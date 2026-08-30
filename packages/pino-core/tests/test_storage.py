@@ -27,31 +27,31 @@ def test_database_store_normalizes_postgresql_url_to_psycopg(monkeypatch) -> Non
     assert created == [(store.database_url, True)]
 
 
-def test_database_store_skips_sqlite_legacy_migration_for_postgresql(
-    monkeypatch,
-) -> None:
+def test_database_store_init_schema_uses_migrations_on_existing_engine(monkeypatch) -> None:
     engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
-    create_calls: list[object] = []
-    migration_calls: list[bool] = []
+    migration_calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
         "pino_core.storage.create_engine",
         lambda url, *, future: engine,
     )
     monkeypatch.setattr(
-        "pino_core.storage.metadata.create_all",
-        lambda actual_engine: create_calls.append(actual_engine),
+        "pino_core.db.upgrade_database",
+        lambda database_url, *, engine: migration_calls.append((database_url, engine)),
     )
     store = DatabaseStore("postgresql://pino@example.test/pino")
-    monkeypatch.setattr(
-        store,
-        "_migrate_legacy_sqlite_records_table",
-        lambda: migration_calls.append(True),
-    )
 
     store.init_schema()
 
-    assert create_calls == [engine]
-    assert migration_calls == []
+    assert migration_calls == [("postgresql+psycopg://pino@example.test/pino", engine)]
+
+
+def test_in_memory_database_init_schema_migrates_same_engine() -> None:
+    store = DatabaseStore("sqlite:///:memory:")
+
+    store.init_schema()
+    store.add_memory(MemoryEntry(content="Available after migration."))
+
+    assert [item.content for item in store.list_memory()] == ["Available after migration."]
 
 
 def test_postgresql_refinement_replacement_maintains_schedule_index(

@@ -202,9 +202,12 @@ class DatabaseStore:
         self.engine = create_engine(url, future=True)
 
     def init_schema(self) -> None:
-        metadata.create_all(self.engine)
-        if self.engine.dialect.name == "sqlite":
-            self._migrate_legacy_sqlite_records_table()
+        from pino_core.db import upgrade_database
+
+        upgrade_database(
+            self.database_url.render_as_string(hide_password=False),
+            engine=self.engine,
+        )
 
     def add_record(self, record: Record) -> InsertResult:
         record = record.with_fingerprint()
@@ -573,35 +576,6 @@ class DatabaseStore:
         with Session(self.engine) as session:
             result = session.execute(select(table).order_by(order_column.desc()).limit(limit))
             return [dict(row._mapping) for row in result]
-
-    def _migrate_legacy_sqlite_records_table(self) -> None:
-        with self.engine.begin() as connection:
-            rows = connection.exec_driver_sql("PRAGMA table_info(records)").mappings().all()
-            columns = {row["name"] for row in rows}
-            if "external_id" not in columns:
-                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN external_id VARCHAR")
-            if "fingerprint" not in columns:
-                connection.exec_driver_sql("ALTER TABLE records ADD COLUMN fingerprint VARCHAR")
-            existing = connection.execute(select(records_table)).mappings().all()
-            seen: set[str] = set()
-            for row in existing:
-                record = Record.model_validate(dict(row)).with_fingerprint()
-                fingerprint = record.fingerprint or ""
-                if fingerprint in seen:
-                    fingerprint = f"legacy-duplicate:{record.id}"
-                seen.add(fingerprint)
-                connection.exec_driver_sql(
-                    "UPDATE records SET fingerprint = ?, external_id = ? WHERE id = ?",
-                    (fingerprint, record.external_id, record.id),
-                )
-
-            index_rows = connection.exec_driver_sql("PRAGMA index_list(records)").mappings().all()
-            index_names = {row["name"] for row in index_rows}
-            if "uq_records_fingerprint" not in index_names:
-                connection.exec_driver_sql(
-                    "CREATE UNIQUE INDEX uq_records_fingerprint ON records(fingerprint)",
-                )
-
 
 class SQLiteStore(DatabaseStore):
     def __init__(self, path: Path | str) -> None:
