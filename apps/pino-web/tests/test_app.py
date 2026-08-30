@@ -200,7 +200,7 @@ def test_unscheduled_multiday_projection_outputs_utc_for_local_days(tmp_path: Pa
     assert items[2].ends_at == datetime(2026, 6, 8, 21, 0, tzinfo=timezone.utc)
 
 
-def test_event_items_expand_opening_hours_schedule(tmp_path: Path) -> None:
+def test_event_items_expand_explicit_occurrence_schedule(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     inserted = store.add_record(
@@ -215,13 +215,13 @@ def test_event_items_expand_opening_hours_schedule(tmp_path: Path) -> None:
                 relevant_from=datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc),
                 relevant_to=datetime(2026, 6, 30, 21, 0, tzinfo=timezone.utc),
                 schedule={
+                    "version": 1,
                     "timezone": "Europe/Vilnius",
-                    "kind": "opening_hours",
-                    "rules": [
-                        {"days": ["MO", "TU", "WE", "TH", "FR"], "start": "10:00", "end": "21:00"},
-                        {"days": ["SA", "SU"], "start": "10:00", "end": "18:00"},
+                    "kind": "occurrences",
+                    "occurrences": [
+                        {"start": "2026-06-07T10:00", "end": "2026-06-07T18:00"},
+                        {"start": "2026-06-08T10:00", "end": "2026-06-08T21:00"},
                     ],
-                    "exceptions": [],
                 },
                 refiner="test",
             ),
@@ -266,10 +266,15 @@ def test_event_items_expand_weekly_recurrence_schedule(tmp_path: Path) -> None:
                 relevant_from=datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc),
                 relevant_to=datetime(2026, 6, 30, 21, 0, tzinfo=timezone.utc),
                 schedule={
+                    "version": 1,
                     "timezone": "Europe/Vilnius",
                     "kind": "recurrence",
-                    "rules": [{"days": ["TU"], "start": "19:00", "end": None}],
-                    "exceptions": [],
+                    "frequency": "weekly",
+                    "from": "2026-06-01",
+                    "until": "2026-06-30",
+                    "rules": [
+                        {"weekdays": ["tuesday"], "start": "19:00", "end": None}
+                    ],
                 },
                 refiner="test",
             ),
@@ -292,6 +297,52 @@ def test_event_items_expand_weekly_recurrence_schedule(tmp_path: Path) -> None:
     assert len(items) == 1
     assert items[0].starts_at == datetime(2026, 6, 9, 16, 0, tzinfo=timezone.utc)
     assert items[0].ends_at is None
+
+
+def test_scheduled_event_without_window_match_does_not_fallback_to_envelope(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Tuesday meetup", text="Each Tuesday.")
+    )
+    store.replace_refinements(
+        inserted.record.id,
+        [
+            Refinement(
+                record_id=inserted.record.id,
+                content_kind="event",
+                schedule={
+                    "version": 1,
+                    "timezone": "Europe/Vilnius",
+                    "kind": "recurrence",
+                    "frequency": "weekly",
+                    "from": "2026-06-01",
+                    "until": "2026-06-30",
+                    "rules": [
+                        {"weekdays": ["tuesday"], "start": "19:00", "end": None}
+                    ],
+                },
+                refiner="test",
+            ),
+        ],
+    )
+    window_start = datetime(2026, 6, 10, 0, 0, tzinfo=ZoneInfo("Europe/Vilnius"))
+    window_end = datetime(2026, 6, 10, 23, 59, tzinfo=ZoneInfo("Europe/Vilnius"))
+    result = store.query_events(
+        window_start=window_start.astimezone(timezone.utc),
+        window_end=window_end.astimezone(timezone.utc),
+    )
+
+    items = _to_event_items(
+        result[0],
+        ZoneInfo("Europe/Vilnius"),
+        window_start=window_start,
+        window_end=window_end,
+    )
+
+    assert items == []
 
 
 def test_events_endpoint_rejects_unknown_category(tmp_path: Path) -> None:

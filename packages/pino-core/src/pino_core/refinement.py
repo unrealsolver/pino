@@ -12,7 +12,8 @@ from pino_llm import LLMClient, LLMMessage
 
 from pino_core.config import RefinementConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
-from pino_core.models import Record, Refinement, normalize_schedule
+from pino_core.models import Record, Refinement
+from pino_core.schedules import normalize_schedule
 from pino_core.storage import DatabaseStore
 
 
@@ -231,15 +232,15 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         "Return strict JSON only. No markdown, no prose outside JSON.\n"
         "Prefer one item with a recurrence schedule for repeated instances of the same event.\n"
         "Only return multiple items when the source describes genuinely different events.\n"
-        "Use ISO 8601 timestamps with timezone offsets. Use null when unknown.\n"
+        "Use ISO 8601 timestamps with timezone offsets outside schedule. Use null when unknown.\n"
         "When publication_date is present, use it to resolve today, tomorrow, weekdays, and omitted years.\n"
         "Do not calculate, verify, or correct weekdays from date lists; preserve source dates, weekdays, and recurrence claims as written.\n"
         "relevant_from is the earliest known start or active searchable datetime for the normalized item.\n"
         "relevant_to is the latest known end or active searchable datetime for the normalized item.\n"
-        "Use schedule kind recurrence for discrete repeated event sessions such as classes, dance nights, meetups, screenings, or workshops.\n"
-        "Use schedule kind opening_hours for ongoing availability windows such as venue, exhibition, shop, museum, or service hours.\n"
-        "For weekly event schedules, use kind recurrence, timezone Europe/Vilnius unless the source says otherwise, rules with full lowercase weekday names/start/end, and no frequency field.\n"
-        "For scheduled items, set relevant_from to the first local active date at 00:00:00 and relevant_to to the last local active date at 23:59:59; put exact occurrence times only in schedule rules.\n"
+        "Use schedule kind occurrences for one or more explicit finite dates and recurrence for a stated weekly pattern.\n"
+        "Use only the fields for the selected schedule kind; do not mix occurrences and recurrence fields.\n"
+        "For scheduled items, set relevant_from and relevant_to to null; Pino derives the searchable envelope from schedule.\n"
+        "Schedule occurrence datetimes and recurrence times are local to the schedule timezone and do not include UTC offsets.\n"
         "Use schedule null only when no schedule or recurrence can be inferred.\n"
         "Use only configured category keys with positive evidence and scores from 0 to 1; omit zero-score categories.\n\n"
         "Categories:\n"
@@ -253,12 +254,19 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         '      "relevant_from": "ISO 8601 timestamp or null",\n'
         '      "relevant_to": "ISO 8601 timestamp or null",\n'
         '      "schedule": null | {\n'
+        '        "version": 1,\n'
         '        "timezone": "IANA timezone, e.g. Europe/Vilnius",\n'
-        '        "kind": "opening_hours|recurrence",\n'
-        '        "rules": [\n'
-        '          {"days": ["monday|tuesday|wednesday|thursday|friday|saturday|sunday"], "start": "HH:MM", "end": "HH:MM or null"}\n'
-        "        ],\n"
-        '        "exceptions": [],\n'
+        '        "kind": "occurrences",\n'
+        '        "occurrences": [{"start": "local YYYY-MM-DDTHH:MM", "end": "local YYYY-MM-DDTHH:MM or null"}],\n'
+        '        "source_text": "source schedule wording, optional"\n'
+        '      } | {\n'
+        '        "version": 1,\n'
+        '        "timezone": "IANA timezone, e.g. Europe/Vilnius",\n'
+        '        "kind": "recurrence",\n'
+        '        "frequency": "weekly",\n'
+        '        "from": "inclusive local YYYY-MM-DD",\n'
+        '        "until": "inclusive local YYYY-MM-DD or null",\n'
+        '        "rules": [{"weekdays": ["monday|tuesday|wednesday|thursday|friday|saturday|sunday"], "start": "HH:MM", "end": "HH:MM or null"}],\n'
         '        "source_text": "source schedule wording, optional"\n'
         "      },\n"
         '      "location": "venue or useful human-readable place, or null",\n'
@@ -361,23 +369,40 @@ def _collapse_weekly_group(
         if last_occurrence.end is not None
         else last_occurrence.start.isoformat()
     )
+    timezone_info = ZoneInfo(DEFAULT_SOURCE_TIMEZONE)
     first_item["schedule"] = {
+        "version": 1,
         "timezone": DEFAULT_SOURCE_TIMEZONE,
         "kind": "recurrence",
+        "frequency": "weekly",
+        "from": first_occurrence.start.astimezone(timezone_info).date().isoformat(),
+        "until": last_occurrence.start.astimezone(timezone_info).date().isoformat(),
         "rules": [
             {
-                "days": [first_occurrence.day_code],
+                "weekdays": [_weekday_name(first_occurrence.start, timezone_info)],
                 "start": first_occurrence.start_time,
                 "end": first_occurrence.end_time,
             }
         ],
-        "exceptions": [],
     }
     return first_item
 
 
 def _weekday_code(value: datetime) -> str:
     return ("MO", "TU", "WE", "TH", "FR", "SA", "SU")[value.weekday()]
+
+
+def _weekday_name(value: datetime, timezone_info: ZoneInfo) -> str:
+    local_value = value.astimezone(timezone_info)
+    return (
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    )[local_value.weekday()]
 
 
 def _normalized_key_text(value: Any) -> str | None:
@@ -546,7 +571,7 @@ def _optional_datetime(value: Any) -> datetime | None:
 
 
 def _optional_schedule(value: Any) -> dict[str, Any] | None:
-    return normalize_schedule(value)
+    return value if isinstance(value, dict) else None
 
 
 def _emit_progress(

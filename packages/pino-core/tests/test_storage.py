@@ -167,9 +167,19 @@ def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
     assert store.list_unrefined_records() == []
     refinement = store.list_refinements(inserted.record.id)[0]
     assert refinement.summary == "A refined"
-    assert refinement.relevant_from == relevant_from
-    assert refinement.relevant_to == relevant_to
-    assert refinement.schedule == schedule
+    assert refinement.relevant_from == datetime(2026, 5, 22, 21, 0, tzinfo=timezone.utc)
+    assert refinement.relevant_to == datetime(
+        2026, 5, 23, 20, 59, 59, 999999, tzinfo=timezone.utc
+    )
+    assert refinement.schedule == {
+        "version": 1,
+        "timezone": "Europe/Vilnius",
+        "kind": "recurrence",
+        "frequency": "weekly",
+        "from": "2026-05-23",
+        "until": "2026-05-23",
+        "rules": [{"weekdays": ["tuesday"], "start": "19:00", "end": None}],
+    }
     assert refinement.category_scores == {"metal_music": 0.75}
     assert store.get_record(inserted.record.id) == inserted.record
     assert store.get_record("missing") is None

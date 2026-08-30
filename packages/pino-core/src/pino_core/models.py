@@ -7,7 +7,9 @@ from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+
+from pino_core.schedules import derive_schedule_envelope, normalize_schedule
 
 
 def utc_now() -> datetime:
@@ -131,8 +133,21 @@ class Refinement(BaseModel):
 
     @field_validator("schedule", mode="before")
     @classmethod
-    def _validate_schedule(cls, value: Any) -> dict[str, Any] | None:
-        return normalize_schedule(value)
+    def _validate_schedule(cls, value: Any, info: ValidationInfo) -> dict[str, Any] | None:
+        return normalize_schedule(
+            value,
+            relevant_from=info.data.get("relevant_from"),
+            relevant_to=info.data.get("relevant_to"),
+        )
+
+    @model_validator(mode="after")
+    def _derive_scheduled_envelope(self) -> Refinement:
+        if self.schedule is None:
+            return self
+        envelope = derive_schedule_envelope(self.schedule)
+        self.relevant_from = envelope.start
+        self.relevant_to = envelope.end
+        return self
 
 
 class LLMUsageEvent(BaseModel):
@@ -176,93 +191,6 @@ def compute_record_fingerprint(record: Record) -> str:
         ]
     raw = "\x1f".join(_normalize_text(part) for part in parts)
     return sha256(raw.encode("utf-8")).hexdigest()
-
-
-def normalize_schedule(value: Any) -> dict[str, Any] | None:
-    if value is None or not isinstance(value, dict):
-        return None
-    kind = value.get("kind")
-    if kind not in {"opening_hours", "recurrence"}:
-        return None
-    timezone_name = _non_empty_string(value.get("timezone"))
-    if timezone_name is None:
-        return None
-    raw_rules = value.get("rules")
-    if not isinstance(raw_rules, list):
-        return None
-    rules = [_normalize_schedule_rule(rule) for rule in raw_rules]
-    rules = [rule for rule in rules if rule is not None]
-    if not rules:
-        return None
-    schedule: dict[str, Any] = {
-        "timezone": timezone_name,
-        "kind": kind,
-        "rules": rules,
-        "exceptions": value.get("exceptions") if isinstance(value.get("exceptions"), list) else [],
-    }
-    source_text = _non_empty_string(value.get("source_text"))
-    if source_text is not None:
-        schedule["source_text"] = source_text
-    return schedule
-
-
-def _normalize_schedule_rule(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, dict) or "frequency" in value:
-        return None
-    raw_days = value.get("days")
-    if not isinstance(raw_days, list):
-        return None
-    days = [_normalize_weekday(day) for day in raw_days]
-    days = [day for day in days if day is not None]
-    if not days:
-        return None
-    start = _non_empty_string(value.get("start"))
-    if start is None or not _is_hhmm_time(start):
-        return None
-    end = _non_empty_string(value.get("end"))
-    if end is not None and not _is_hhmm_time(end):
-        return None
-    return {"days": days, "start": start, "end": end}
-
-
-_WEEKDAY_CODES = {
-    "MO": "MO",
-    "MONDAY": "MO",
-    "TU": "TU",
-    "TUESDAY": "TU",
-    "WE": "WE",
-    "WEDNESDAY": "WE",
-    "TH": "TH",
-    "THURSDAY": "TH",
-    "FR": "FR",
-    "FRIDAY": "FR",
-    "SA": "SA",
-    "SATURDAY": "SA",
-    "SU": "SU",
-    "SUNDAY": "SU",
-}
-
-
-def _normalize_weekday(value: Any) -> str | None:
-    return _WEEKDAY_CODES.get(str(value).strip().upper())
-
-
-def _non_empty_string(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _is_hhmm_time(value: str) -> bool:
-    parts = value.split(":")
-    if len(parts) != 2:
-        return False
-    try:
-        hour, minute = (int(part) for part in parts)
-    except ValueError:
-        return False
-    return 0 <= hour <= 23 and 0 <= minute <= 59
 
 
 def _normalize_text(value: str) -> str:

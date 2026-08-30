@@ -218,7 +218,7 @@ def test_refinement_service_filters_unknown_categories(tmp_path: Path) -> None:
     assert store.list_refinements(inserted.record.id)[0].category_scores == {"metal_music": 0.8}
 
 
-def test_refinement_service_stores_valid_schedule_without_frequency(tmp_path: Path) -> None:
+def test_refinement_service_stores_valid_occurrence_schedule(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     inserted = store.add_record(
@@ -230,10 +230,10 @@ def test_refinement_service_stores_valid_schedule_without_frequency(tmp_path: Pa
           "content_kind": "event",
           "summary": "Tuesday event",
           "schedule": {
+            "version": 1,
             "timezone": "Europe/Vilnius",
-            "kind": "recurrence",
-            "rules": [{"days": ["tuesday"], "start": "19:00", "end": null}],
-            "exceptions": [],
+            "kind": "occurrences",
+            "occurrences": [{"start": "2026-06-09T19:00", "end": null}],
             "source_text": "Every Tuesday at 19:00"
           },
           "category_scores": {}
@@ -244,10 +244,10 @@ def test_refinement_service_stores_valid_schedule_without_frequency(tmp_path: Pa
     RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
 
     assert store.list_refinements(inserted.record.id)[0].schedule == {
+        "version": 1,
         "timezone": "Europe/Vilnius",
-        "kind": "recurrence",
-        "rules": [{"days": ["TU"], "start": "19:00", "end": None}],
-        "exceptions": [],
+        "kind": "occurrences",
+        "occurrences": [{"start": "2026-06-09T19:00", "end": None}],
         "source_text": "Every Tuesday at 19:00",
     }
 
@@ -302,14 +302,19 @@ def test_refinement_service_coalesces_expanded_weekly_occurrences(tmp_path: Path
     refinements = store.list_refinements(inserted.record.id)
     assert len(refinements) == 1
     assert refinements[0].relevant_from is not None
-    assert refinements[0].relevant_from.isoformat() == "2026-06-11T17:00:00+00:00"
+    assert refinements[0].relevant_from.isoformat() == "2026-06-10T21:00:00+00:00"
     assert refinements[0].relevant_to is not None
-    assert refinements[0].relevant_to.isoformat() == "2026-06-25T20:00:00+00:00"
+    assert refinements[0].relevant_to.isoformat() == "2026-06-25T20:59:59.999999+00:00"
     assert refinements[0].schedule == {
+        "version": 1,
         "timezone": "Europe/Vilnius",
         "kind": "recurrence",
-        "rules": [{"days": ["TH"], "start": "20:00", "end": "23:00"}],
-        "exceptions": [],
+        "frequency": "weekly",
+        "from": "2026-06-11",
+        "until": "2026-06-25",
+        "rules": [
+            {"weekdays": ["thursday"], "start": "20:00", "end": "23:00"}
+        ],
     }
 
 
@@ -349,16 +354,17 @@ def test_refinement_prompt_prefers_schedule_for_repeated_instances() -> None:
     assert "Do not calculate, verify, or correct weekdays from date lists" in prompt
     assert "relevant_from is the earliest known start or active searchable datetime" in prompt
     assert "relevant_to is the latest known end or active searchable datetime" in prompt
-    assert "Use schedule kind recurrence for discrete repeated event sessions" in prompt
-    assert "Use schedule kind opening_hours for ongoing availability windows" in prompt
-    assert "first local active date at 00:00:00" in prompt
-    assert "last local active date at 23:59:59" in prompt
-    assert "put exact occurrence times only in schedule rules" in prompt
+    assert "Use schedule kind occurrences" in prompt
+    assert "recurrence for a stated weekly pattern" in prompt
+    assert "set relevant_from and relevant_to to null" in prompt
+    assert "local to the schedule timezone" in prompt
     assert "omit zero-score categories" in prompt
     assert '"schedule": null | {' in prompt
-    assert '"kind": "opening_hours|recurrence"' in prompt
+    assert '"kind": "occurrences"' in prompt
+    assert '"kind": "recurrence"' in prompt
+    assert '"occurrences": [' in prompt
     assert '"rules": [' in prompt
-    assert '"days": ["monday|tuesday|wednesday|thursday|friday|saturday|sunday"]' in prompt
+    assert '"weekdays": ["monday|tuesday|wednesday|thursday|friday|saturday|sunday"]' in prompt
     assert "MO|TU|WE|TH|FR|SA|SU" not in prompt
 
 

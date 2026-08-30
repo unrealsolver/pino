@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-30 02:54 EEST — /root
+
+- Intended: step 2 only—implement schedule v1 normalization and shared core occurrence expansion, retain legacy schedule read compatibility, and switch Web projection to the shared implementation; no database or query-index changes.
+- Areas: `pino_core` schedule/model/refinement code, Web event projection, focused tests, and this progress log.
+- Result (03:02 EEST): added typed v1 `occurrences`/weekly `recurrence` normalization, schedule-derived envelopes, legacy `opening_hours`/recurrence conversion, shared exact expansion including overnight sessions, and Web reuse with no coarse fallback after a schedule miss. Updated the refinement prompt to emit v1.
+- Verification: full `pytest` passed (160 tests), Ruff passed for Core/Web sources and tests, and `git diff --check` passed. Follow-up: await review before adding the PostgreSQL-only derived index migration.
+
 ## 2026-08-29 18:56 EEST — /root
 
 - Intended: step 1 only—document the reviewed schedule v1 JSON contract, `relevant_from`/`relevant_to` semantics, and planned PostgreSQL/SQLite query behavior; no code or schema changes.
