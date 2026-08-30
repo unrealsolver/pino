@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-31 01:54 EEST — /root
+
+- Intended: allow reset bootstrap to retain existing `active_memory` and `llm_usage_events` tables by using `CREATE TABLE IF NOT EXISTS` for only those two initial-schema operations; keep all other tables strict.
+- Areas: revision `0000` DDL, SQLite/PostgreSQL migration assertions, and this progress log.
+- Result (01:55 EEST): revision `0000` now emits `CREATE TABLE IF NOT EXISTS` for `active_memory` and `llm_usage_events` only. Other tables still fail on an incomplete reset, and retained rows survive bootstrap unchanged.
+- Verification: full `pytest` passed (168 tests), Ruff passed for all packages/apps, SQLite preservation and PostgreSQL offline `IF NOT EXISTS` DDL are covered, and `git diff --check` passed. Follow-up: retained tables must already have the current column shape.
+
 ## 2026-08-31 01:28 EEST — /root
 
 - Intended: finish schema lifecycle cleanup—make `DatabaseStore.init_schema()` apply Alembic revision `0000` on its existing engine, remove `metadata.create_all()` and the manual SQLite repair, update storage documentation, and verify SQLite plus PostgreSQL-oriented bootstrap paths.

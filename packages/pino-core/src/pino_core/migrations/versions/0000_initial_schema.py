@@ -43,6 +43,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("payload", sa.JSON(), nullable=False),
+        if_not_exists=True,
     )
     op.create_table(
         "chat_messages",
@@ -93,6 +94,7 @@ def upgrade() -> None:
         sa.Column("output_tokens", sa.Integer(), nullable=False),
         sa.Column("cached_input_tokens", sa.Integer(), nullable=False),
         sa.Column("duration_ms", sa.Integer(), nullable=False),
+        if_not_exists=True,
     )
 
     if op.get_bind().dialect.name == "postgresql":
