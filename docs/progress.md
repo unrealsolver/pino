@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-30 21:36 EEST — /root
+
+- Intended: final schedule-query step—stream bounded coarse candidates, perform exact schedule matching in Core before page limits, and keep Web projection consistent; no occurrence table, SQLite index, or canonical-model change.
+- Areas: Core storage query path, Web schedule-result expectations, focused regression tests, and this progress log.
+- Result (21:39 EEST): relevant/event queries now stream one ordered candidate result set in 200-row fetches, reject nonmatching schedules before they consume the requested limit, and stop after a 5,000-candidate safety cap. PostgreSQL retains its multirange prefilter; SQLite performs the same exact pass over coarse candidates. Web still expands accepted schedules into display occurrences.
+- Verification: full `pytest` passed (169 tests), Ruff passed for all packages/apps, and `git diff --check` passed. Live PostgreSQL execution and planner behavior remain for acceptance testing; a cap-exhausted query can intentionally return a short page. Follow-up: review and acceptance testing.
+
 ## 2026-08-30 19:14 EEST — /root
 
 - Intended: step 4 only—maintain the PostgreSQL derived schedule index in the same refinement-replacement transaction and apply its timezone-aware weekly overlap as a PostgreSQL candidate prefilter; do not change SQLite behavior or add exact filtering to generic Core queries yet.

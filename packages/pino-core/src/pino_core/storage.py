@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +36,14 @@ from sqlalchemy.sql.elements import ColumnElement
 from pino_llm import LLMUsage
 
 from pino_core.models import ChatMessage, LLMUsageEvent, MemoryEntry, Record, Refinement, utc_now
-from pino_core.schedules import compile_query_weekly_pattern, compile_weekly_pattern
+from pino_core.schedules import (
+    compile_query_weekly_pattern,
+    compile_weekly_pattern,
+    expand_schedule,
+)
+
+_MAX_RELEVANT_SCAN = 5000
+_RELEVANT_FETCH_SIZE = 200
 
 metadata = MetaData()
 
@@ -292,7 +301,37 @@ class DatabaseStore:
         window_start: datetime,
         window_end: datetime,
         limit: int = 20,
+        scan_limit: int = _MAX_RELEVANT_SCAN,
     ) -> list[tuple[Record, Refinement]]:
+        if limit <= 0:
+            return []
+        rows: list[tuple[Record, Refinement]] = []
+        with closing(
+            self._iter_relevant_candidates(
+                window_start=window_start,
+                window_end=window_end,
+                scan_limit=max(limit, min(scan_limit, _MAX_RELEVANT_SCAN)),
+            )
+        ) as candidates:
+            for record, refinement in candidates:
+                if not _refinement_matches_schedule(
+                    refinement,
+                    window_start=window_start,
+                    window_end=window_end,
+                ):
+                    continue
+                rows.append((record, refinement))
+                if len(rows) >= limit:
+                    break
+        return rows
+
+    def _iter_relevant_candidates(
+        self,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        scan_limit: int,
+    ) -> Generator[tuple[Record, Refinement], None, None]:
         with Session(self.engine) as session:
             query = (
                 select(records_table, refinements_table)
@@ -335,9 +374,13 @@ class DatabaseStore:
                 query.order_by(
                     refinements_table.c.relevant_from.asc(),
                     records_table.c.captured_at.desc(),
-                ).limit(limit)
+                    refinements_table.c.id.asc(),
+                )
+                .limit(scan_limit)
+                .execution_options(yield_per=min(_RELEVANT_FETCH_SIZE, scan_limit))
             )
-            return [_record_with_refinement_from_row(row) for row in result]
+            for row in result:
+                yield _record_with_refinement_from_row(row)
 
     def query_events(
         self,
@@ -348,32 +391,42 @@ class DatabaseStore:
         min_score: float = 0.0,
         text_query: str = "",
         limit: int = 200,
-        scan_limit: int = 2000,
+        scan_limit: int = _MAX_RELEVANT_SCAN,
     ) -> list[EventQueryResult]:
         categories = [category for category in categories or [] if category]
         limit = max(1, min(limit, 500))
-        scan_limit = max(limit, min(scan_limit, 5000))
+        scan_limit = max(limit, min(scan_limit, _MAX_RELEVANT_SCAN))
         min_score = max(0.0, min(float(min_score), 1.0))
         query = text_query.strip().casefold()
-        rows = self.list_relevant_refinements(
-            window_start=window_start,
-            window_end=window_end,
-            limit=scan_limit,
-        )
         results: list[EventQueryResult] = []
-        for record, refinement in rows:
-            score = _matching_category_score(
-                refinement,
-                categories=categories,
-                min_score=min_score,
+        with closing(
+            self._iter_relevant_candidates(
+                window_start=window_start,
+                window_end=window_end,
+                scan_limit=scan_limit,
             )
-            if score is None:
-                continue
-            if query and query not in _event_search_text(record, refinement):
-                continue
-            results.append(EventQueryResult(record=record, refinement=refinement, score=score))
-            if len(results) >= limit:
-                break
+        ) as rows:
+            for record, refinement in rows:
+                score = _matching_category_score(
+                    refinement,
+                    categories=categories,
+                    min_score=min_score,
+                )
+                if score is None:
+                    continue
+                if query and query not in _event_search_text(record, refinement):
+                    continue
+                if not _refinement_matches_schedule(
+                    refinement,
+                    window_start=window_start,
+                    window_end=window_end,
+                ):
+                    continue
+                results.append(
+                    EventQueryResult(record=record, refinement=refinement, score=score)
+                )
+                if len(results) >= limit:
+                    break
         return results
 
     def replace_refinements(self, record_id: str, refinements: list[Refinement]) -> None:
@@ -643,6 +696,24 @@ def _matching_category_score(
     if min_score > 0.0 and best_score < min_score:
         return None
     return best_score
+
+
+def _refinement_matches_schedule(
+    refinement: Refinement,
+    *,
+    window_start: datetime,
+    window_end: datetime,
+) -> bool:
+    if refinement.schedule is None:
+        return True
+    return bool(
+        expand_schedule(
+            refinement.schedule,
+            window_start=window_start,
+            window_end=window_end,
+            key_prefix=refinement.id,
+        )
+    )
 
 
 def _event_search_text(record: Record, refinement: Refinement) -> str:

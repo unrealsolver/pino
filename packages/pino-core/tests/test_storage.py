@@ -151,11 +151,66 @@ def test_postgresql_relevant_query_uses_weekly_candidate_filter(monkeypatch) -> 
     assert len(executed) == 2
     compiled = executed[1].compile(dialect=postgresql.dialect())
     sql = str(compiled)
+    assert executed[1].get_execution_options()["yield_per"] == 200
     assert "LEFT OUTER JOIN refinement_schedule_index" in sql
     assert "refinement_schedule_index.refinement_id IS NULL" in sql
     assert "weekly_pattern && CAST(%(schedule_query_pattern_0)s AS INT4MULTIRANGE)" in sql
     assert compiled.params["schedule_query_timezone_0"] == "Europe/Vilnius"
     assert compiled.params["schedule_query_pattern_0"] == "{[0,31),[10050,10080)}"
+
+
+def test_exact_schedule_filter_fills_pages_after_many_misses(monkeypatch) -> None:
+    store = object.__new__(DatabaseStore)
+    record = Record(kind="event", source="test", title="Weekly event", text="Weekly event")
+
+    def refinement(weekday: str) -> Refinement:
+        return Refinement(
+            record_id=record.id,
+            content_kind="event",
+            schedule={
+                "version": 1,
+                "timezone": "Europe/Vilnius",
+                "kind": "recurrence",
+                "frequency": "weekly",
+                "from": "2026-06-01",
+                "until": "2026-06-30",
+                "rules": [{"weekdays": [weekday], "start": "19:00", "end": None}],
+            },
+            refiner="test",
+        )
+
+    missed = refinement("wednesday")
+    matching = refinement("tuesday")
+    consumed = 0
+
+    def candidates(**_kwargs: object):
+        nonlocal consumed
+        for candidate in [missed] * 225 + [matching]:
+            consumed += 1
+            yield record, candidate
+
+    monkeypatch.setattr(store, "_iter_relevant_candidates", candidates)
+    timezone_info = ZoneInfo("Europe/Vilnius")
+    window_start = datetime(2026, 6, 9, 0, 0, tzinfo=timezone_info)
+    window_end = datetime(2026, 6, 9, 23, 59, tzinfo=timezone_info)
+
+    listed = store.list_relevant_refinements(
+        window_start=window_start,
+        window_end=window_end,
+        limit=1,
+        scan_limit=500,
+    )
+
+    result = store.query_events(
+        window_start=window_start,
+        window_end=window_end,
+        limit=1,
+        scan_limit=500,
+    )
+
+    assert [item.id for _record, item in listed] == [matching.id]
+    assert [item.refinement.id for item in result] == [matching.id]
+    assert consumed == 452
 
 
 def test_active_memory_round_trip(tmp_path: Path) -> None:

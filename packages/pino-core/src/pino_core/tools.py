@@ -86,6 +86,7 @@ def build_tools(
             window_start=window_start,
             window_end=window_end,
             limit=scan_limit,
+            scan_limit=scan_limit,
         )
         filtered = [
             (record, refinement)

@@ -335,14 +335,7 @@ def test_scheduled_event_without_window_match_does_not_fallback_to_envelope(
         window_end=window_end.astimezone(timezone.utc),
     )
 
-    items = _to_event_items(
-        result[0],
-        ZoneInfo("Europe/Vilnius"),
-        window_start=window_start,
-        window_end=window_end,
-    )
-
-    assert items == []
+    assert result == []
 
 
 def test_events_endpoint_rejects_unknown_category(tmp_path: Path) -> None:
