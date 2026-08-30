@@ -16,6 +16,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
+    bindparam,
+    cast,
     create_engine,
     delete,
     func,
@@ -24,14 +26,29 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from pino_llm import LLMUsage
 
 from pino_core.models import ChatMessage, LLMUsageEvent, MemoryEntry, Record, Refinement, utc_now
+from pino_core.schedules import compile_query_weekly_pattern, compile_weekly_pattern
 
 metadata = MetaData()
+
+# PostgreSQL-only derived search data. Keep it out of portable metadata so
+# SQLite schema creation remains unchanged.
+_postgresql_metadata = MetaData()
+
+refinement_schedule_index_table = Table(
+    "refinement_schedule_index",
+    _postgresql_metadata,
+    Column("refinement_id", String, primary_key=True),
+    Column("timezone", String, nullable=False),
+    Column("weekly_pattern", postgresql.INT4MULTIRANGE(), nullable=False),
+)
 
 records_table = Table(
     "records",
@@ -277,7 +294,7 @@ class DatabaseStore:
         limit: int = 20,
     ) -> list[tuple[Record, Refinement]]:
         with Session(self.engine) as session:
-            result = session.execute(
+            query = (
                 select(records_table, refinements_table)
                 .join(refinements_table, records_table.c.id == refinements_table.c.record_id)
                 .where(
@@ -297,11 +314,28 @@ class DatabaseStore:
                         refinements_table.c.relevant_from <= window_end,
                     ),
                 )
-                .order_by(
+            )
+            if self.engine.dialect.name == "postgresql":
+                timezones = list(
+                    session.execute(
+                        select(refinement_schedule_index_table.c.timezone).distinct()
+                    ).scalars()
+                )
+                query = query.outerjoin(
+                    refinement_schedule_index_table,
+                    refinement_schedule_index_table.c.refinement_id == refinements_table.c.id,
+                ).where(
+                    _postgres_schedule_candidate_filter(
+                        timezones,
+                        window_start=window_start,
+                        window_end=window_end,
+                    )
+                )
+            result = session.execute(
+                query.order_by(
                     refinements_table.c.relevant_from.asc(),
                     records_table.c.captured_at.desc(),
-                )
-                .limit(limit),
+                ).limit(limit)
             )
             return [_record_with_refinement_from_row(row) for row in result]
 
@@ -353,6 +387,8 @@ class DatabaseStore:
                 session.execute(
                     insert(refinements_table).values(**refinement.model_dump(mode="python"))
                 )
+                if self.engine.dialect.name == "postgresql" and refinement.schedule is not None:
+                    _insert_postgres_schedule_index(session, refinement)
             session.commit()
 
     def list_refinements(self, record_id: str) -> list[Refinement]:
@@ -536,6 +572,58 @@ def normalize_database_url(database_url: str):
     if url.drivername == "postgresql":
         return url.set(drivername="postgresql+psycopg")
     return url
+
+
+def _insert_postgres_schedule_index(session: Session, refinement: Refinement) -> None:
+    if refinement.schedule is None:
+        return
+    pattern = compile_weekly_pattern(refinement.schedule)
+    session.execute(
+        insert(refinement_schedule_index_table).values(
+            refinement_id=bindparam("schedule_refinement_id"),
+            timezone=bindparam("schedule_timezone"),
+            weekly_pattern=cast(
+                bindparam("schedule_weekly_pattern"),
+                postgresql.INT4MULTIRANGE(),
+            ),
+        ),
+        {
+            "schedule_refinement_id": refinement.id,
+            "schedule_timezone": pattern.timezone,
+            "schedule_weekly_pattern": pattern.as_postgresql_multirange(),
+        },
+    )
+
+
+def _postgres_schedule_candidate_filter(
+    timezones: list[str],
+    *,
+    window_start: datetime,
+    window_end: datetime,
+) -> ColumnElement[bool]:
+    matches: list[ColumnElement[bool]] = []
+    for index, timezone_name in enumerate(timezones):
+        query_pattern = compile_query_weekly_pattern(
+            window_start,
+            window_end,
+            timezone_name,
+        )
+        matches.append(
+            and_(
+                refinement_schedule_index_table.c.timezone
+                == bindparam(f"schedule_query_timezone_{index}", timezone_name),
+                refinement_schedule_index_table.c.weekly_pattern.op("&&")(
+                    cast(
+                        bindparam(
+                            f"schedule_query_pattern_{index}",
+                            query_pattern.as_postgresql_multirange(),
+                        ),
+                        postgresql.INT4MULTIRANGE(),
+                    )
+                ),
+            )
+        )
+    return or_(refinement_schedule_index_table.c.refinement_id.is_(None), *matches)
 
 
 def _matching_category_score(

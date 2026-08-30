@@ -226,7 +226,8 @@ def compile_weekly_pattern(schedule: dict[str, Any]) -> WeeklyPattern:
                 starts_at.timetz().replace(tzinfo=None)
             )
             duration = (
-                max(1, round((ends_at - starts_at).total_seconds() / 60))
+                # Exact window matching treats the end instant as inclusive.
+                max(1, round((ends_at - starts_at).total_seconds() / 60) + 1)
                 if ends_at is not None
                 else 1
             )
@@ -242,11 +243,40 @@ def compile_weekly_pattern(schedule: dict[str, Any]) -> WeeklyPattern:
                     duration = _minute_of_day(end_time) - _minute_of_day(start_time)
                     if duration <= 0:
                         duration += _MINUTES_PER_DAY
+                    # Keep the lossy index conservative at the inclusive end.
+                    duration += 1
                 _append_cyclic_range(ranges, start, start + duration)
     return WeeklyPattern(
         timezone=schedule["timezone"],
         ranges=tuple(_collapse_ranges(ranges)),
     )
+
+
+def compile_query_weekly_pattern(
+    window_start: datetime,
+    window_end: datetime,
+    timezone_name: str,
+) -> WeeklyPattern:
+    if window_start.tzinfo is None or window_end.tzinfo is None:
+        raise ValueError("schedule query window must be timezone-aware")
+    utc_start = window_start.astimezone(timezone.utc).replace(second=0, microsecond=0)
+    utc_end = window_end.astimezone(timezone.utc).replace(second=0, microsecond=0)
+    if utc_end < utc_start:
+        return WeeklyPattern(timezone=timezone_name, ranges=())
+    timezone_info = ZoneInfo(timezone_name)
+    local_start = window_start.astimezone(timezone_info).replace(second=0, microsecond=0)
+    local_end = window_end.astimezone(timezone_info).replace(second=0, microsecond=0)
+    wall_start = local_start.replace(tzinfo=None)
+    wall_end = local_end.replace(tzinfo=None)
+    wall_minutes = int((wall_end - wall_start).total_seconds() / 60)
+    if wall_minutes < 0:
+        return WeeklyPattern(timezone=timezone_name, ranges=((0, _MINUTES_PER_WEEK),))
+    elapsed_minutes = int((utc_end - utc_start).total_seconds() / 60)
+    duration = max(wall_minutes, elapsed_minutes) + 1
+    start = local_start.weekday() * _MINUTES_PER_DAY + _minute_of_day(local_start.time())
+    ranges: list[tuple[int, int]] = []
+    _append_cyclic_range(ranges, start, start + duration)
+    return WeeklyPattern(timezone=timezone_name, ranges=tuple(_collapse_ranges(ranges)))
 
 
 def _upgrade_legacy_schedule(

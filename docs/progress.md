@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-30 19:14 EEST — /root
+
+- Intended: step 4 only—maintain the PostgreSQL derived schedule index in the same refinement-replacement transaction and apply its timezone-aware weekly overlap as a PostgreSQL candidate prefilter; do not change SQLite behavior or add exact filtering to generic Core queries yet.
+- Areas: schedule query-pattern compilation, PostgreSQL storage write/read paths, focused tests, and this progress log.
+- Result (19:19 EEST): scheduled replacements now write the derived multirange in the same PostgreSQL transaction, and relevant-event reads apply a timezone-aware `&&` candidate gate while retaining unindexed rows. Query and stored masks conservatively cover inclusive minute boundaries and DST rollback, allowing false positives but not false negatives. SQLite and generic exact filtering are unchanged.
+- Verification: full `pytest` passed (168 tests), Ruff passed for all packages, and `git diff --check` passed. PostgreSQL DDL/query plans were not exercised against a live server. Follow-up: await review before the SQLite fallback step.
+
 ## 2026-08-30 03:23 EEST — /root
 
 - Intended: step 3 only—add PostgreSQL weekly-pattern compilation plus a PostgreSQL-only Alembic migration creating and backfilling the derived GiST-indexed schedule search table; SQLite migration remains a no-op and query/write paths remain unchanged.

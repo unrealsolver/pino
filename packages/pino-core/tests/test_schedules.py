@@ -2,7 +2,12 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from pino_core.models import Refinement
-from pino_core.schedules import compile_weekly_pattern, expand_schedule, normalize_schedule
+from pino_core.schedules import (
+    compile_query_weekly_pattern,
+    compile_weekly_pattern,
+    expand_schedule,
+    normalize_schedule,
+)
 
 
 def test_normalize_explicit_occurrences() -> None:
@@ -189,8 +194,8 @@ def test_compile_weekly_pattern_collapses_rules_and_wraps_week() -> None:
     pattern = compile_weekly_pattern(schedule)
 
     assert pattern.timezone == "Europe/Vilnius"
-    assert pattern.ranges == ((0, 60), (540, 840), (10020, 10080))
-    assert pattern.as_postgresql_multirange() == "{[0,60),[540,840),[10020,10080)}"
+    assert pattern.ranges == ((0, 61), (540, 841), (10020, 10080))
+    assert pattern.as_postgresql_multirange() == "{[0,61),[540,841),[10020,10080)}"
 
 
 def test_compile_explicit_occurrences_uses_one_minute_for_start_only() -> None:
@@ -209,4 +214,32 @@ def test_compile_explicit_occurrences_uses_one_minute_for_start_only() -> None:
 
     pattern = compile_weekly_pattern(schedule)
 
-    assert pattern.ranges == ((1110, 1111), (2850, 2910))
+    assert pattern.ranges == ((1110, 1111), (2850, 2911))
+
+
+def test_compile_query_weekly_pattern_wraps_and_saturates() -> None:
+    timezone_info = ZoneInfo("Europe/Vilnius")
+
+    wrapped = compile_query_weekly_pattern(
+        datetime(2026, 6, 7, 23, 30, tzinfo=timezone_info),
+        datetime(2026, 6, 8, 0, 30, tzinfo=timezone_info),
+        "Europe/Vilnius",
+    )
+    saturated = compile_query_weekly_pattern(
+        datetime(2026, 6, 1, 12, 0, tzinfo=timezone_info),
+        datetime(2026, 6, 8, 12, 0, tzinfo=timezone_info),
+        "Europe/Vilnius",
+    )
+
+    assert wrapped.ranges == ((0, 31), (10050, 10080))
+    assert saturated.ranges == ((0, 10080),)
+
+
+def test_compile_query_weekly_pattern_is_conservative_across_dst_fallback() -> None:
+    pattern = compile_query_weekly_pattern(
+        datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc),
+        datetime(2026, 10, 25, 1, 15, tzinfo=timezone.utc),
+        "Europe/Vilnius",
+    )
+
+    assert pattern.ranges == ((0, 10080),)

@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
+
+from sqlalchemy.dialects import postgresql
 
 from pino_llm import LLMUsage
 
@@ -48,6 +52,110 @@ def test_database_store_skips_sqlite_legacy_migration_for_postgresql(
 
     assert create_calls == [engine]
     assert migration_calls == []
+
+
+def test_postgresql_refinement_replacement_maintains_schedule_index(
+    monkeypatch,
+) -> None:
+    executed: list[tuple[object, object]] = []
+    commits: list[bool] = []
+
+    class FakeSession:
+        def __init__(self, engine: object) -> None:
+            self.engine = engine
+
+        def __enter__(self) -> FakeSession:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, statement: object, parameters: object = None) -> None:
+            executed.append((statement, parameters))
+
+        def commit(self) -> None:
+            commits.append(True)
+
+    monkeypatch.setattr("pino_core.storage.Session", FakeSession)
+    store = object.__new__(DatabaseStore)
+    store.engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    refinement = Refinement(
+        record_id="record-1",
+        content_kind="event",
+        schedule={
+            "version": 1,
+            "timezone": "Europe/Vilnius",
+            "kind": "recurrence",
+            "frequency": "weekly",
+            "from": "2026-06-01",
+            "until": None,
+            "rules": [{"weekdays": ["monday"], "start": "19:00", "end": "21:00"}],
+        },
+        refiner="test",
+    )
+
+    store.replace_refinements("record-1", [refinement])
+
+    statements = [
+        str(statement.compile(dialect=postgresql.dialect()))
+        for statement, _parameters in executed
+    ]
+    assert len(statements) == 3
+    assert statements[0].startswith("DELETE FROM refinements")
+    assert statements[1].startswith("INSERT INTO refinements")
+    assert statements[2].startswith("INSERT INTO refinement_schedule_index")
+    assert "CAST(%(schedule_weekly_pattern)s AS INT4MULTIRANGE)" in statements[2]
+    assert executed[2][1] == {
+        "schedule_refinement_id": refinement.id,
+        "schedule_timezone": "Europe/Vilnius",
+        "schedule_weekly_pattern": "{[1140,1261)}",
+    }
+    assert commits == [True]
+
+
+def test_postgresql_relevant_query_uses_weekly_candidate_filter(monkeypatch) -> None:
+    executed: list[object] = []
+
+    class TimezoneResult:
+        def scalars(self) -> TimezoneResult:
+            return self
+
+        def __iter__(self):
+            return iter(["Europe/Vilnius"])
+
+    class FakeSession:
+        def __init__(self, engine: object) -> None:
+            self.engine = engine
+
+        def __enter__(self) -> FakeSession:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, statement: object):
+            executed.append(statement)
+            return TimezoneResult() if len(executed) == 1 else []
+
+    monkeypatch.setattr("pino_core.storage.Session", FakeSession)
+    store = object.__new__(DatabaseStore)
+    store.engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    timezone_info = ZoneInfo("Europe/Vilnius")
+
+    rows = store.list_relevant_refinements(
+        window_start=datetime(2026, 6, 7, 23, 30, tzinfo=timezone_info),
+        window_end=datetime(2026, 6, 8, 0, 30, tzinfo=timezone_info),
+    )
+
+    assert rows == []
+    assert len(executed) == 2
+    compiled = executed[1].compile(dialect=postgresql.dialect())
+    sql = str(compiled)
+    assert "LEFT OUTER JOIN refinement_schedule_index" in sql
+    assert "refinement_schedule_index.refinement_id IS NULL" in sql
+    assert "weekly_pattern && CAST(%(schedule_query_pattern_0)s AS INT4MULTIRANGE)" in sql
+    assert compiled.params["schedule_query_timezone_0"] == "Europe/Vilnius"
+    assert compiled.params["schedule_query_pattern_0"] == "{[0,31),[10050,10080)}"
 
 
 def test_active_memory_round_trip(tmp_path: Path) -> None:

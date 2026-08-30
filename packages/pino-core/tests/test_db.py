@@ -183,6 +183,6 @@ def test_schedule_search_index_migration_backfills_legacy_schedule() -> None:
         {
             "refinement_id": "refinement",
             "timezone": "Europe/Vilnius",
-            "weekly_pattern": "{[2520,2610)}",
+            "weekly_pattern": "{[2520,2611)}",
         }
     ]
