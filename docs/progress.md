@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-08-30 03:23 EEST — /root
+
+- Intended: step 3 only—add PostgreSQL weekly-pattern compilation plus a PostgreSQL-only Alembic migration creating and backfilling the derived GiST-indexed schedule search table; SQLite migration remains a no-op and query/write paths remain unchanged.
+- Areas: schedule compiler, Alembic migration, migration/compiler tests, and this progress log.
+- Result (03:25 EEST): added deterministic minute-of-week multirange compilation and revision `20260830_0323`, which creates `refinement_schedule_index`, its GiST index, and backfills valid v1/legacy schedules on PostgreSQL; SQLite only advances the revision. No runtime write or query path uses the table yet.
+- Verification: full `pytest` passed (164 tests), Ruff passed for Core/Web sources and tests, and `git diff --check` passed. PostgreSQL DDL was not applied to the configured database during this step. Follow-up: await review before transactional index maintenance.
+
 ## 2026-08-30 02:54 EEST — /root
 
 - Intended: step 2 only—implement schedule v1 normalization and shared core occurrence expansion, retain legacy schedule read compatibility, and switch Web projection to the shared implementation; no database or query-index changes.

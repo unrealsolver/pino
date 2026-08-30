@@ -17,6 +17,8 @@ _WEEKDAYS = (
     "saturday",
     "sunday",
 )
+_MINUTES_PER_DAY = 24 * 60
+_MINUTES_PER_WEEK = 7 * _MINUTES_PER_DAY
 _LEGACY_WEEKDAYS = {
     "MO": "monday",
     "TU": "tuesday",
@@ -108,6 +110,15 @@ class ProjectedOccurrence:
     key: str
     starts_at: datetime
     ends_at: datetime | None
+
+
+@dataclass(frozen=True)
+class WeeklyPattern:
+    timezone: str
+    ranges: tuple[tuple[int, int], ...]
+
+    def as_postgresql_multirange(self) -> str:
+        return "{" + ",".join(f"[{start},{end})" for start, end in self.ranges) + "}"
 
 
 def normalize_schedule(
@@ -202,6 +213,39 @@ def expand_schedule(
         window_start=window_start,
         window_end=window_end,
         key_prefix=key_prefix,
+    )
+
+
+def compile_weekly_pattern(schedule: dict[str, Any]) -> WeeklyPattern:
+    ranges: list[tuple[int, int]] = []
+    if schedule["kind"] == "occurrences":
+        timezone_info = ZoneInfo(schedule["timezone"])
+        for item in schedule["occurrences"]:
+            starts_at, ends_at = _occurrence_interval(item, timezone_info)
+            start = starts_at.weekday() * _MINUTES_PER_DAY + _minute_of_day(
+                starts_at.timetz().replace(tzinfo=None)
+            )
+            duration = (
+                max(1, round((ends_at - starts_at).total_seconds() / 60))
+                if ends_at is not None
+                else 1
+            )
+            _append_cyclic_range(ranges, start, start + duration)
+    else:
+        for rule in schedule["rules"]:
+            start_time = time.fromisoformat(rule["start"])
+            end_time = time.fromisoformat(rule["end"]) if rule["end"] is not None else None
+            for weekday in rule["weekdays"]:
+                start = _WEEKDAYS.index(weekday) * _MINUTES_PER_DAY + _minute_of_day(start_time)
+                duration = 1
+                if end_time is not None:
+                    duration = _minute_of_day(end_time) - _minute_of_day(start_time)
+                    if duration <= 0:
+                        duration += _MINUTES_PER_DAY
+                _append_cyclic_range(ranges, start, start + duration)
+    return WeeklyPattern(
+        timezone=schedule["timezone"],
+        ranges=tuple(_collapse_ranges(ranges)),
     )
 
 
@@ -393,6 +437,39 @@ def _has_overnight_rule(schedule: dict[str, Any]) -> bool:
         if time.fromisoformat(rule["end"]) <= time.fromisoformat(rule["start"]):
             return True
     return False
+
+
+def _append_cyclic_range(
+    ranges: list[tuple[int, int]],
+    start: int,
+    end: int,
+) -> None:
+    duration = end - start
+    if duration >= _MINUTES_PER_WEEK:
+        ranges.append((0, _MINUTES_PER_WEEK))
+        return
+    start %= _MINUTES_PER_WEEK
+    end = start + duration
+    if end <= _MINUTES_PER_WEEK:
+        ranges.append((start, end))
+        return
+    ranges.append((start, _MINUTES_PER_WEEK))
+    ranges.append((0, end - _MINUTES_PER_WEEK))
+
+
+def _collapse_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    collapsed: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if not collapsed or start > collapsed[-1][1]:
+            collapsed.append((start, end))
+            continue
+        previous_start, previous_end = collapsed[-1]
+        collapsed[-1] = (previous_start, max(previous_end, end))
+    return collapsed
+
+
+def _minute_of_day(value: time) -> int:
+    return value.hour * 60 + value.minute
 
 
 def _local_date(value: datetime | None, timezone_info: ZoneInfo) -> str | None:

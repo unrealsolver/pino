@@ -1,4 +1,7 @@
+from datetime import datetime, timezone
+from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, inspect, text
 
@@ -93,7 +96,7 @@ def test_upgrade_repairs_database_stamped_before_schedule_column(tmp_path: Path)
     with engine.begin() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
     assert "schedule" in columns
-    assert revision == "20260814_2344"
+    assert revision == "20260830_0323"
 
 
 def test_upgrade_adds_llm_usage_events_table(tmp_path: Path) -> None:
@@ -130,4 +133,56 @@ def test_upgrade_adds_llm_usage_events_table(tmp_path: Path) -> None:
         "cached_input_tokens",
         "duration_ms",
     } <= columns
-    assert revision == "20260814_2344"
+    assert revision == "20260830_0323"
+
+
+def test_schedule_search_index_migration_is_a_sqlite_noop(tmp_path: Path) -> None:
+    database_path = tmp_path / "pino.sqlite"
+    database_url = f"sqlite:///{database_path}"
+
+    upgrade_database(database_url)
+
+    engine = create_engine(database_url, future=True)
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    assert "refinement_schedule_index" not in inspector.get_table_names()
+    assert revision == "20260830_0323"
+
+
+def test_schedule_search_index_migration_backfills_legacy_schedule() -> None:
+    migration = import_module(
+        "pino_core.migrations.versions.20260830_0323_add_schedule_search_index"
+    )
+    inserted: list[dict[str, object]] = []
+
+    class Bind:
+        def execute(self, _statement: object, parameters: dict[str, object] | None = None):
+            if parameters is not None:
+                inserted.append(parameters)
+                return None
+            rows = [
+                {
+                    "id": "refinement",
+                    "schedule": {
+                        "timezone": "Europe/Vilnius",
+                        "kind": "recurrence",
+                        "rules": [
+                            {"days": ["TU"], "start": "18:00", "end": "19:30"}
+                        ],
+                    },
+                    "relevant_from": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                    "relevant_to": datetime(2026, 6, 30, 23, 59, tzinfo=timezone.utc),
+                }
+            ]
+            return SimpleNamespace(mappings=lambda: rows)
+
+    migration._backfill(Bind())
+
+    assert inserted == [
+        {
+            "refinement_id": "refinement",
+            "timezone": "Europe/Vilnius",
+            "weekly_pattern": "{[2520,2610)}",
+        }
+    ]

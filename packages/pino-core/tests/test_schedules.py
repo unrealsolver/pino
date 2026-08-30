@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from pino_core.models import Refinement
-from pino_core.schedules import expand_schedule, normalize_schedule
+from pino_core.schedules import compile_weekly_pattern, expand_schedule, normalize_schedule
 
 
 def test_normalize_explicit_occurrences() -> None:
@@ -166,3 +166,47 @@ def test_normalize_schedule_rejects_offset_datetime() -> None:
         )
         is None
     )
+
+
+def test_compile_weekly_pattern_collapses_rules_and_wraps_week() -> None:
+    schedule = normalize_schedule(
+        {
+            "version": 1,
+            "timezone": "Europe/Vilnius",
+            "kind": "recurrence",
+            "frequency": "weekly",
+            "from": "2026-06-01",
+            "until": None,
+            "rules": [
+                {"weekdays": ["monday"], "start": "09:00", "end": "12:00"},
+                {"weekdays": ["monday"], "start": "11:00", "end": "14:00"},
+                {"weekdays": ["sunday"], "start": "23:00", "end": "01:00"},
+            ],
+        }
+    )
+    assert schedule is not None
+
+    pattern = compile_weekly_pattern(schedule)
+
+    assert pattern.timezone == "Europe/Vilnius"
+    assert pattern.ranges == ((0, 60), (540, 840), (10020, 10080))
+    assert pattern.as_postgresql_multirange() == "{[0,60),[540,840),[10020,10080)}"
+
+
+def test_compile_explicit_occurrences_uses_one_minute_for_start_only() -> None:
+    schedule = normalize_schedule(
+        {
+            "version": 1,
+            "timezone": "Europe/Vilnius",
+            "kind": "occurrences",
+            "occurrences": [
+                {"start": "2026-06-01T18:30", "end": None},
+                {"start": "2026-06-02T23:30", "end": "2026-06-03T00:30"},
+            ],
+        }
+    )
+    assert schedule is not None
+
+    pattern = compile_weekly_pattern(schedule)
+
+    assert pattern.ranges == ((1110, 1111), (2850, 2910))
