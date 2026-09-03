@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pino_llm import LLMMessage
@@ -137,6 +138,7 @@ def test_refinement_record_prompt_omits_storage_ids_and_source_telemetry(
             title="Swing dancing",
             text="Social swing dancing at Kitas Krantas, 20:00-23:00.",
             url="https://t.me/afishavilnius/12041",
+            published_at=datetime(2026, 6, 9, 7, 52, 38, tzinfo=timezone.utc),
             payload={
                 "channel": "https://t.me/afishavilnius",
                 "message_id": 12041,

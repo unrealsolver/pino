@@ -93,7 +93,7 @@ def build_refinement_qc(configs: list[SourceConfig]) -> RefinementQC:
 
 
 def _tagged_dates(record: Record) -> frozenset[date]:
-    year = _publication_year(record.payload.get("posted_at_utc"))
+    year = _publication_year(record.published_at)
     if year is None:
         return frozenset()
     dates: set[date] = set()

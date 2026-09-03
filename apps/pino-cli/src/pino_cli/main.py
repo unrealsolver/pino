@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 import typer
 from rich.console import Console
@@ -34,6 +35,7 @@ from pino_core import (
     render_refinement_system_prompt,
 )
 from pino_core.db import current_database_revision, show_migration_history, upgrade_database
+from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.schedule_evaluation import (
     ScheduleEvalProgress,
     ScheduleKindScore,
@@ -931,3 +933,65 @@ def sources_list(
             plain_text("enabled" if source.enabled else "disabled"),
         )
     console.print(table)
+
+
+@sources_app.command("stats")
+def sources_stats(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    weeks: Annotated[int, typer.Option("--weeks", min=1, max=52)] = 8,
+) -> None:
+    """Show weekly source publication counts."""
+    config = get_config(config_path)
+    store = get_store(config)
+    timezone_info = ZoneInfo(DEFAULT_SOURCE_TIMEZONE)
+    print_source_stats(
+        config,
+        store,
+        weeks=weeks,
+        today=datetime.now(timezone_info).date(),
+    )
+
+
+def print_source_stats(
+    config: PinoConfig,
+    store: DatabaseStore,
+    *,
+    weeks: int,
+    today: date,
+) -> None:
+    timezone_info = ZoneInfo(DEFAULT_SOURCE_TIMEZONE)
+    current_week = today - timedelta(days=today.weekday())
+    week_starts = [current_week - timedelta(weeks=index) for index in range(weeks - 1, -1, -1)]
+    window_start = datetime.combine(week_starts[0], time.min, tzinfo=timezone_info)
+    window_end = datetime.combine(
+        week_starts[-1] + timedelta(weeks=1),
+        time.min,
+        tzinfo=timezone_info,
+    )
+    counts, unknown = store.summarize_source_publications(
+        window_start=window_start.astimezone(timezone.utc),
+        window_end=window_end.astimezone(timezone.utc),
+        timezone_name=DEFAULT_SOURCE_TIMEZONE,
+    )
+
+    configured = {source.name: source for source in config.sources}
+    source_names = list(configured)
+    source_names.extend(
+        sorted((set(source for source, _week in counts) | set(unknown)) - set(configured))
+    )
+    table = Table("Source", *(week.strftime("%b %d") for week in week_starts), "Unknown")
+    for source_name in source_names:
+        source = configured.get(source_name)
+        label = (
+            _format_source_label(_config_source_kind(source.type), source.name)
+            if source is not None
+            else source_name
+        )
+        table.add_row(
+            plain_text(label),
+            *(plain_text(counts.get((source_name, week), 0)) for week in week_starts),
+            plain_text(unknown.get(source_name, 0)),
+        )
+    console.print(table)
+    if unknown:
+        console.print(Text("Unknown counts records without publication time.", style="dim"))

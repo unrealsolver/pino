@@ -88,7 +88,7 @@ Avoid making the storage schema mirror the first event-ingestion pipeline too cl
 
 Better first-level storage concepts:
 
-- `records`: raw captured facts/items with type, source, payload, and provenance.
+- `records`: raw captured facts/items with type, source, publication/capture time, payload, and provenance.
 - `refinements`: reusable normalized items extracted from records.
 - `chat_messages`: durable conversation history.
 - `active_memory`: explicit long-lived facts and preferences.

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -323,6 +323,41 @@ def test_sources_list_prefixes_source_names(monkeypatch) -> None:
     rendered = output.getvalue()
     assert "web:vilnius-events" in rendered
     assert "tg:afisha-vilnius" in rendered
+
+
+def test_source_stats_prints_weekly_grid_and_unknown_dates(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    config = PinoConfig(
+        sources=[
+            SourceConfig(
+                name="afisha-vilnius",
+                type="telegram_channel",
+                settings={"api_id": 1, "api_hash": "hash"},
+            ),
+            SourceConfig(name="kaveikti-vilnius", type="kaveikti", enabled=False),
+        ]
+    )
+    store = SimpleNamespace(
+        summarize_source_publications=lambda **kwargs: (
+            {
+                ("afisha-vilnius", date(2026, 8, 24)): 4,
+                ("afisha-vilnius", date(2026, 8, 31)): 7,
+            },
+            {"kaveikti-vilnius": 12},
+        )
+    )
+
+    main.print_source_stats(config, store, weeks=2, today=date(2026, 9, 3))
+
+    rendered = output.getvalue()
+    assert "Source" in rendered
+    assert "Aug 24" in rendered
+    assert "Aug 31" in rendered
+    assert "Unknown" in rendered
+    assert "tg:afisha-vilnius" in rendered
+    assert "web:kaveikti-vilnius" in rendered
+    assert "4" in rendered and "7" in rendered and "12" in rendered
 
 
 def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:

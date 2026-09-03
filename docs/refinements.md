@@ -34,6 +34,7 @@ records
   title
   text
   url
+  published_at
   captured_at
   payload
   provenance
@@ -43,6 +44,10 @@ records
 reprocessing. It should not become a parallel normalized schema. In particular,
 query code should not depend on normalized dates, locations, or categories in
 record payloads.
+
+`published_at` is the source-provided publication instant when known;
+`captured_at` is when Pino first stored the record. Do not substitute one for the
+other.
 
 Use one lean refinement table:
 

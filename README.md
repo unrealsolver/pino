@@ -402,6 +402,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run prek run --all-files
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest
 UV_CACHE_DIR=/tmp/uv-cache uv run ruff check .
 UV_CACHE_DIR=/tmp/uv-cache uv run pino check
+UV_CACHE_DIR=/tmp/uv-cache uv run pino sources stats
 UV_CACHE_DIR=/tmp/uv-cache uv run pino refine --limit 10 --debug
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --message "show memory"
 UV_CACHE_DIR=/tmp/uv-cache uv run pino chat --debug --message "hello"

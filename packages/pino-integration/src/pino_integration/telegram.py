@@ -118,6 +118,7 @@ def parse_telegram_message(
         title=_title(text, message_id),
         text=text,
         url=_message_url(channel_ref, message_id),
+        published_at=posted_at,
         payload=payload,
         provenance=provenance,
     )

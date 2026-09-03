@@ -422,6 +422,7 @@ def _fixture_record(value: dict[str, Any], path: Path) -> Record:
         external_id=str(value.get("source_id") or path.stem),
         text=str(value.get("text") or ""),
         url=value.get("url"),
+        published_at=posted_at,
         payload={"posted_at_utc": posted_at.isoformat()},
     )
 

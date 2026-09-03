@@ -26,7 +26,9 @@ def test_upgrade_uses_database_store_engine(monkeypatch) -> None:
             self.engine = object()
 
     monkeypatch.setattr(db, "DatabaseStore", FakeStore)
-    monkeypatch.setattr(db.command, "upgrade", lambda config, revision: command_calls.append(config))
+    monkeypatch.setattr(
+        db.command, "upgrade", lambda config, revision: command_calls.append(config)
+    )
 
     upgrade_database("postgresql://pino@example.test/pino", "head")
 
@@ -54,7 +56,7 @@ def test_upgrade_bootstraps_current_sqlite_schema(tmp_path: Path) -> None:
         assert actual_columns == set(table.columns.keys())
     with engine.begin() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "0000"
+    assert revision == "0001"
     assert "refinement_schedule_index" not in inspector.get_table_names()
 
 
@@ -114,3 +116,34 @@ def test_postgresql_baseline_contains_schedule_index(capsys) -> None:
     assert "create table refinement_schedule_index" in sql
     assert "weekly_pattern int4multirange" in sql
     assert "using gist" in sql
+    assert "add column published_at" in sql
+    assert "payload ->> 'posted_at_utc'" in sql
+    assert "create index ix_records_published_at" in sql
+
+
+def test_publication_migration_backfills_sqlite_payload(tmp_path: Path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'pino.sqlite'}"
+    upgrade_database(database_url, "0000")
+    engine = create_engine(database_url, future=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO records (
+                    id, kind, source, fingerprint, text, captured_at, payload, provenance
+                ) VALUES (
+                    'record-1', 'telegram_message', 'afisha', 'fingerprint', 'Post',
+                    '2026-08-18 12:00:00',
+                    '{"posted_at_utc":"2026-08-17T09:30:00+00:00"}', '{}'
+                )
+                """
+            )
+        )
+
+    upgrade_database(database_url)
+
+    with engine.begin() as connection:
+        published_at = connection.execute(
+            text("SELECT published_at FROM records WHERE id = 'record-1'")
+        ).scalar_one()
+    assert published_at == "2026-08-17T09:30:00+00:00"

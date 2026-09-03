@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from pino_core.config import SourceConfig
 from pino_core.models import Record, Refinement
 
@@ -107,6 +109,7 @@ def _record(text: str, *, source: str = "afisha-vilnius") -> Record:
         kind="telegram_message",
         source=source,
         text=text,
+        published_at=datetime(2026, 6, 1, 12, tzinfo=timezone.utc),
         payload={"posted_at_utc": "2026-06-01T12:00:00+00:00"},
     )
 

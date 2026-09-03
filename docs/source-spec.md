@@ -95,6 +95,7 @@ provenance when available.
 - `title`: short display title when available.
 - `text`: compact human-readable source summary. This is used by refinement, so include the important facts.
 - `url`: canonical URL for the item when available.
+- `published_at`: source-provided publication instant normalized to UTC when available.
 - `payload`: source-native metadata useful for audit, debug, or later reprocessing. Keep wrapper keys in English.
 - `provenance`: parser/debug context, including adapter name and source location.
 

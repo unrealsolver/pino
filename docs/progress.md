@@ -2,6 +2,13 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-04 00:33 EEST — /root
+
+- Intended: add canonical nullable record publication time, backfill preserved Telegram timestamps, and add a zero-argument `pino sources stats` Rich grid covering eight Vilnius-aligned weeks by default.
+- Areas: record/storage schema and migration, Telegram ingestion, source statistics contract/query and CLI, tests/documentation, and this progress log.
+- Result (00:40 EEST): added nullable UTC `records.published_at`, indexed it, and added revision `0001` to backfill preserved Telegram `payload.posted_at_utc` values on PostgreSQL and SQLite. Telegram now writes the canonical field; duplicate ingestion hydrates it only when an existing row is null. Added `pino sources stats` with an eight-week default Rich grid, Vilnius-local Monday buckets, configured zero rows, and an all-time Unknown column. Refinement prompting and Afisha QC now read only the canonical field.
+- Verification: focused storage/migration/refinement/evaluator/integration/CLI tests passed (92 tests); the full suite passed (200 tests); the SQLite backfill and PostgreSQL offline migration SQL were tested; Ruff lint passed repository-wide and formatting passed for all touched Python files; command/help rendering and `git diff --check` passed. No external database was migrated.
+- Follow-up: Kaveikti and Vilnius Events remain Unknown because their current listing data has no trustworthy publication timestamp; retain `captured_at` for a later explicitly named first-seen metric rather than silently substituting it.
 ## 2026-09-03 23:49 EEST — /root
 
 - Intended: remove the `pino digest` CLI command and its documentation while retaining the reusable core digest service and chat tool.

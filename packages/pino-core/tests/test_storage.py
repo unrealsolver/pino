@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -97,8 +97,7 @@ def test_postgresql_refinement_replacement_maintains_schedule_index(
     store.replace_refinements("record-1", [refinement])
 
     statements = [
-        str(statement.compile(dialect=postgresql.dialect()))
-        for statement, _parameters in executed
+        str(statement.compile(dialect=postgresql.dialect())) for statement, _parameters in executed
     ]
     assert len(statements) == 3
     assert statements[0].startswith("DELETE FROM refinements")
@@ -295,6 +294,55 @@ def test_add_record_skips_duplicate_fingerprint(tmp_path: Path) -> None:
     assert len(store.list_records()) == 1
 
 
+def test_duplicate_record_hydrates_missing_publication_time(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    record = Record(kind="note", source="test", title="Same", text="Same text")
+    first = store.add_record(record)
+    published_at = datetime(2026, 8, 17, 9, 30, tzinfo=timezone.utc)
+
+    second = store.add_record(
+        record.model_copy(update={"id": "different-id", "published_at": published_at})
+    )
+
+    assert second.inserted is False
+    assert second.record.id == first.record.id
+    assert store.get_record(first.record.id).published_at == published_at
+
+
+def test_summarize_source_publications_uses_local_monday_weeks(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    for index, published_at in enumerate(
+        [
+            datetime(2026, 8, 16, 22, 30, tzinfo=timezone.utc),
+            datetime(2026, 8, 23, 21, 30, tzinfo=timezone.utc),
+        ]
+    ):
+        store.add_record(
+            Record(
+                kind="note",
+                source="afisha",
+                external_id=str(index),
+                text=f"Post {index}",
+                published_at=published_at,
+            )
+        )
+    store.add_record(Record(kind="note", source="web", text="Unknown publication"))
+
+    counts, unknown = store.summarize_source_publications(
+        window_start=datetime(2026, 8, 16, 21, tzinfo=timezone.utc),
+        window_end=datetime(2026, 8, 31, 21, tzinfo=timezone.utc),
+        timezone_name="Europe/Vilnius",
+    )
+
+    assert counts == {
+        ("afisha", date(2026, 8, 17)): 1,
+        ("afisha", date(2026, 8, 24)): 1,
+    }
+    assert unknown == {"web": 1}
+
+
 def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
@@ -331,9 +379,7 @@ def test_refinement_round_trip_and_unrefined_records(tmp_path: Path) -> None:
     refinement = store.list_refinements(inserted.record.id)[0]
     assert refinement.summary == "A refined"
     assert refinement.relevant_from == datetime(2026, 5, 22, 21, 0, tzinfo=timezone.utc)
-    assert refinement.relevant_to == datetime(
-        2026, 5, 23, 20, 59, 59, 999999, tzinfo=timezone.utc
-    )
+    assert refinement.relevant_to == datetime(2026, 5, 23, 20, 59, 59, 999999, tzinfo=timezone.utc)
     assert refinement.schedule == {
         "version": 1,
         "timezone": "Europe/Vilnius",

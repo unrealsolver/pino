@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Generator
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     JSON,
     Column,
     DateTime,
+    Index,
     Integer,
     MetaData,
     String,
@@ -70,10 +73,12 @@ records_table = Table(
     Column("title", String),
     Column("text", Text, nullable=False),
     Column("url", String),
+    Column("published_at", DateTime(timezone=True)),
     Column("captured_at", DateTime(timezone=True), nullable=False),
     Column("payload", JSON, nullable=False),
     Column("provenance", JSON, nullable=False),
     UniqueConstraint("fingerprint", name="uq_records_fingerprint"),
+    Index("ix_records_published_at", "published_at"),
 )
 
 
@@ -216,8 +221,20 @@ class DatabaseStore:
                 select(records_table).where(records_table.c.fingerprint == record.fingerprint),
             ).first()
             if existing is not None:
+                existing_record = Record.model_validate(dict(existing._mapping))
+                if existing_record.published_at is None and record.published_at is not None:
+                    session.execute(
+                        update(records_table)
+                        .where(records_table.c.id == existing_record.id)
+                        .values(published_at=record.published_at)
+                    )
+                    session.commit()
+                    existing_record = existing_record.model_copy(
+                        update={"published_at": record.published_at}
+                    )
                 return InsertResult(
-                    record=Record.model_validate(dict(existing._mapping)), inserted=False
+                    record=existing_record,
+                    inserted=False,
                 )
             session.execute(insert(records_table).values(**record.model_dump(mode="python")))
             session.commit()
@@ -297,6 +314,39 @@ class DatabaseStore:
                     return 0
                 query = query.where(records_table.c.id.in_(record_ids))
             return int(session.execute(query).scalar_one())
+
+    def summarize_source_publications(
+        self,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        timezone_name: str,
+    ) -> tuple[dict[tuple[str, date], int], dict[str, int]]:
+        if window_start.tzinfo is None or window_end.tzinfo is None:
+            raise ValueError("publication statistics window must be timezone-aware")
+        timezone_info = ZoneInfo(timezone_name)
+        with Session(self.engine) as session:
+            published_rows = session.execute(
+                select(records_table.c.source, records_table.c.published_at).where(
+                    records_table.c.published_at >= window_start,
+                    records_table.c.published_at < window_end,
+                )
+            )
+            counts: Counter[tuple[str, date]] = Counter()
+            for source, published_at in published_rows:
+                if published_at.tzinfo is None:
+                    published_at = published_at.replace(tzinfo=timezone.utc)
+                local_date = published_at.astimezone(timezone_info).date()
+                week_start = local_date - timedelta(days=local_date.weekday())
+                counts[(source, week_start)] += 1
+
+            unknown_rows = session.execute(
+                select(records_table.c.source, func.count())
+                .where(records_table.c.published_at.is_(None))
+                .group_by(records_table.c.source)
+            )
+            unknown = {source: int(count) for source, count in unknown_rows}
+        return dict(counts), unknown
 
     def list_relevant_refinements(
         self,
@@ -425,9 +475,7 @@ class DatabaseStore:
                     window_end=window_end,
                 ):
                     continue
-                results.append(
-                    EventQueryResult(record=record, refinement=refinement, score=score)
-                )
+                results.append(EventQueryResult(record=record, refinement=refinement, score=score))
                 if len(results) >= limit:
                     break
         return results
@@ -576,6 +624,7 @@ class DatabaseStore:
         with Session(self.engine) as session:
             result = session.execute(select(table).order_by(order_column.desc()).limit(limit))
             return [dict(row._mapping) for row in result]
+
 
 class SQLiteStore(DatabaseStore):
     def __init__(self, path: Path | str) -> None:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -301,10 +300,9 @@ _REFINEMENT_PAYLOAD_KEYS = {
 
 
 def _publication_date(record: Record) -> str | None:
-    posted_at = _optional_datetime(record.payload.get("posted_at_utc"))
-    if posted_at is None:
+    if record.published_at is None:
         return None
-    return posted_at.astimezone(ZoneInfo(DEFAULT_SOURCE_TIMEZONE)).date().isoformat()
+    return record.published_at.astimezone(ZoneInfo(DEFAULT_SOURCE_TIMEZONE)).date().isoformat()
 
 
 def _semantic_record_payload(value: dict[str, Any]) -> dict[str, Any]:
@@ -426,16 +424,6 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
-
-
-def _optional_datetime(value: Any) -> datetime | None:
-    text = _optional_string(value)
-    if text is None:
-        return None
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 def _optional_schedule(value: Any) -> dict[str, Any] | None:

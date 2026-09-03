@@ -46,6 +46,7 @@ class Record(BaseModel):
     title: str | None = None
     text: str
     url: str | None = None
+    published_at: datetime | None = None
     captured_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
@@ -56,7 +57,7 @@ class Record(BaseModel):
             return self
         return self.model_copy(update={"fingerprint": compute_record_fingerprint(self)})
 
-    @field_validator("captured_at")
+    @field_validator("published_at", "captured_at")
     @classmethod
     def _assume_utc_for_naive_datetimes(cls, value: datetime | None) -> datetime | None:
         return ensure_utc_datetime(value)
