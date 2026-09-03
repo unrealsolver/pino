@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-03 23:49 EEST — /root
+
+- Intended: remove the `pino digest` CLI command and its documentation while retaining the reusable core digest service and chat tool.
+- Areas: CLI command surface, README/architecture/source documentation, focused CLI test coverage, and this progress log.
+- Result (23:50 EEST): removed the top-level `pino digest` command, its CLI-only import, and command references from current README/architecture/source documentation. Retained `DigestService` and the `digest.create` chat tool as reusable core behavior.
+- Verification: `pino --help` no longer lists `digest`; the full suite passed (196 tests); Ruff lint passed repository-wide and formatting passed for the touched Python file; `git diff --check` passed.
+- Follow-up: none.
+
 ## 2026-09-03 04:34 EEST — /root
 
 - Intended: make successful `pino refine` progress show a compact first-item representation using `relevant_from` and `summary`, while retaining the item count.

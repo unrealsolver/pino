@@ -16,7 +16,6 @@ from pino_core import (
     ChatMessage,
     CheckPipeline,
     CheckResult,
-    DigestService,
     DatabaseStore,
     LLMError,
     MemoryEntry,
@@ -119,20 +118,6 @@ def print_check_result(result: CheckResult) -> None:
             console.print(Text(f"... {len(result.records) - 10} more new record(s)", style="dim"))
     else:
         console.print(Text("No new records inserted.", style="dim"))
-
-
-@app.command()
-def digest(
-    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
-    limit: Annotated[int, typer.Option("--limit", "-n", min=1)] = 20,
-    days: Annotated[int, typer.Option("--days", min=1)] = 14,
-) -> None:
-    """Create and print a digest from current/upcoming relevant records."""
-    config = get_config(config_path)
-    store = get_store(config)
-    digest_result = DigestService(store).create_digest(limit=limit, window_days=days)
-    console.rule(digest_result.title)
-    print_markdown(digest_result.body)
 
 
 @app.command()

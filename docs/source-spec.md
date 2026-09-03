@@ -11,7 +11,6 @@ A source adapter fetches one configured source and returns generic `Record` obje
 
 - `pino check` fetches and stores records.
 - `pino refine` extracts reusable normalized items from unrefined records.
-- `pino digest` summarizes relevant records.
 - `pino chat` can retrieve records through tools.
 
 Keep source code source-specific. Keep refinement, ranking, digest, memory, and chat logic in `pino-core`.
