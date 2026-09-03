@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from pino_llm import LLMClient, LLMMessage
+from pino_llm import LLMClient, LLMConfig, LLMMessage
 
 from pino_core.config import RefinementConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
@@ -64,11 +64,13 @@ class RefinementService:
         client: LLMClient,
         config: RefinementConfig,
         quality_check: RefinementQC = no_refinement_qc,
+        model: str = "echo:default",
     ) -> None:
         self.store = store
         self.client = client
         self.config = config
         self.quality_check = quality_check
+        self.model = model
         self._static_system_prompt = render_refinement_system_prompt(config)
 
     def refine_pending(
@@ -188,7 +190,7 @@ class RefinementService:
             schedule=_optional_schedule(raw_item.get("schedule")),
             location=_optional_string(raw_item.get("location")),
             category_scores=_category_scores(raw_item.get("category_scores"), self.config),
-            refiner=f"llm:{self.config.model}",
+            refiner=f"llm:{self.model}",
             debug={"raw": raw_item},
         )
 
@@ -319,8 +321,8 @@ def _drop_empty_values(value: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_refinement_llm_config(config, refinement_config: RefinementConfig):
-    return config.with_model(refinement_config.model)
+def build_refinement_llm_config(config: LLMConfig) -> LLMConfig:
+    return config.for_role("refine")
 
 
 def _parse_json_object(raw_response: str) -> dict[str, Any]:

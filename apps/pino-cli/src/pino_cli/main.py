@@ -422,13 +422,14 @@ def _run_refine(
     selected_id: str | None = None,
 ) -> None:
     config = get_config(config_path)
-    llm_config = build_refinement_llm_config(config.llm, config.refinement)
+    llm_config = build_refinement_llm_config(config.llm)
     store = get_store(config)
     service = RefinementService(
         store=store,
         client=build_llm_client(llm_config, usage_recorder=store.add_llm_usage_event),
         config=config.refinement,
         quality_check=build_refinement_qc(config.sources),
+        model=llm_config.model,
     )
     if selected_id is not None:
         _run_refine_debug_id(
@@ -631,13 +632,14 @@ def chat_main(
         return
 
     config = get_config(config_path)
+    llm_config = config.llm.for_role("chat")
     if history_limit is not None:
         config.chat.history_limit = history_limit
     store = get_store(config)
     sources = build_sources(config.sources)
     agent = ChatAgent(
         store=store,
-        provider=build_llm_client(config.llm, usage_recorder=store.add_llm_usage_event),
+        provider=build_llm_client(llm_config, usage_recorder=store.add_llm_usage_event),
         tools=build_tools(store, sources),
         config=config.chat,
         goals=config.profile.goals,
@@ -717,9 +719,10 @@ def print_chat_tool_calls(result) -> None:
 
 
 def print_chat_config_debug(config: PinoConfig) -> None:
+    llm_config = config.llm.for_role("chat")
     table = Table("Field", "Value")
-    table.add_row("provider", plain_text(config.llm.selected_provider()))
-    table.add_row("model", plain_text(config.llm.model))
+    table.add_row("provider", plain_text(llm_config.selected_provider()))
+    table.add_row("model", plain_text(llm_config.model))
     table.add_row("history_limit", plain_text(config.chat.history_limit))
     table.add_row("active_memory_limit", plain_text(config.chat.active_memory_limit))
     table.add_row("max_tool_rounds", plain_text(config.chat.max_tool_rounds))
@@ -728,9 +731,10 @@ def print_chat_config_debug(config: PinoConfig) -> None:
 
 
 def print_chat_debug(config: PinoConfig, result) -> None:
+    llm_config = config.llm.for_role("chat")
     table = Table("Field", "Value")
-    table.add_row("provider", plain_text(config.llm.selected_provider()))
-    table.add_row("model", plain_text(config.llm.model))
+    table.add_row("provider", plain_text(llm_config.selected_provider()))
+    table.add_row("model", plain_text(llm_config.model))
     table.add_row("tool_calls", plain_text(", ".join(result.tool_calls) or "<none>"))
     console.print(Panel(table, title="Chat debug", border_style="blue"))
 

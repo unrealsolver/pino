@@ -1,6 +1,7 @@
 from pino_llm.config import (
     InfercomConfig,
     LLMConfig,
+    LLMRolesConfig,
     MinimaxConfig,
     ModelProfileConfig,
     ModelRegistryConfig,
@@ -18,6 +19,7 @@ __all__ = [
     "InfercomConfig",
     "LLMClient",
     "LLMConfig",
+    "LLMRolesConfig",
     "LLMError",
     "LLMMessage",
     "LLMUsage",

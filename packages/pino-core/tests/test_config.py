@@ -47,17 +47,33 @@ def test_storage_config_requires_selected_backend_to_exist() -> None:
         StorageConfig(use="missing")
 
 
-def test_load_config_requires_refinement_model_profile_to_exist(tmp_path: Path) -> None:
+def test_load_config_requires_role_model_profile_to_exist(tmp_path: Path) -> None:
     config_path = tmp_path / "pino.yaml"
     config_path.write_text(
         """
-refinement:
-  model: ollama:missing
+llm:
+  roles:
+    refine: ollama:missing
 """,
         encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match="unknown LLM model profile"):
+        load_config(config_path)
+
+
+@pytest.mark.parametrize(
+    "legacy",
+    [
+        "llm:\n  model: echo:default\n",
+        "refinement:\n  model: echo:default\n",
+    ],
+)
+def test_load_config_rejects_legacy_role_selectors(tmp_path: Path, legacy: str) -> None:
+    config_path = tmp_path / "pino.yaml"
+    config_path.write_text(legacy, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="replaced by llm.roles"):
         load_config(config_path)
 
 

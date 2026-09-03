@@ -42,6 +42,25 @@ def test_llm_config_with_model_requires_registered_alias() -> None:
         config.with_model("ollama:missing")
 
 
+def test_llm_roles_select_ordinary_registered_profiles() -> None:
+    config = LLMConfig(
+        roles={
+            "chat": "ollama:general-gpt",
+            "refine": "ollama:schedule-gpt-oss-20b",
+        },
+        models={
+            "ollama": {
+                "general-gpt": {"model": "gpt-oss:20b"},
+                "schedule-gpt-oss-20b": {"model": "gpt-oss:20b", "think": "low"},
+            }
+        },
+    )
+
+    assert config.for_role("chat").model == "ollama:general-gpt"
+    assert config.for_role("refine").model == "ollama:schedule-gpt-oss-20b"
+    assert "model" not in config.model_dump()
+
+
 def test_model_profile_rejects_ollama_options_for_other_providers() -> None:
     with pytest.raises(ValidationError, match="Ollama-only"):
         LLMConfig(

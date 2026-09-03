@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-03 04:23 EEST — /root
+
+- Intended: move `chat` and `refine` model selection into provider-neutral LLM roles whose values are ordinary fully qualified profile references; remove role-named provider definitions and the old `llm.model` / `refinement.model` selectors.
+- Areas: LLM/core configuration contracts, chat/refinement/eval wiring, local/example config, tests and documentation, and this progress log.
+- Result (04:29 EEST): added provider-neutral `llm.roles.chat` and `llm.roles.refine`, each resolving an ordinary fully qualified profile reference. Chat and refinement now explicitly select their roles before client construction; schedule eval retains its explicit `--model` selection. Removed YAML `llm.model` / `refinement.model`, rejected those legacy selectors during file loading, removed role-named model definitions from local/example provider registries, and kept the runtime selection field out of serialized configuration.
+- Verification: focused configuration/LLM/refinement/evaluator/CLI tests passed (97 tests); the full suite passed (196 tests); Ruff lint passed repository-wide and formatting passed for touched Python files; local/example configs resolved both roles and serialized without the runtime model field; `git diff --check` passed. No LLM was invoked.
+- Follow-up: pause for review; add more roles only when another runtime path needs one.
+
 ## 2026-09-03 03:33 EEST — /root
 
 - Intended: discard refinements rejected by deterministic QC and persist the shortest unambiguous proof so rejected records do not remain pending.

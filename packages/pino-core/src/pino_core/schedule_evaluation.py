@@ -172,12 +172,12 @@ def evaluate_schedule_model(
         delegate,
         usage_capture=usage_capture if client is None else None,
     )
-    refinement_config = config.refinement.model_copy(update={"model": model})
     service = RefinementService(
-        DatabaseStore("sqlite:///:memory:"),
-        timed_client,
-        refinement_config,
-        quality_check,
+        store=DatabaseStore("sqlite:///:memory:"),
+        client=timed_client,
+        config=config.refinement,
+        quality_check=quality_check,
+        model=model,
     )
     cases: list[ScheduleEvalCase] = []
     started = perf_counter()

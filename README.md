@@ -88,17 +88,19 @@ Target machine:
 ## LLM Models and Providers
 
 Pino accepts fully qualified model profile references, not provider model identifiers,
-at its entry points. `llm.model` selects the chat profile, `refinement.model` selects
-the refinement profile, and `pino eval schedules --model` accepts one or more
-evaluation profiles. Every reference must resolve through the `llm.models` registry;
-there is no implicit provider or raw-model fallback.
+at its entry points. Provider-neutral `llm.roles.chat` and `llm.roles.refine` select
+ordinary profiles, and `pino eval schedules --model` accepts one or more evaluation
+profiles. Every reference must resolve through the `llm.models` registry; there is no
+implicit provider or raw-model fallback.
 
 ```yaml
 llm:
-  model: ollama:chat
+  roles:
+    chat: ollama:qwen-3-5-9b
+    refine: ollama:schedule-fast
   models:
     ollama:
-      chat:
+      qwen-3-5-9b:
         model: qwen3.5:9b
       schedule-fast:
         model: gemma4:e4b
@@ -114,11 +116,13 @@ llm:
 
 Definitions use plain names inside a provider namespace, such as
 `llm.models.ollama.schedule-fast`. References elsewhere use the fully qualified
-`provider:name` form, such as `ollama:schedule-fast`. `model`, `temperature`, and
-`top_p` are typed profile fields. `think`, `num_ctx`, and `num_predict` are optional
-Ollama-only fields; unknown fields and Ollama-only fields on other providers are
-configuration errors. Provider blocks hold connections and credentials only. See
-`config.example.yaml` for all supported providers and representative profiles.
+`provider:name` form, such as `ollama:schedule-fast`. Role names live only under
+`llm.roles`; provider namespaces contain no special `chat` or `refine` entries.
+`model`, `temperature`, and `top_p` are typed profile fields. `think`, `num_ctx`, and
+`num_predict` are optional Ollama-only fields; unknown fields and Ollama-only fields
+on other providers are configuration errors. Provider blocks hold connections and
+credentials only. See `config.example.yaml` for all supported providers and
+representative profiles.
 
 ### MiniMax
 
@@ -293,7 +297,7 @@ stored source cursor as Telethon `min_id` and fetch all newer messages.
 
 ## Refinement
 
-`pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. It uses the opaque profile alias selected by `refinement.model`.
+`pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. It uses the opaque profile selected by `llm.roles.refine`.
 
 Refinement prompts are arranged for MiniMax automatic prompt caching: the stable system prompt with schema and category definitions is sent first, and the per-record source payload is sent last. MiniMax reports cache reads in response usage as `prompt_tokens_details.cached_tokens`.
 
@@ -358,7 +362,7 @@ The initial tool set is intentionally small:
 For v1, `records.relevant` should return enough detail for conversational follow-up without a targeted record lookup tool. A later `records.get` by id can be added if users often ask for deeper detail about a specific result.
 
 The committed example config selects `echo:default` so the chat loop can be tested
-without network access. Select another alias in `llm.model` to use a real provider.
+without network access. Select another profile in `llm.roles.chat` to use a real provider.
 
 Chat controls:
 

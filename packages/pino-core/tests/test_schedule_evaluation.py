@@ -29,10 +29,9 @@ def eval_config(alias: str, model: str | None = None) -> PinoConfig:
         profile["think"] = False
     return PinoConfig(
         llm={
-            "model": alias,
+            "roles": {"chat": alias, "refine": alias},
             "models": {provider: {name: profile}},
         },
-        refinement={"model": alias},
     )
 
 

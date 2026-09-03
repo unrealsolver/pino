@@ -82,7 +82,6 @@ class TaxonomyCategoryConfig(BaseModel):
 class RefinementConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "echo:default"
     batch_size: int = 10
     schema_version: int = 1
     taxonomy_version: int = 1
@@ -176,11 +175,6 @@ class PinoConfig(BaseModel):
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
     sources: list[SourceConfig] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def validate_model_profiles(self) -> PinoConfig:
-        self.llm.profile(self.refinement.model)
-        return self
-
 
 def load_config(path: Path | str | None = None) -> PinoConfig:
     if path is None:
@@ -191,10 +185,22 @@ def load_config(path: Path | str | None = None) -> PinoConfig:
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    _reject_legacy_model_roles(raw)
     env_values = _load_env_file(config_path.parent / ".env")
     raw = _resolve_env_refs(raw, env_values=env_values)
     config = PinoConfig.model_validate(raw)
     return _resolve_paths(config, config_path.parent)
+
+
+def _reject_legacy_model_roles(value: Any) -> None:
+    if not isinstance(value, dict):
+        return
+    llm = value.get("llm")
+    if isinstance(llm, dict) and "model" in llm:
+        raise ValueError("llm.model was replaced by llm.roles.chat")
+    refinement = value.get("refinement")
+    if isinstance(refinement, dict) and "model" in refinement:
+        raise ValueError("refinement.model was replaced by llm.roles.refine")
 
 
 def _resolve_paths(config: PinoConfig, base_dir: Path) -> PinoConfig:

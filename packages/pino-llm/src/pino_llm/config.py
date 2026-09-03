@@ -88,16 +88,26 @@ class ProviderConfigs(BaseModel):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
 
 
+class LLMRolesConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chat: str = "echo:default"
+    refine: str = "echo:default"
+
+
 class LLMConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "echo:default"
+    model: str = Field(default="echo:default", exclude=True, repr=False)
+    roles: LLMRolesConfig = Field(default_factory=LLMRolesConfig)
     models: ModelRegistryConfig = Field(default_factory=ModelRegistryConfig)
     providers: ProviderConfigs = Field(default_factory=ProviderConfigs)
 
     @model_validator(mode="after")
     def validate_selected_profile(self) -> LLMConfig:
         self.profile(self.model)
+        self.profile(self.roles.chat)
+        self.profile(self.roles.refine)
         return self
 
     def profile(self, reference: str) -> ResolvedModelProfile:
@@ -120,3 +130,6 @@ class LLMConfig(BaseModel):
     def with_model(self, reference: str) -> LLMConfig:
         self.profile(reference)
         return self.model_copy(update={"model": reference})
+
+    def for_role(self, role: Literal["chat", "refine"]) -> LLMConfig:
+        return self.with_model(getattr(self.roles, role))

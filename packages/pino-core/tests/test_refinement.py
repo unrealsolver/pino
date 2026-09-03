@@ -491,23 +491,22 @@ def test_build_refinement_llm_config_selects_registered_profile() -> None:
 
     llm_config = build_refinement_llm_config(
         LLMConfig(
-            model="infercom:chat",
+            roles={"chat": "infercom:general", "refine": "infercom:precise"},
             models={
                 "infercom": {
-                    "chat": {
+                    "general": {
                         "model": "MiniMax-M2.5",
                     },
-                    "refinement": {
+                    "precise": {
                         "model": "gpt-oss-120b",
                         "temperature": 0,
                     },
                 },
             },
         ),
-        RefinementConfig(model="infercom:refinement"),
     )
 
-    assert llm_config.model == "infercom:refinement"
+    assert llm_config.model == "infercom:precise"
     assert llm_config.selected_profile().temperature == 0.0
     assert llm_config.selected_model() == "gpt-oss-120b"
 

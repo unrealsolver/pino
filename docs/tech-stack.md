@@ -143,10 +143,11 @@ The application should still be partly useful without LLM calls. Fetching, stori
 
 Record refinement is LLM-assisted. Deterministic code controls batching, config,
 persistence, and caching; the configured model extracts reusable multilingual
-normalized items and versioned taxonomy scores. Pino entry points select strict opaque
-`provider:name` references from the typed `llm.models` registry, where definitions use
-plain names inside provider namespaces. Each profile owns its provider model and
-inference settings, while provider blocks contain connection details and credentials.
+normalized items and versioned taxonomy scores. Provider-neutral `chat` and `refine`
+roles select strict opaque `provider:name` references from the typed `llm.models`
+registry, where definitions use plain names inside provider namespaces. Each profile
+owns its provider model and inference settings, while provider blocks contain
+connection details and credentials.
 
 ## Interactive Agent Shape
 

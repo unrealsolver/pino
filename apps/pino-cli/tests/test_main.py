@@ -69,7 +69,10 @@ def test_eval_schedules_prints_model_comparison(tmp_path: Path, monkeypatch) -> 
     )
     config = PinoConfig(
         llm={
-            "model": "ollama:small-local",
+            "roles": {
+                "chat": "ollama:small-local",
+                "refine": "ollama:small-local",
+            },
             "models": {
                 "ollama": {
                     "small-local": {
@@ -78,7 +81,6 @@ def test_eval_schedules_prints_model_comparison(tmp_path: Path, monkeypatch) -> 
                 }
             },
         },
-        refinement={"model": "ollama:small-local"},
     )
     monkeypatch.setattr(main, "get_config", lambda path: config)
     store = SQLiteStore(tmp_path / "pino.sqlite")
