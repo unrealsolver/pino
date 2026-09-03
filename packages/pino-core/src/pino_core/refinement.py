@@ -52,6 +52,7 @@ class RefinementResponseError(RuntimeError):
 
 
 _CONTENT_KINDS = {"event", "advertisement", "announcement", "non_event", "unknown"}
+QC_REJECTED_REFINER = "qc:rejected"
 
 
 class RefinementService:
@@ -104,6 +105,8 @@ class RefinementService:
                 continue
             result = self.debug_refine_record(record)
             if result.error is not None:
+                if result.qc.has_errors:
+                    self.store.replace_refinements(record.id, [self._qc_rejection(record)])
                 skipped += 1
                 _emit_progress(
                     on_progress,
@@ -187,6 +190,16 @@ class RefinementService:
             category_scores=_category_scores(raw_item.get("category_scores"), self.config),
             refiner=f"llm:{self.config.model}",
             debug={"raw": raw_item},
+        )
+
+    def _qc_rejection(self, record: Record) -> Refinement:
+        return Refinement(
+            record_id=record.id,
+            item_index=0,
+            schema_version=self.config.schema_version,
+            taxonomy_version=self.config.taxonomy_version,
+            content_kind="unknown",
+            refiner=QC_REJECTED_REFINER,
         )
 
     def _system_prompt(self) -> str:

@@ -7,6 +7,7 @@ from pino_core.config import RefinementConfig
 from pino_core.models import Record
 from pino_core.quality import QCFlag, QCReport
 from pino_core.refinement import (
+    QC_REJECTED_REFINER,
     RefinementService,
     _parse_json_object,
     build_refinement_llm_config,
@@ -85,6 +86,7 @@ def test_refinement_service_skips_model_error(tmp_path: Path) -> None:
     assert result.refined == 0
     assert result.skipped == 1
     assert store.list_refinements(inserted.record.id) == []
+    assert [record.id for record in store.list_unrefined_records()] == [inserted.record.id]
 
 
 def test_refinement_service_uses_cached_refinements(tmp_path: Path) -> None:
@@ -405,7 +407,14 @@ def test_refinement_qc_error_blocks_persistence(tmp_path: Path) -> None:
 
     assert result.refined == 0
     assert result.skipped == 1
-    assert store.list_refinements(inserted.record.id) == []
+    stored = store.list_refinements(inserted.record.id)
+    assert len(stored) == 1
+    assert stored[0].refiner == QC_REJECTED_REFINER
+    assert stored[0].content_kind == "unknown"
+    assert stored[0].summary is None
+    assert stored[0].schedule is None
+    assert stored[0].category_scores == {}
+    assert store.list_unrefined_records() == []
     assert progress[-1].qc == qc
     assert progress[-1].reason == "schedule QC error: tagged date is missing"
 

@@ -223,9 +223,11 @@ For a structured event source, use deterministic extraction where trustworthy.
 For Telegram and other prose-heavy sources, use an LLM extraction pass.
 
 After normalization and before persistence, a source may run deterministic QC.
-The immutable `QCReport` is an in-memory stage result; it is not added to the
-LLM prompt or stored in the refinement. An error blocks persistence, while a
-warning is reported but allows the refinement through.
+The immutable `QCReport` is an in-memory stage result and is not added to the
+LLM prompt. An error discards the generated item and persists only a minimal
+`qc:rejected` tombstone refinement (`content_kind: unknown`, no summary or
+schedule), so the raw record does not remain pending. A warning is reported but
+allows the generated refinement through.
 
 Afisha Vilnius enables `qc: afisha_vilnius`. Its `#Dmonth` tags are mandatory
 schedule evidence using the publication year. Explicit occurrences must contain

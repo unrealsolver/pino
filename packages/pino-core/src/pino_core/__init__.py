@@ -6,6 +6,7 @@ from pino_core.models import ChatMessage, LLMUsageEvent, MemoryEntry, Record, Re
 from pino_core.pipeline import CheckPipeline, CheckResult, DigestService, SourceCheckResult
 from pino_core.quality import QCFlag, QCReport, RefinementQC
 from pino_core.refinement import (
+    QC_REJECTED_REFINER,
     RefinementDebugResult,
     RefinementProgress,
     RefinementService,
@@ -29,6 +30,7 @@ __all__ = [
     "PinoConfig",
     "QCFlag",
     "QCReport",
+    "QC_REJECTED_REFINER",
     "Record",
     "Refinement",
     "RefinementDebugResult",

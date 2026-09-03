@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-03 03:33 EEST — /root
+
+- Intended: discard refinements rejected by deterministic QC and persist the shortest unambiguous proof so rejected records do not remain pending.
+- Areas: refinement persistence boundary, focused tests and documentation, and this progress log; no database schema or migration.
+- Result (03:35 EEST): QC-rejected generated items are discarded and replaced in storage by a minimal non-queryable refinement tombstone: `content_kind: unknown`, `refiner: qc:rejected`, and no summary, schedule, categories, or debug payload. Its existence removes the raw record from the pending queue. Non-QC model and transport errors remain unpersisted and retryable.
+- Verification: focused refinement/storage/evaluator/CLI/QC tests passed (75 tests); the full suite passed (193 tests); Ruff lint passed repository-wide and formatting passed for touched Python files; `git diff --check` passed. No LLM was invoked.
+- Follow-up: pause for review; add a separate rejection reason or retry workflow only when needed.
+
 ## 2026-09-03 02:50 EEST — /root
 
 - Intended: add minimal immutable refinement-QC contracts and an Afisha Vilnius date-tag checker at the post-normalization/pre-persistence boundary; occurrence schedules use date-set containment and recurrence schedules only probe tagged dates.
