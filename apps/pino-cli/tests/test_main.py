@@ -120,6 +120,7 @@ def test_eval_schedules_prints_model_comparison(tmp_path: Path, monkeypatch) -> 
             expected={"kind": "occurrences"},
             actual=None,
             error=None,
+            qc=SimpleNamespace(schedule=None),
         )
         kwargs["on_progress"](
             main.ScheduleEvalProgress(

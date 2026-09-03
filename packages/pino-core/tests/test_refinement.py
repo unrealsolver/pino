@@ -5,6 +5,7 @@ from pino_llm import LLMMessage
 
 from pino_core.config import RefinementConfig
 from pino_core.models import Record
+from pino_core.quality import QCFlag, QCReport
 from pino_core.refinement import (
     RefinementService,
     _parse_json_object,
@@ -385,6 +386,48 @@ def test_refinement_service_debug_refine_record_includes_provider_reasoning(
 
     assert result.reasoning == "provider thinking trace"
     assert result.refinements[0].summary == "Dry run"
+
+
+def test_refinement_qc_error_blocks_persistence(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", text="Event #4июня"))
+    client = StaticClient('{"content_kind": "event", "summary": "Event", "category_scores": {}}')
+    qc = QCReport(schedule=QCFlag("error", "tagged date is missing"))
+    progress = []
+
+    result = RefinementService(
+        store,
+        client,
+        RefinementConfig(),
+        quality_check=lambda record, refinement: qc,
+    ).refine_pending(on_progress=progress.append)
+
+    assert result.refined == 0
+    assert result.skipped == 1
+    assert store.list_refinements(inserted.record.id) == []
+    assert progress[-1].qc == qc
+    assert progress[-1].reason == "schedule QC error: tagged date is missing"
+
+
+def test_refinement_qc_warning_is_carried_across_persistence_boundary(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", text="Event #4июня"))
+    client = StaticClient('{"content_kind": "event", "summary": "Event", "category_scores": {}}')
+    qc = QCReport(schedule=QCFlag("warning", "schedule has an extra date"))
+    progress = []
+
+    result = RefinementService(
+        store,
+        client,
+        RefinementConfig(),
+        quality_check=lambda record, refinement: qc,
+    ).refine_pending(on_progress=progress.append)
+
+    assert result.refined == 1
+    assert len(store.list_refinements(inserted.record.id)) == 1
+    assert progress[-1].qc == qc
 
 
 def test_parse_json_object_reads_markdown_fenced_model_json() -> None:

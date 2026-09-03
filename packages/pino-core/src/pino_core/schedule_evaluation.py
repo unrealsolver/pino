@@ -20,6 +20,7 @@ from pino_llm import (
 
 from pino_core.config import PinoConfig
 from pino_core.models import Record
+from pino_core.quality import QCReport, RefinementQC, no_refinement_qc
 from pino_core.refinement import RefinementService
 from pino_core.schedules import normalize_schedule
 from pino_core.storage import DatabaseStore
@@ -50,6 +51,7 @@ class ScheduleEvalCase:
     actual: dict[str, Any] | None
     raw_response: str | None
     reasoning: str | None
+    qc: QCReport = QCReport()
     output_tokens: int | None = None
     generation_duration_ms: float | None = None
     tokens_per_second: float | None = None
@@ -148,6 +150,7 @@ def evaluate_schedule_model(
     usage_recorder: UsageRecorder | None = None,
     on_progress: Callable[[ScheduleEvalProgress], None] | None = None,
     timeout_seconds: float = 15,
+    quality_check: RefinementQC = no_refinement_qc,
 ) -> ScheduleEvalReport:
     selected = corpus.fixtures[:limit] if limit is not None else corpus.fixtures
     llm_config = config.llm.with_model(model)
@@ -174,6 +177,7 @@ def evaluate_schedule_model(
         DatabaseStore("sqlite:///:memory:"),
         timed_client,
         refinement_config,
+        quality_check,
     )
     cases: list[ScheduleEvalCase] = []
     started = perf_counter()
@@ -251,7 +255,13 @@ def _evaluate_fixture(
     except Exception as exc:
         return _case(fixture, client, status="invalid_response", error=str(exc))
     if result.error is not None:
-        return _case(fixture, client, status="invalid_response", error=result.error)
+        return _case(
+            fixture,
+            client,
+            status="invalid_response",
+            error=result.error,
+            qc=result.qc,
+        )
     if len(result.refinements) != 1:
         return _case(
             fixture,
@@ -276,6 +286,7 @@ def _evaluate_fixture(
         actual=actual,
         raw_response=client.last_response,
         reasoning=client.last_reasoning,
+        qc=result.qc,
         output_tokens=client.last_output_tokens,
         generation_duration_ms=client.last_generation_duration_ms,
         tokens_per_second=client.last_tokens_per_second,
@@ -288,6 +299,7 @@ def _case(
     *,
     status: str,
     error: str,
+    qc: QCReport = QCReport(),
 ) -> ScheduleEvalCase:
     return ScheduleEvalCase(
         fixture=fixture.name,
@@ -299,6 +311,7 @@ def _case(
         actual=None,
         raw_response=client.last_response,
         reasoning=client.last_reasoning,
+        qc=qc,
         output_tokens=client.last_output_tokens,
         generation_duration_ms=client.last_generation_duration_ms,
         tokens_per_second=client.last_tokens_per_second,

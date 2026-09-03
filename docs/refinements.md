@@ -222,6 +222,16 @@ to all projected occurrences of the same event.
 For a structured event source, use deterministic extraction where trustworthy.
 For Telegram and other prose-heavy sources, use an LLM extraction pass.
 
+After normalization and before persistence, a source may run deterministic QC.
+The immutable `QCReport` is an in-memory stage result; it is not added to the
+LLM prompt or stored in the refinement. An error blocks persistence, while a
+warning is reported but allows the refinement through.
+
+Afisha Vilnius enables `qc: afisha_vilnius`. Its `#Dmonth` tags are mandatory
+schedule evidence using the publication year. Explicit occurrences must contain
+all tagged dates and warn about additional dates. A recurrence only has to
+produce an occurrence when probed on every tagged date.
+
 Keep extraction separate from personalized ranking. A user's current goals
 must not be embedded into reusable refinement rows.
 

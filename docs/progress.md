@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-03 02:50 EEST — /root
+
+- Intended: add minimal immutable refinement-QC contracts and an Afisha Vilnius date-tag checker at the post-normalization/pre-persistence boundary; occurrence schedules use date-set containment and recurrence schedules only probe tagged dates.
+- Areas: core QC contracts and refinement boundary, Afisha integration and configuration, schedule evaluation/CLI wiring, focused tests and documentation, and this progress log.
+- Result (02:57 EEST): added immutable `QCFlag`/`QCReport` contracts and an injected post-normalization/pre-persistence check. Afisha Vilnius date tags use the publication year; explicit occurrences require tagged-date containment and warn on extra dates, while recurrence only probes each tagged date through the canonical schedule expander. QC errors block persistence and fail eval cases; warnings remain in-memory and are printed. Enabled the checker in example/local config without schema or migration changes.
+- Verification: focused QC/refinement/evaluator/CLI tests passed (59 tests); the full suite passed (193 tests); Ruff lint passed for all packages/apps and formatting passed for touched Python files; both configs validated; all 87 accepted Afisha gold schedules passed deterministic QC; `git diff --check` passed. No LLM was invoked.
+- Follow-up: pause for review before adding another QC dimension or source convention.
+
 ## 2026-09-03 00:58 EEST — /root
 
 - Intended: prepare the accumulated schedule/refinement/evaluation work for a user commit by removing generated evaluation clutter, preventing legacy `out/` artifacts from reappearing, auditing the final diff, and running repository verification; do not commit.

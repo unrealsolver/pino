@@ -12,6 +12,7 @@ from pino_llm import LLMClient, LLMMessage
 from pino_core.config import RefinementConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Record, Refinement
+from pino_core.quality import QCReport, RefinementQC, no_refinement_qc
 from pino_core.storage import DatabaseStore
 
 
@@ -31,6 +32,7 @@ class RefinementDebugResult:
     reasoning: str | None
     parsed_response: dict[str, Any]
     refinements: list[Refinement]
+    qc: QCReport = QCReport()
     error: str | None = None
 
 
@@ -41,6 +43,7 @@ class RefinementProgress:
     index: int | None = None
     record: Record | None = None
     refinements: list[Refinement] | None = None
+    qc: QCReport | None = None
     reason: str | None = None
 
 
@@ -59,10 +62,12 @@ class RefinementService:
         store: DatabaseStore,
         client: LLMClient,
         config: RefinementConfig,
+        quality_check: RefinementQC = no_refinement_qc,
     ) -> None:
         self.store = store
         self.client = client
         self.config = config
+        self.quality_check = quality_check
         self._static_system_prompt = render_refinement_system_prompt(config)
 
     def refine_pending(
@@ -97,9 +102,8 @@ class RefinementService:
                     ),
                 )
                 continue
-            try:
-                refinements = self.refine_record(record)
-            except RefinementResponseError:
+            result = self.debug_refine_record(record)
+            if result.error is not None:
                 skipped += 1
                 _emit_progress(
                     on_progress,
@@ -108,10 +112,12 @@ class RefinementService:
                         total=total,
                         index=index,
                         record=record,
-                        reason="unusable model response",
+                        qc=result.qc,
+                        reason=result.error,
                     ),
                 )
                 continue
+            refinements = result.refinements
             self.store.replace_refinements(record.id, refinements)
             refined += 1
             item_count += len(refinements)
@@ -123,6 +129,7 @@ class RefinementService:
                     index=index,
                     record=record,
                     refinements=refinements,
+                    qc=result.qc,
                 ),
             )
 
@@ -131,26 +138,25 @@ class RefinementService:
         )
 
     def refine_record(self, record: Record) -> list[Refinement]:
-        raw_response = self.client.complete(
-            self._record_messages(record),
-            operation="refinement.extract",
-        )
-        data = _parse_json_object(raw_response)
-        if error := _response_error(data):
-            raise RefinementResponseError(error)
-        if not _is_refinement_item(data):
-            raise RefinementResponseError("refinement response is missing an item")
-        return [self._build_refinement(record, data)]
+        result = self.debug_refine_record(record)
+        if result.error is not None:
+            raise RefinementResponseError(result.error)
+        return result.refinements
 
     def debug_refine_record(self, record: Record) -> RefinementDebugResult:
         messages = self._record_messages(record)
         raw_response = self.client.complete(messages, operation="refinement.extract")
         data = _parse_json_object(raw_response)
         refinements: list[Refinement] = []
+        qc = QCReport()
         error = _response_error(data)
         if error is None:
             if _is_refinement_item(data):
                 refinements = [self._build_refinement(record, data)]
+                qc = self.quality_check(record, refinements[0])
+                if qc.has_errors:
+                    message = qc.schedule.message if qc.schedule is not None else None
+                    error = f"schedule QC error: {message or 'quality check failed'}"
             else:
                 error = "refinement response is missing an item"
         return RefinementDebugResult(
@@ -160,6 +166,7 @@ class RefinementService:
             reasoning=_client_reasoning(self.client),
             parsed_response=data,
             refinements=refinements,
+            qc=qc,
             error=error,
         )
 

@@ -126,6 +126,7 @@ sources:
       api_hash: env:TELEGRAM_API_HASH
       session_path: .pino/telegram
       limit: 50
+      qc: afisha_vilnius
     enabled: false
   - name: reforumspace-vilnius
     type: telegram_channel

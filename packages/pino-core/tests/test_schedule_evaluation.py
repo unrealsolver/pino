@@ -6,6 +6,7 @@ import yaml
 from pino_llm import LLMError, LLMUsage
 
 from pino_core.config import PinoConfig
+from pino_core.quality import QCFlag, QCReport
 from pino_core.schedule_evaluation import (
     ScheduleEvalCase,
     _summarize,
@@ -378,3 +379,30 @@ def test_schedule_eval_report_keeps_raw_response_for_mismatch(tmp_path: Path) ->
     ]
     response_path = report.summary_path.parent / "responses/001.json"
     assert response_path.read_text(encoding="utf-8").strip() == response
+
+
+def test_schedule_eval_applies_quality_check_after_normalization(tmp_path: Path) -> None:
+    corpus = load_schedule_eval_corpus(FIXTURES)
+    fixture = corpus.fixtures[0]
+    response = json.dumps(
+        {
+            "content_kind": "event",
+            "schedule": fixture.expected_schedule,
+            "category_scores": {},
+        }
+    )
+    qc = QCReport(schedule=QCFlag("error", "tagged date is missing"))
+
+    report = evaluate_schedule_model(
+        config=eval_config("ollama:qc", "qc-model"),
+        model="ollama:qc",
+        corpus=corpus,
+        output_dir=tmp_path,
+        limit=1,
+        client=StaticClient(response),
+        quality_check=lambda record, refinement: qc,
+    )
+
+    assert report.cases[0].status == "invalid_response"
+    assert report.cases[0].qc == qc
+    assert report.cases[0].error == "schedule QC error: tagged date is missing"

@@ -42,7 +42,7 @@ from pino_core.schedule_evaluation import (
     load_schedule_eval_corpus,
 )
 from pino_core.storage import normalize_database_url
-from pino_integration import build_sources
+from pino_integration import build_refinement_qc, build_sources
 
 app = typer.Typer(no_args_is_help=True)
 chat_app = typer.Typer(no_args_is_help=False, invoke_without_command=True)
@@ -199,6 +199,7 @@ def eval_schedules(
             usage_recorder=store.add_llm_usage_event,
             on_progress=print_schedule_eval_progress,
             timeout_seconds=timeout,
+            quality_check=build_refinement_qc(config.sources),
         )
         reports.append(report)
         console.print(
@@ -270,6 +271,14 @@ def print_schedule_eval_progress(progress: ScheduleEvalProgress) -> None:
             style="dim" if progress.status == "pass" else "yellow",
         )
     )
+    if progress.case is not None and progress.case.qc.schedule is not None:
+        flag = progress.case.qc.schedule
+        console.print(
+            Text(
+                f"Schedule QC {flag.level}: {flag.message or 'quality check failed'}",
+                style="red" if flag.level == "error" else "yellow",
+            )
+        )
     if progress.case is None or progress.case.passed:
         return
     console.print(
@@ -419,6 +428,7 @@ def _run_refine(
         store=store,
         client=build_llm_client(llm_config, usage_recorder=store.add_llm_usage_event),
         config=config.refinement,
+        quality_check=build_refinement_qc(config.sources),
     )
     if selected_id is not None:
         _run_refine_debug_id(
@@ -522,6 +532,9 @@ def print_refinement_debug_rerun(
         summary.add_row("existing_summary", plain_text(existing_refinement.summary or ""))
     if result.error is not None:
         summary.add_row("error", plain_text(result.error))
+    if result.qc.schedule is not None:
+        summary.add_row("schedule_qc", plain_text(result.qc.schedule.level))
+        summary.add_row("schedule_qc_message", plain_text(result.qc.schedule.message or ""))
     console.print(Panel(summary, title="Refinement dry run", border_style="blue"))
 
     for message in result.messages:
@@ -571,6 +584,9 @@ def print_refinement_progress(progress: RefinementProgress) -> None:
 
     if progress.status == "refined" and progress.refinements is not None:
         console.print(Text(f"    refined {len(progress.refinements)} item(s)", style="green"))
+        if progress.qc is not None and progress.qc.schedule is not None:
+            flag = progress.qc.schedule
+            console.print(Text(f"    schedule QC {flag.level}: {flag.message}", style="yellow"))
         return
 
     reason = progress.reason or "skipped"
