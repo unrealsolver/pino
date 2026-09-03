@@ -24,7 +24,7 @@ schedule:
   - start: '13:00'
     end: '17:00'
   from: '2026-06-14'
-  until: '2026-06-28'
+  until: '2026-08-31'
 rest_tags:
 - '#swapparty'
 - '#Развлечения'

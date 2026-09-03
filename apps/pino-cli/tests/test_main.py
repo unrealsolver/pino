@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+import typer
 from rich.console import Console
 from pino_llm import LLMMessage, LLMUsage
 
@@ -10,6 +13,7 @@ from pino_core.config import PinoConfig, SourceConfig, StorageConfig
 from pino_core.models import ChatMessage, Record, Refinement
 from pino_core.pipeline import CheckResult, SourceCheckResult
 from pino_core.refinement import RefinementProgress
+from pino_core.schedule_evaluation import ScheduleKindScore
 from pino_core.storage import SQLiteStore
 
 
@@ -22,6 +26,150 @@ class StaticRefinementClient:
     def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         self.messages = messages
         return self.response
+
+
+def test_eval_schedules_requires_an_explicit_model(tmp_path: Path) -> None:
+    with pytest.raises(typer.BadParameter, match="at least one --model"):
+        main.eval_schedules(
+            models=None,
+            config_path=None,
+            fixtures=tmp_path,
+            output_dir=tmp_path / "output",
+            limit=None,
+            timeout=15,
+        )
+
+
+def test_eval_schedules_prints_model_comparison(tmp_path: Path, monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=220))
+    corpus = SimpleNamespace(fixtures=[object()], excluded=10)
+    scores = {
+        "occurrences": ScheduleKindScore(passed=0, total=1),
+        "recurrence": ScheduleKindScore(passed=0, total=0),
+        "null": ScheduleKindScore(passed=0, total=0),
+    }
+    report = SimpleNamespace(
+        summary=SimpleNamespace(
+            model="ollama:small-local",
+            passed=0,
+            total=1,
+            accuracy=0.0,
+            invalid=0,
+            total_duration_ms=1200,
+            min_duration_ms=1200,
+            p50_duration_ms=1200,
+            mean_duration_ms=12,
+            max_duration_ms=1200,
+            output_tokens=25,
+            tokens_per_second=20.0,
+            by_kind=scores,
+        ),
+        summary_path=tmp_path / "output/small-local/run/summary.yaml",
+    )
+    config = PinoConfig(
+        llm={
+            "model": "ollama:small-local",
+            "models": {
+                "ollama": {
+                    "small-local": {
+                        "model": "gemma4:e4b",
+                    }
+                }
+            },
+        },
+        refinement={"model": "ollama:small-local"},
+    )
+    monkeypatch.setattr(main, "get_config", lambda path: config)
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    monkeypatch.setattr(main, "get_store", lambda actual_config: store)
+    monkeypatch.setattr(main, "load_schedule_eval_corpus", lambda path: corpus)
+
+    def fake_evaluate_schedule_model(**kwargs):
+        assert kwargs["timeout_seconds"] == 15
+        kwargs["usage_recorder"](
+            LLMUsage(
+                provider="ollama",
+                model="gemma4:e4b",
+                operation="evaluation.schedule",
+                input_tokens=100,
+                output_tokens=25,
+                cached_input_tokens=0,
+                duration_ms=1200,
+            )
+        )
+        summary_path = tmp_path / "output/small-local/run/summary.yaml"
+        kwargs["on_progress"](
+            main.ScheduleEvalProgress(
+                model="ollama:small-local",
+                completed=0,
+                total=1,
+                fixture="",
+                status="started",
+                passed=0,
+                invalid=0,
+                elapsed_ms=0,
+                summary_path=summary_path,
+            )
+        )
+        case = SimpleNamespace(
+            fixture="001",
+            status="mismatch",
+            passed=False,
+            expected={"kind": "occurrences"},
+            actual=None,
+            error=None,
+        )
+        kwargs["on_progress"](
+            main.ScheduleEvalProgress(
+                model="ollama:small-local",
+                completed=1,
+                total=1,
+                fixture="001",
+                status="mismatch",
+                passed=0,
+                invalid=0,
+                elapsed_ms=1200,
+                summary_path=summary_path,
+                case=case,
+                response_path=tmp_path / "output/small-local/run/responses/001.json",
+                reasoning_path=tmp_path / "output/small-local/run/reasoning/001.txt",
+            )
+        )
+        return report
+
+    monkeypatch.setattr(main, "evaluate_schedule_model", fake_evaluate_schedule_model)
+
+    main.eval_schedules(
+        models=["ollama:small-local"],
+        config_path=None,
+        fixtures=tmp_path,
+        output_dir=tmp_path / "output",
+        limit=None,
+        timeout=15,
+    )
+
+    rendered = output.getvalue()
+    assert "Evaluating ollama:small-local on 1 fixture(s)" in rendered
+    assert "Live summary:" in rendered
+    assert "[ollama:small-local 1/1] 001: mismatch" in rendered
+    assert "exact 0, invalid 0 | 1.2s" in rendered
+    assert "1.2s / 1.2s / 1.2s / 12ms / 1.2s" in rendered
+    assert "25 tok / 20.0 tok/s" in rendered
+    assert "small-local" in rendered
+    assert "0/1 (0.0%)" in rendered
+    assert "001 expected" in rendered
+    assert '"kind": "occurrences"' in rendered
+    assert "001 actual" in rendered
+    assert "responses/001.json" in rendered
+    assert "reasoning/001.txt" in rendered
+    assert "Completed ollama:small-local: 0/1 exact (0.0%)" in rendered
+    assert "Summary:" in rendered
+    assert "Excluded 10 human-marked bad fixture(s)" in rendered
+    usage = store.list_llm_usage_events()
+    assert len(usage) == 1
+    assert usage[0].operation == "evaluation.schedule"
 
 
 def test_chat_debug_prints_tool_markup_as_plain_text(monkeypatch) -> None:
@@ -191,7 +339,7 @@ def test_debug_prompts_prints_rendered_prompts(tmp_path, monkeypatch) -> None:
     assert "Current time:" in rendered
     assert "Goals:" in rendered
     assert "Refinement system prompt" in rendered
-    assert "Response JSON object shape:" in rendered
+    assert "Normalized item JSON object shape:" in rendered
 
 
 def test_db_upgrade_uses_configured_database_url(tmp_path, monkeypatch) -> None:
@@ -428,7 +576,7 @@ def test_refine_with_id_reruns_refinement_without_updating_store(tmp_path, monke
         storage=StorageConfig(local={"type": "sqlite", "path": tmp_path / "pino.sqlite"})
     )
     client = StaticRefinementClient(
-        '{"items": [{"content_kind": "event", "summary": "Dry run summary", "category_scores": {}}]}',
+        '{"content_kind": "event", "summary": "Dry run summary", "category_scores": {}}',
         reasoning="calendar reasoning trace",
     )
     monkeypatch.setattr(main, "get_config", lambda config_path: config)

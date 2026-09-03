@@ -1,4 +1,5 @@
 .pino/
+/out/
 INFERCOM_API_KEY
 *.local.yaml
 config.yaml

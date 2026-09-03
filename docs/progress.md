@@ -2,6 +2,171 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-03 00:58 EEST — /root
+
+- Intended: prepare the accumulated schedule/refinement/evaluation work for a user commit by removing generated evaluation clutter, preventing legacy `out/` artifacts from reappearing, auditing the final diff, and running repository verification; do not commit.
+- Areas: generated `out/` artifacts, `.gitignore`, accumulated tracked changes, and this progress log.
+- Result (01:00 EEST): moved the untracked legacy `out/` evaluation tree (2,536 files, 12 MB) to recoverable `/tmp/pino-eval-out-20260903`, ignored future `/out/` artifacts, synchronized the corpus-count test with the three multi-event exclusions, and aligned the example MiniMax/GPT schedule profiles with the documented aliases and accepted sampling settings. All remaining worktree changes are substantive source, documentation, tests, or deliberate golden corrections; no commit was created.
+- Verification: full suite passed (185 tests); Ruff lint passed repository-wide; Ruff formatting passed for all changed Python files; `config.example.yaml` loaded and both evaluation profiles resolved with expected settings; `git diff --check` passed.
+- Follow-up: user commit; ignored `.pino/` evaluation history remains available locally, and the moved legacy artifacts can be deleted from `/tmp` when no longer needed.
+
+## 2026-09-03 00:08 EEST — /root
+
+- Intended: add a local schedule-evaluation profile for the installed `ornith-1.5:35b`, using author-recommended general-task sampling and a no-reasoning baseline.
+- Areas: local `config.yaml` and this progress log.
+- Result (00:09 EEST): added `ollama:schedule-ornith-1-5-35b` for the exact installed model tag with temperature `0.6`, top-p `0.95`, 32K context, a 2K output cap, and thinking disabled for the initial comparable extraction baseline. No generic `top_k` option was added.
+- Verification: the profile resolved with all expected typed values; focused config tests passed (19 tests); `git diff --check` passed; the installed Ollama metadata was inspected without invoking the model.
+- Follow-up: run a small smoke evaluation, then the same corpus used for the other local profiles if its output contract is sound.
+
+## 2026-09-02 23:56 EEST — /root
+
+- Intended: make schedule evaluation provider-neutral through `pino-llm`, preserve existing usage accounting and optional Ollama diagnostics, and add a MiniMax M3 evaluation profile using manufacturer-recommended sampling.
+- Areas: LLM client factory/timeouts and normalized call diagnostics, schedule evaluator and CLI, local config, documentation, focused tests, and this progress log.
+- Result (2026-09-03 00:01 EEST): schedule evaluation now resolves every registered provider through `build_llm_client`; the shared factory accepts an optional timeout, OpenAI-compatible reasoning is exposed when returned, and existing normalized usage is captured for hosted output-token totals while provider-only generation throughput remains optional. Removed Ollama-only CLI/core guards, generalized help/docs, and added local `minimax:schedule-m3` with MiniMax's recommended temperature `1` and top-p `0.95`. No schema or generic parameter bag was added.
+- Verification: full test suite passed (185 tests); Ruff lint passed repository-wide and formatting passed for touched Python files; `minimax:schedule-m3` resolved with expected values; provider-neutral CLI help rendered; `git diff --check` passed. No external model was invoked.
+- Follow-up: run a small MiniMax smoke eval with an explicit timeout, then inspect `evaluation.schedule` usage before committing to the full corpus.
+
+## 2026-09-02 19:59 EEST — /root
+
+- Intended: add isolated schedule-eval profiles for GPT-OSS 20B medium reasoning and Muse Glimmer with reasoning disabled and low reasoning; inspect the latest GPT-OSS/Qwen failure modes without changing prompts or tests.
+- Areas: local `config.yaml`, latest evaluation artifacts, and this progress log.
+- Result (20:01 EEST): added `ollama:schedule-gpt-oss-20b-medium`, `ollama:schedule-muse-glimmer`, and `ollama:schedule-muse-glimmer-low` with comparable sampling, 32K context, and 2K generation limits; removed Qwen's dead duplicate `think: false` key. Reviewed the latest paired GPT-OSS/Qwen failures and identified multi-event fixture contamination, two canonical-representation/prompt artifacts, and substantive date/boundary errors. No prompt, fixture, schema, or committed test was changed.
+- Verification: loaded `config.yaml` and resolved all three profiles with expected typed values; confirmed the installed Muse Glimmer advertises thinking and official Ollama documentation supports controllable reasoning levels; config tests passed (19 tests); `git diff --check` passed. No model was invoked.
+- Follow-up: run the three new profiles; compare GPT medium against low primarily on recurrence boundaries `092` and `099`, and keep multi-event cases `004`, `007`, and `025` out of model-quality conclusions.
+
+## 2026-09-02 16:37 EEST — /root
+
+- Intended: persist token usage from schedule-evaluation LLM calls through the existing configured usage store, without changing the usage schema or evaluation report format.
+- Areas: schedule evaluator wiring, CLI integration, usage documentation, focused tests, and this progress log.
+- Result (16:41 EEST): schedule evaluation now records every completed Ollama request in the configured `llm_usage_events` store and labels it `evaluation.schedule`, keeping benchmark traffic separate from production `refinement.extract`. Provider failures without returned usage remain unrecorded; report artifacts and schema are unchanged.
+- Verification: CLI wiring test persisted and read back an `evaluation.schedule` event; evaluator tests verify the operation label; full test suite passed (183 tests); Ruff lint and formatting checks passed for touched Python files; `git diff --check` passed. No model was invoked.
+- Follow-up: existing eval runs are not backfilled; run a new evaluation and inspect it with `pino usage summary --group-by operation` or `pino usage recent`.
+
+## 2026-09-02 15:49 EEST — /root
+
+- Intended: add comparable local schedule-eval profiles for `qwen3.8:27b` and `gpt-oss:20b`, use explicit model-based aliases, and remove the duplicate Nemotron thinking key.
+- Areas: local `config.yaml` and this progress log.
+- Result (15:52 EEST): added `ollama:schedule-qwen3-8-27b`, renamed the GPT-OSS evaluation profile to `ollama:schedule-gpt-oss-20b`, aligned both with the Nemotron evaluation limits, and removed Nemotron's conflicting duplicate `think` key. No model was invoked.
+- Verification: loaded `config.yaml` and resolved all three Ollama profiles with the expected models and parameters; config tests passed (19 tests); `git diff --check` passed.
+- Follow-up: run the same schedule-eval corpus against the three explicit aliases for comparison.
+
+## 2026-09-02 15:25 EEST — /root
+
+- Intended: make refinement LLM output a single direct item or `{"error": "..."}`, remove `source_text` from canonical schedules, and update prompt/docs/tests while retaining list-based storage APIs and `item_index = 0`; do not change golden fixture `045.yaml`.
+- Areas: refinement service and prompt, schedule model, documentation, CLI/evaluator fixtures, focused tests, and this progress log.
+- Result (15:32 EEST): refinement now accepts exactly one direct item object or a one-field model error, reports model error reasons, and wraps successful output as one internal refinement with index zero. Updated the prompt for atomic input, non-event handling, upstream splitting, and the error alternative. Removed `source_text` from schedule validation, serialization, prompt examples, documentation, and test fixtures. Retained list-based persistence and the database schema; did not modify `045.yaml`.
+- Verification: focused refinement/schedule/evaluator/CLI tests passed (59 tests), the full repository suite passed (183 tests) before final mechanical formatting, focused tests passed again afterward, Ruff lint and format checks passed for all touched Python files, stale contract strings were absent, and `git diff --check` passed. No model was invoked.
+- Follow-up: run a fresh schedule eval; multi-event fixtures should now return explicit model errors and remain candidates for an upstream splitter benchmark.
+
+## 2026-09-02 05:10 EEST — /root
+
+- Intended: remove `relevant_from`/`relevant_to` from the LLM refinement contract, derive them only from normalized schedules, and remove legacy coalescing based on model-provided relevance timestamps while retaining database/search fields.
+- Areas: refinement parser and prompt, focused refinement/evaluator tests, and this progress log.
+- Result (05:13 EEST): removed relevance fields from the rendered LLM response shape and raw-item ingestion, made schedule the sole LLM event-timing field, and added the at-least-one-item/non-event rule. Persisted relevance fields remain unchanged and derive from normalized schedules. Removed the legacy weekly coalescer and its timestamp-based helpers; unexpected legacy relevance keys are now ignored. Updated focused tests without changing golden fixtures or database schema.
+- Verification: focused refinement/evaluator tests passed (30 tests), full repository tests passed (183 tests), Ruff lint and format checks passed for touched Python files, and `git diff --check` passed. No model was invoked.
+- Follow-up: run a fresh schedule eval and compare schedule omissions, null-item handling, recurrence accuracy, and invalid output against the 68/90 run.
+
+## 2026-09-02 03:12 EEST — /root
+
+- Intended: generalize the refinement schedule prompt around event identity and source-supported temporal semantics; remove fixture-specific date/season examples and tighten occurrence, recurrence, and boundary selection without changing the model or tests.
+- Areas: refinement system prompt and this progress log.
+- Result (03:13 EEST): replaced fixture-specific summer/Vilnius and concrete date examples with generic event identity, event-timing evidence, session separation, weekly representability, source-supported boundary, publication-date anchoring, and schema-integrity rules. Non-weekly patterns are no longer approximated as weekly, and contextual availability is not treated as an event occurrence. No test or golden fixture was edited.
+- Verification: focused refinement tests passed (20 tests), Ruff passed for the changed Python file, and `git diff --check` passed. No model was invoked.
+- Follow-up: run a fresh schedule eval and compare total accuracy, recurrence accuracy, invalid responses, and omitted-year behavior against the 73/90 run.
+
+## 2026-09-02 02:52 EEST — /root
+
+- Intended: make `publication_date` the authoritative omitted-year anchor in the refinement prompt, including an explicit 2026 example and final year-resolution audit; do not change tests or golden fixtures.
+- Areas: refinement system prompt and this progress log.
+- Result (02:53 EEST): strengthened rule 6 so omitted years default to `publication_date` and cannot be selected from model time, external knowledge, URLs, or weekday agreement; retained the time-only guard, added a concrete June 2026 example, and extended the final audit. No test or golden fixture was edited.
+- Verification: focused refinement tests passed (20 tests), Ruff passed for the changed Python file, and `git diff --check` passed. The initial focused run exposed a removed prompt-contract phrase; the prompt retained that phrase and the rerun passed. No model was invoked.
+- Follow-up: run a fresh schedule eval and compare both total accuracy and the count of responses containing 2024 occurrence years.
+
+## 2026-09-02 02:44 EEST — /root
+
+- Intended: preserve the existing refinement schedule instructions as comments and replace them with an ordered extraction procedure plus a final output audit; do not change golden fixtures or tests.
+- Areas: refinement system prompt and this progress log.
+- Result (02:45 EEST): retained the prior temporal prompt block as source comments and replaced its rendered text with an ordered schedule decision procedure covering event identity, mandatory schedules, occurrence/recurrence choice, recurrence boundaries, publication-date limits, non-invention, schema placement, timezone handling, and a final JSON/invariant audit. No test or golden fixture was edited.
+- Verification: focused refinement tests passed (20 tests), Ruff passed for the changed Python file, and `git diff --check` passed. No model was invoked.
+- Follow-up: rerun the schedule evaluator to measure the prompt's accuracy impact; fixture `045.yaml` still contains the user-owned duplicate `start` key and was deliberately left untouched.
+
+## 2026-09-01 23:38 EEST — /root
+
+- Intended: compact schedule-eval YAML case entries to name, error/no-error, and wall duration only; retain aggregate metrics, raw artifacts, and immediate CLI diagnostics.
+- Areas: schedule evaluator live summary, tests, README, and this progress log.
+- Result (23:39 EEST): live YAML case rows now contain only `name`, `error`, and wall-clock `duration_ms`. Passing cases store `error: null`, mismatches store `error: mismatch`, and provider/parser failures retain their message. Removed duplicated schedules, statuses, token telemetry, and artifact paths from case rows; aggregate metrics and fixture-named response/reasoning files remain unchanged.
+- Verification: focused schedule-eval/CLI tests passed (29 tests), full `pytest` passed (183 tests), Ruff passed for all packages/apps, and `git diff --check` passed. No model was invoked. Follow-up: run a fresh eval after review to inspect the compact live summary.
+
+## 2026-09-01 23:13 EEST — /root
+
+- Intended: derive schedule-eval generation throughput from Ollama-native token count and generation duration; persist per-case output tokens/duration/tok-s and a weighted aggregate, and show it in the comparison CLI.
+- Areas: Ollama response telemetry, schedule evaluator/report YAML, CLI output, tests, README, and this progress log.
+- Result (23:15 EEST): Ollama now exposes its latest native `eval_count` and `eval_duration` as output-token, generation-duration, and derived tok/s telemetry. Schedule eval persists those three values per case and records total output tokens, summed generation duration, and duration-weighted tok/s in the live summary; the comparison table shows aggregate generation throughput. Wall-clock latency remains separate.
+- Verification: focused telemetry/evaluator/CLI tests passed (38 tests), full `pytest` passed (183 tests), Ruff passed for all packages/apps, and `git diff --check` passed. No model was invoked. Follow-up: existing reports naturally lack the new fields; run a fresh eval after review.
+
+## 2026-09-01 23:08 EEST — /root
+
+- Intended: render the researched Nemotron sampling, thinking, context, and output settings into the local schedule profile; do not change evaluator timeout.
+- Areas: local `config.yaml` and this progress log.
+- Result (23:09 EEST): updated `ollama:schedule-nemotron` to temperature `1`, top-p `0.95`, thinking enabled, 32K context, and a 4K output cap. Evaluator timeout was not changed.
+- Verification: loaded `config.yaml` and resolved all five settings with the expected types and values; `git diff --check` passed. No model was invoked. Follow-up: review and commit with the surrounding model-registry work.
+
+## 2026-09-01 04:16 EEST — /root
+
+- Intended: add a local Ollama schedule-evaluation profile for `nemotron-3.5-lightning` without changing model-registry behavior or invoking the model.
+- Areas: local `config.yaml` and this progress log.
+- Result (04:16 EEST): added local profile `ollama:schedule-nemotron`, resolving to `nemotron-3.5-lightning` with temperature `0`; no committed example or runtime behavior changed.
+- Verification: loaded `config.yaml` and resolved the new profile to Ollama with the expected model and parameters; `git diff --check` passed. No model was invoked. Follow-up: review and commit with the surrounding model-registry work.
+
+## 2026-09-01 04:09 EEST — /root
+
+- Intended: reshape `llm.models` so definitions use plain names inside provider namespaces while references remain fully qualified as `provider:name`; remove redundant `provider` fields from definitions without changing runtime options.
+- Areas: LLM configuration/resolution, application configs, tests, documentation, and this progress log.
+- Result (04:12 EEST): model definitions now use plain keys beneath provider namespaces (`llm.models.<provider>.<name>`) and omit redundant `provider` fields. Selectors use strict fully qualified `provider:name` references; provider/name parsing, lookup, plain-name validation, and provider-specific option validation remain typed. Updated local/example configs, CLI wording, documentation, and tests.
+- Verification: full `pytest` passed (183 tests), Ruff passed for all packages/apps, local and example configs loaded with resolved provider profiles, CLI help rendered, redundant definition-level provider fields were absent, and `git diff --check` passed. No model was invoked. Follow-up: review and commit.
+
+## 2026-09-01 02:37 EEST — /root
+
+- Intended: replace provider-owned aliases and `default_provider` with one typed `llm.models` profile registry; require strict opaque aliases at Pino entry points, apply profile inference settings, expose resolved eval settings, and document the configuration contract.
+- Areas: LLM configuration/providers, refinement and schedule-eval integration, application configs/CLI, tests, README, and this progress log.
+- Result (02:44 EEST): added a strict typed `llm.models` registry and removed `default_provider`, provider-owned aliases/defaults, global inference settings, and the unused Echo provider flag. Chat/refinement/eval now select registered aliases; profiles own provider model, temperature/top-p, and typed Ollama `think`/`num_ctx`/`num_predict` settings. Eval rejects non-Ollama profiles and records alias plus resolved settings in live YAML. Updated committed example, local `config.yaml`, CLI diagnostics/help, and documentation.
+- Verification: full `pytest` passed (182 tests), Ruff passed for all packages/apps, both configs loaded with their intended chat/refinement aliases, CLI help rendered, stale config fields were absent, and `git diff --check` passed. No model was invoked. Follow-up: review and commit; external/local override configs using the old shape must be updated.
+
+## 2026-09-01 01:33 EEST — /root
+
+- Intended: persist Ollama reasoning for every schedule-eval case as an immediate, separate artifact referenced by the live YAML summary; do not add inference-parameter controls yet.
+- Areas: schedule evaluator artifacts/progress, CLI diagnostics/tests, README, and this progress log.
+- Result (01:34 EEST): reasoning returned through Ollama's separate `message.thinking` field is now written immediately to `reasoning/<fixture>.txt` for passing and failing cases, referenced from `summary.yaml`, and shown as an artifact path for CLI failures. Cases without reasoning record `null`.
+- Verification: full `pytest` passed (179 tests), Ruff and `git diff --check` passed. No Ollama model was invoked. Follow-up: decide separately whether resolved inference parameters belong in typed Pino config; no generic `--params` or think control was added.
+
+## 2026-08-31 04:42 EEST — /root
+
+- Intended: remove all schedule-eval response caching and cache controls; produce fresh, incrementally visible, test-style diagnostics with readable expected/actual values and responses for every case.
+- Areas: schedule evaluator/report model, CLI output/options/tests, README, and this progress log.
+- Result (05:02 EEST): schedule evals always call Ollama afresh and create a timestamped run directory. A readable `summary.yaml` is created before the first request and updated after every case; every available response, including passes, is written immediately to a separate `.json`/`.txt` file. Failure expected/actual/error details and each model's completion summary print immediately. Removed `report.json`, `--refresh`, `--cache-dir`, and all cache counters; added `--output-dir`.
+- Verification: full `pytest` passed (179 tests), Ruff, CLI help, and `git diff --check` passed. No Ollama model was invoked by this session. Follow-up: pre-existing `out/` eval artifacts and old cache artifacts are ignored and were not modified or deleted.
+
+## 2026-08-31 03:38 EEST — /root
+
+- Intended: add per-model total/min/max/p50 evaluation timing statistics and an evaluator-only `--timeout` option defaulting to 15 seconds; preserve production Ollama timeout behavior.
+- Areas: Ollama client timeout injection, schedule evaluator summaries/reports, CLI/tests, README, and this progress log.
+- Result (03:41 EEST): model summaries and JSON reports now include total/min/p50/mean/max request durations; `pino eval schedules --timeout` defaults to 15 seconds. Timed-out/provider-error cases are recorded as invalid and evaluation continues, while normal Ollama calls retain their 120-second default.
+- Verification: full `pytest` passed (178 tests), Ruff, CLI help, and `git diff --check` passed. No Ollama model was invoked. Follow-up: none beyond review and the intended model comparison.
+
+## 2026-08-31 03:34 EEST — /root
+
+- Intended: make long schedule-model evaluations visibly progress per model and fixture, including pass/invalid/cache/elapsed counters, without changing evaluation semantics.
+- Areas: schedule evaluator callback, CLI rendering/tests, README guidance, and this progress log.
+- Result (03:36 EEST): each model now announces its fixture count and emits one durable line after every fixture with status plus cumulative exact, invalid, cache-hit, and elapsed-time counters.
+- Verification: full `pytest` passed (176 tests), Ruff and `git diff --check` passed. No Ollama model was invoked. Follow-up: none beyond running the intended model comparison after review.
+
+## 2026-08-31 02:01 EEST — /root
+
+- Intended: add a schedule-only Ollama model evaluation over valid Afisha Vilnius golden fixtures, reusing the production refinement prompt/parser, canonicalizing legacy gold schedules, caching raw responses, and reporting exact accuracy/latency by schedule kind; do not run models implicitly.
+- Areas: Core evaluation module/tests, `pino eval schedules` CLI/tests, usage documentation, and this progress log.
+- Result (02:08 EEST): added `pino eval schedules` with explicit repeated `--model`, reviewed-fixture validation (90 scored, 10 excluded), canonical exact schedule scoring, per-kind/invalid/latency summaries, and prompt-keyed raw-response/report caching.
+- Verification: full `pytest` passed (176 tests), Ruff and `git diff --check` passed, and CLI help rendered. No Ollama model was invoked. Follow-up: run a small `--limit` comparison, then the full corpus for promising models; repository-wide format check still identifies pre-existing drift in 20 unrelated files.
+
 ## 2026-08-31 01:54 EEST — /root
 
 - Intended: allow reset bootstrap to retain existing `active_memory` and `llm_usage_events` tables by using `CREATE TABLE IF NOT EXISTS` for only those two initial-schema operations; keep all other tables strict.

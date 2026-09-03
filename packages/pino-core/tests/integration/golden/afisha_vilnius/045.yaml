@@ -14,6 +14,7 @@ schedule:
   occurrences:
   - date: '2026-06-06'
     start: '14:00'
+    end: '16:00'
 ok: true
 rest_tags:
 - '#выставка'

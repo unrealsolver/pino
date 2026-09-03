@@ -41,14 +41,19 @@ def test_refinement_service_refines_pending_records(tmp_path: Path) -> None:
     client = StaticClient(
         """
         {
-          "items": [{
-            "content_kind": "event",
-            "summary": "Open synth jam in Vilnius.",
-            "relevant_from": "2026-06-05T16:00:00Z",
-            "relevant_to": "2026-06-05T20:00:00Z",
-            "location": "Example venue",
-            "category_scores": {"open_synth_jam": 0.9, "electronic_music": 0.8}
-          }]
+          "content_kind": "event",
+          "summary": "Open synth jam in Vilnius.",
+          "schedule": {
+            "version": 1,
+            "timezone": "Europe/Vilnius",
+            "kind": "occurrences",
+            "occurrences": [{
+              "start": "2026-06-05T19:00",
+              "end": "2026-06-05T23:00"
+            }]
+          },
+          "location": "Example venue",
+          "category_scores": {"open_synth_jam": 0.9, "electronic_music": 0.8}
         }
         """,
     )
@@ -62,38 +67,30 @@ def test_refinement_service_refines_pending_records(tmp_path: Path) -> None:
     assert refinements[0].category_scores == {"open_synth_jam": 0.9, "electronic_music": 0.8}
     assert refinements[0].relevant_from is not None
     assert refinements[0].relevant_from.isoformat() == "2026-06-05T16:00:00+00:00"
+    assert refinements[0].relevant_to is not None
+    assert refinements[0].relevant_to.isoformat() == "2026-06-05T20:00:00+00:00"
 
 
-def test_refinement_service_supports_multiple_items(tmp_path: Path) -> None:
+def test_refinement_service_skips_model_error(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     inserted = store.add_record(
         Record(kind="telegram_message", source="test", text="Two weekend events")
     )
-    client = StaticClient(
-        """
-        {"items": [
-          {"content_kind": "event", "summary": "First event", "category_scores": {}},
-          {"content_kind": "event", "summary": "Second event", "category_scores": {}}
-        ]}
-        """,
-    )
+    client = StaticClient('{"error": "source contains multiple distinct events"}')
 
     result = RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
 
-    refinements = store.list_refinements(inserted.record.id)
-    assert result.items == 2
-    assert [refinement.item_index for refinement in refinements] == [0, 1]
-    assert [refinement.summary for refinement in refinements] == ["First event", "Second event"]
+    assert result.refined == 0
+    assert result.skipped == 1
+    assert store.list_refinements(inserted.record.id) == []
 
 
 def test_refinement_service_uses_cached_refinements(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     store.add_record(Record(kind="event", source="test", title="Metal", text="Metal gig"))
-    client = StaticClient(
-        '{"items": [{"content_kind": "event", "category_scores": {"metal_music": 0.8}}]}'
-    )
+    client = StaticClient('{"content_kind": "event", "category_scores": {"metal_music": 0.8}}')
     service = RefinementService(store, client, RefinementConfig())
 
     service.refine_pending(limit=5)
@@ -112,7 +109,7 @@ def test_refinement_messages_keep_static_prompt_before_dynamic_record_data(
     second = store.add_record(
         Record(kind="event", source="test", title="Two", text="Different event")
     )
-    client = StaticClient('{"items": [{"content_kind": "event", "category_scores": {}}]}')
+    client = StaticClient('{"content_kind": "event", "category_scores": {}}')
     service = RefinementService(store, client, RefinementConfig())
 
     service.refine_record(first.record)
@@ -149,7 +146,7 @@ def test_refinement_record_prompt_omits_storage_ids_and_source_telemetry(
             },
         )
     )
-    client = StaticClient('{"items": [{"content_kind": "event", "category_scores": {}}]}')
+    client = StaticClient('{"content_kind": "event", "category_scores": {}}')
 
     RefinementService(store, client, RefinementConfig()).refine_record(inserted.record)
 
@@ -181,7 +178,7 @@ def test_refinement_record_prompt_omits_publication_date_when_post_date_is_missi
             text="Happening today at 19:00.",
         )
     )
-    client = StaticClient('{"items": [{"content_kind": "event", "category_scores": {}}]}')
+    client = StaticClient('{"content_kind": "event", "category_scores": {}}')
 
     RefinementService(store, client, RefinementConfig()).refine_record(inserted.record)
 
@@ -210,7 +207,7 @@ def test_refinement_service_filters_unknown_categories(tmp_path: Path) -> None:
         Record(kind="event", source="test", title="Metal", text="Metal gig")
     )
     client = StaticClient(
-        '{"items": [{"content_kind": "event", "category_scores": {"metal_music": 0.8, "unknown": 1}}]}',
+        '{"content_kind": "event", "category_scores": {"metal_music": 0.8, "unknown": 1}}',
     )
 
     RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
@@ -226,18 +223,17 @@ def test_refinement_service_stores_valid_occurrence_schedule(tmp_path: Path) -> 
     )
     client = StaticClient(
         """
-        {"items": [{
+        {
           "content_kind": "event",
           "summary": "Tuesday event",
           "schedule": {
             "version": 1,
             "timezone": "Europe/Vilnius",
             "kind": "occurrences",
-            "occurrences": [{"start": "2026-06-09T19:00", "end": null}],
-            "source_text": "Every Tuesday at 19:00"
+            "occurrences": [{"start": "2026-06-09T19:00", "end": null}]
           },
           "category_scores": {}
-        }]}
+        }
         """,
     )
 
@@ -248,74 +244,40 @@ def test_refinement_service_stores_valid_occurrence_schedule(tmp_path: Path) -> 
         "timezone": "Europe/Vilnius",
         "kind": "occurrences",
         "occurrences": [{"start": "2026-06-09T19:00", "end": None}],
-        "source_text": "Every Tuesday at 19:00",
     }
 
 
-def test_refinement_service_coalesces_expanded_weekly_occurrences(tmp_path: Path) -> None:
+def test_refinement_service_ignores_model_relevance_fields(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     inserted = store.add_record(
         Record(
-            kind="event",
+            kind="announcement",
             source="test",
-            title="Swing outdoors",
-            text="Swing dance party every Thursday in June at 20:00.",
+            title="Venue notice",
+            text="General venue notice without an event schedule.",
         )
     )
     client = StaticClient(
         """
-        {"items": [
-          {
-            "content_kind": "event",
-            "summary": "Outdoor social swing dancing with a free basics lesson.",
+        {
+            "content_kind": "announcement",
+            "summary": "General venue notice.",
             "relevant_from": "2026-06-11T20:00:00+03:00",
             "relevant_to": "2026-06-11T23:00:00+03:00",
             "schedule": null,
-            "location": "Kitas Krantas, Vilnius",
-            "category_scores": {"social": 0.9, "workshop": 0.3}
-          },
-          {
-            "content_kind": "event",
-            "summary": "Outdoor social swing dancing with a free basics lesson.",
-            "relevant_from": "2026-06-18T20:00:00+03:00",
-            "relevant_to": "2026-06-18T23:00:00+03:00",
-            "schedule": null,
-            "location": "Kitas Krantas, Vilnius",
-            "category_scores": {"social": 0.9, "workshop": 0.3}
-          },
-          {
-            "content_kind": "event",
-            "summary": "Outdoor social swing dancing with a free basics lesson.",
-            "relevant_from": "2026-06-25T20:00:00+03:00",
-            "relevant_to": "2026-06-25T23:00:00+03:00",
-            "schedule": null,
-            "location": "Kitas Krantas, Vilnius",
-            "category_scores": {"social": 0.9, "workshop": 0.3}
-          }
-        ]}
+            "location": "Example venue",
+            "category_scores": {}
+        }
         """,
     )
 
     RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
 
-    refinements = store.list_refinements(inserted.record.id)
-    assert len(refinements) == 1
-    assert refinements[0].relevant_from is not None
-    assert refinements[0].relevant_from.isoformat() == "2026-06-10T21:00:00+00:00"
-    assert refinements[0].relevant_to is not None
-    assert refinements[0].relevant_to.isoformat() == "2026-06-25T20:59:59.999999+00:00"
-    assert refinements[0].schedule == {
-        "version": 1,
-        "timezone": "Europe/Vilnius",
-        "kind": "recurrence",
-        "frequency": "weekly",
-        "from": "2026-06-11",
-        "until": "2026-06-25",
-        "rules": [
-            {"weekdays": ["thursday"], "start": "20:00", "end": "23:00"}
-        ],
-    }
+    refinement = store.list_refinements(inserted.record.id)[0]
+    assert refinement.relevant_from is None
+    assert refinement.relevant_to is None
+    assert refinement.schedule is None
 
 
 def test_refinement_service_drops_schedule_rules_with_frequency(tmp_path: Path) -> None:
@@ -326,7 +288,7 @@ def test_refinement_service_drops_schedule_rules_with_frequency(tmp_path: Path) 
     )
     client = StaticClient(
         """
-        {"items": [{
+        {
           "content_kind": "event",
           "summary": "Tuesday event",
           "schedule": {
@@ -336,7 +298,7 @@ def test_refinement_service_drops_schedule_rules_with_frequency(tmp_path: Path) 
             "exceptions": []
           },
           "category_scores": {}
-        }]}
+        }
         """,
     )
 
@@ -349,16 +311,18 @@ def test_refinement_prompt_prefers_schedule_for_repeated_instances() -> None:
     prompt = render_refinement_system_prompt(RefinementConfig())
 
     assert "Prefer one item with a recurrence schedule" in prompt
-    assert "Only return multiple items when the source describes genuinely different events" in prompt
+    assert "Return exactly one normalized item object" in prompt
+    assert '{"error": "short reason"}' in prompt
     assert "When publication_date is present" in prompt
     assert "Do not calculate, verify, or correct weekdays from date lists" in prompt
-    assert "relevant_from is the earliest known start or active searchable datetime" in prompt
-    assert "relevant_to is the latest known end or active searchable datetime" in prompt
     assert "Use schedule kind occurrences" in prompt
     assert "recurrence for a stated weekly pattern" in prompt
-    assert "set relevant_from and relevant_to to null" in prompt
     assert "local to the schedule timezone" in prompt
     assert "omit zero-score categories" in prompt
+    assert "relevant_from" not in prompt
+    assert "relevant_to" not in prompt
+    assert "source_text" not in prompt
+    assert '"items"' not in prompt
     assert '"schedule": null | {' in prompt
     assert '"kind": "occurrences"' in prompt
     assert '"kind": "recurrence"' in prompt
@@ -373,7 +337,7 @@ def test_refinement_service_debug_refine_record_does_not_update_store(tmp_path: 
     store.init_schema()
     inserted = store.add_record(Record(kind="event", source="test", title="Debug", text="Debug me"))
     client = StaticClient(
-        '{"items": [{"content_kind": "event", "summary": "Debug result", "category_scores": {}}]}'
+        '{"content_kind": "event", "summary": "Debug result", "category_scores": {}}'
     )
 
     result = RefinementService(store, client, RefinementConfig()).debug_refine_record(
@@ -382,7 +346,7 @@ def test_refinement_service_debug_refine_record_does_not_update_store(tmp_path: 
 
     assert result.record.id == inserted.record.id
     assert [message.role for message in result.messages] == ["system", "user"]
-    assert result.parsed_response["items"][0]["summary"] == "Debug result"
+    assert result.parsed_response["summary"] == "Debug result"
     assert result.refinements[0].summary == "Debug result"
     assert result.error is None
     assert store.list_refinements(inserted.record.id) == []
@@ -401,7 +365,7 @@ def test_refinement_service_debug_refine_record_returns_parse_error(tmp_path: Pa
     assert result.raw_response == '{"final": "not refinement json"}'
     assert result.parsed_response == {"final": "not refinement json"}
     assert result.refinements == []
-    assert result.error == "refinement response is missing items"
+    assert result.error == "refinement response is missing an item"
 
 
 def test_refinement_service_debug_refine_record_includes_provider_reasoning(
@@ -411,7 +375,7 @@ def test_refinement_service_debug_refine_record_includes_provider_reasoning(
     store.init_schema()
     inserted = store.add_record(Record(kind="event", source="test", title="Debug", text="Debug me"))
     client = StaticClient(
-        '{"items": [{"content_kind": "event", "summary": "Dry run", "category_scores": {}}]}',
+        '{"content_kind": "event", "summary": "Dry run", "category_scores": {}}',
         reasoning="provider thinking trace",
     )
 
@@ -427,12 +391,12 @@ def test_parse_json_object_reads_markdown_fenced_model_json() -> None:
     parsed = _parse_json_object(
         """
         ```json
-        {"items": [{"content_kind": "event", "category_scores": {}}]}
+        {"content_kind": "event", "category_scores": {}}
         ```
         """,
     )
 
-    assert parsed["items"][0]["content_kind"] == "event"
+    assert parsed["content_kind"] == "event"
 
 
 def test_parse_json_object_skips_invalid_brace_blocks_before_valid_json() -> None:
@@ -441,18 +405,14 @@ def test_parse_json_object_skips_invalid_brace_blocks_before_valid_json() -> Non
         Here is the response shape: {items: [...]}
 
         {
-          "items": [
-            {
-              "content_kind": "event",
-              "summary": "Valid object",
-              "category_scores": {}
-            }
-          ]
+          "content_kind": "event",
+          "summary": "Valid object",
+          "category_scores": {}
         }
         """,
     )
 
-    assert parsed["items"][0]["summary"] == "Valid object"
+    assert parsed["summary"] == "Valid object"
 
 
 def test_parse_json_object_prefers_items_over_reasoning_json_fragments() -> None:
@@ -464,29 +424,39 @@ def test_parse_json_object_prefers_items_over_reasoning_json_fragments() -> None
         </think>
 
         {
-          "items": [
-            {
-              "content_kind": "event",
-              "summary": "Valid response",
-              "category_scores": {}
-            }
-          ]
+          "content_kind": "event",
+          "summary": "Valid response",
+          "category_scores": {}
         }
         """,
     )
 
-    assert parsed["items"][0]["summary"] == "Valid response"
+    assert parsed["summary"] == "Valid response"
 
 
-def test_build_refinement_llm_config_selects_simple_model() -> None:
+def test_build_refinement_llm_config_selects_registered_profile() -> None:
     from pino_llm import LLMConfig
 
     llm_config = build_refinement_llm_config(
-        LLMConfig(default_provider="infercom", model="smart"),
-        RefinementConfig(model="simple"),
+        LLMConfig(
+            model="infercom:chat",
+            models={
+                "infercom": {
+                    "chat": {
+                        "model": "MiniMax-M2.5",
+                    },
+                    "refinement": {
+                        "model": "gpt-oss-120b",
+                        "temperature": 0,
+                    },
+                },
+            },
+        ),
+        RefinementConfig(model="infercom:refinement"),
     )
 
-    assert llm_config.temperature == 0.0
+    assert llm_config.model == "infercom:refinement"
+    assert llm_config.selected_profile().temperature == 0.0
     assert llm_config.selected_model() == "gpt-oss-120b"
 
 
@@ -494,7 +464,7 @@ def test_refinement_service_emits_progress_events(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     store.add_record(Record(kind="event", source="test", title="Synth jam", text="Open synth jam"))
-    client = StaticClient('{"items": [{"content_kind": "event", "category_scores": {}}]}')
+    client = StaticClient('{"content_kind": "event", "category_scores": {}}')
     events = []
 
     result = RefinementService(store, client, RefinementConfig()).refine_pending(

@@ -8,34 +8,55 @@ storage:
     url: null
 
 llm:
-  default_provider: echo
-  model: null
-  temperature: 0.1
-  top_p: 0.1
+  model: echo:default
+  models:
+    echo:
+      default:
+        model: echo
+    minimax:
+      chat:
+        model: MiniMax-M3
+      schedule-m3:
+        model: MiniMax-M3
+        temperature: 1
+        top_p: 0.95
+      refinement:
+        model: MiniMax-M3
+        temperature: 0
+    infercom:
+      chat:
+        model: MiniMax-M2.5
+      refinement:
+        model: gpt-oss-120b
+        temperature: 0
+    ollama:
+      chat:
+        model: gpt-oss:20b
+      refinement:
+        model: gpt-oss:20b
+        temperature: 0
+      schedule-fast:
+        model: gemma4:e4b
+        temperature: 0
+        think: false
+        num_ctx: 4096
+        num_predict: 768
+      schedule-accurate:
+        model: gpt-oss:20b
+        temperature: 1
+        top_p: 0.95
+        think: low
+        num_ctx: 32768
+        num_predict: 2048
   providers:
     minimax:
       base_url: https://api.minimax.io/v1
       api_key: env:MINIMAX_API_KEY
-      models:
-        smart: MiniMax-M3
-        simple: MiniMax-M3
-      default_model: smart
     infercom:
       base_url: https://api.infercom.ai/v1
       api_key: env:INFERCOM_API_KEY
-      models:
-        smart: MiniMax-M2.5
-        simple: gpt-oss-120b
-      default_model: smart
     ollama:
       base_url: http://localhost:11434
-      models:
-        smart: gpt-oss-20b
-        simple: gpt-oss-20b
-      default_model: smart
-    echo:
-      enabled: true
-      default_model: echo
 
 chat:
   history_limit: 20
@@ -44,7 +65,7 @@ chat:
   max_tools_per_round: 3
 
 refinement:
-  model: simple
+  model: echo:default
   batch_size: 10
   schema_version: 1
   taxonomy_version: 1

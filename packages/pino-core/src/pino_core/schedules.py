@@ -42,7 +42,6 @@ class _ScheduleModel(BaseModel):
 
     version: Literal[1] = 1
     timezone: str
-    source_text: str | None = None
 
 
 class ScheduleOccurrence(BaseModel):
@@ -304,9 +303,7 @@ def _upgrade_legacy_schedule(
         raw_days = raw_rule.get("days")
         if not isinstance(raw_days, list):
             continue
-        weekdays = [
-            _LEGACY_WEEKDAYS.get(str(day).strip().upper()) for day in raw_days
-        ]
+        weekdays = [_LEGACY_WEEKDAYS.get(str(day).strip().upper()) for day in raw_days]
         weekdays = [day for day in weekdays if day is not None]
         if not weekdays:
             continue
@@ -328,9 +325,6 @@ def _upgrade_legacy_schedule(
         "until": _local_date(relevant_to, timezone_info),
         "rules": rules,
     }
-    source_text = value.get("source_text")
-    if isinstance(source_text, str) and source_text.strip():
-        candidate["source_text"] = source_text.strip()
     return candidate
 
 
@@ -347,8 +341,6 @@ def _dump_occurrences(model: OccurrencesSchedule) -> dict[str, Any]:
             for item in model.occurrences
         ],
     }
-    if model.source_text:
-        schedule["source_text"] = model.source_text.strip()
     return schedule
 
 
@@ -369,8 +361,6 @@ def _dump_recurrence(model: RecurrenceSchedule) -> dict[str, Any]:
             for rule in model.rules
         ],
     }
-    if model.source_text:
-        schedule["source_text"] = model.source_text.strip()
     return schedule
 
 
@@ -429,9 +419,7 @@ def _expand_weekly_recurrence(
             if not _overlaps(starts_at, ends_at, window_start, window_end):
                 continue
             key = f"{key_prefix}:{starts_at:%Y-%m-%dT%H%M}:{index}"
-            projected.append(
-                ProjectedOccurrence(key=key, starts_at=starts_at, ends_at=ends_at)
-            )
+            projected.append(ProjectedOccurrence(key=key, starts_at=starts_at, ends_at=ends_at))
         current += timedelta(days=1)
     return projected
 

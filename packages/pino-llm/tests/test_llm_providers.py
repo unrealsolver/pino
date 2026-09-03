@@ -6,6 +6,7 @@ from pino_llm.errors import LLMError
 from pino_llm.messages import LLMMessage
 from pino_llm.providers import (
     EchoClient,
+    OllamaClient,
     build_llm_client,
     _ollama_usage_from_response,
     _openai_messages,
@@ -13,6 +14,21 @@ from pino_llm.providers import (
     _provider_http_error,
 )
 from pino_llm.usage import LLMUsage
+
+
+def llm_config(provider: str, model: str, **profile_options) -> LLMConfig:
+    reference = f"{provider}:test"
+    return LLMConfig(
+        model=reference,
+        models={
+            provider: {
+                "test": {
+                    "model": model,
+                    **profile_options,
+                }
+            }
+        },
+    )
 
 
 def test_openai_messages_convert_tool_roles_to_user_context() -> None:
@@ -112,11 +128,20 @@ def test_ollama_usage_from_response_normalizes_eval_counts() -> None:
 
 
 def test_ollama_client_preserves_native_thinking(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = LLMConfig(default_provider="ollama", model="simple")
+    config = llm_config(
+        "ollama",
+        "gemma4:e4b",
+        temperature=0,
+        top_p=0.2,
+        think=False,
+        num_ctx=4096,
+        num_predict=768,
+    )
     seen_request = {}
 
     def fake_post(*args, **kwargs):
         seen_request.update(kwargs["json"])
+        seen_request["timeout"] = kwargs["timeout"]
         request = httpx.Request("POST", "http://localhost:11434/api/chat")
         return httpx.Response(
             200,
@@ -129,35 +154,57 @@ def test_ollama_client_preserves_native_thinking(monkeypatch: pytest.MonkeyPatch
                 },
                 "prompt_eval_count": 10,
                 "eval_count": 5,
+                "eval_duration": 250_000_000,
             },
         )
 
     monkeypatch.setattr("pino_llm.providers.httpx.post", fake_post)
 
-    client = build_llm_client(config)
+    client = OllamaClient(config, timeout_seconds=15)
     result = client.complete([LLMMessage(role="user", content="hello")], operation="refine")
 
     assert result == '{"items": []}'
     assert getattr(client, "last_reasoning") == "check the calendar claims"
-    assert "think" not in seen_request
+    assert client.last_output_tokens == 5
+    assert client.last_generation_duration_ms == 250.0
+    assert client.last_tokens_per_second == 20.0
+    assert seen_request["model"] == "gemma4:e4b"
+    assert seen_request["think"] is False
+    assert seen_request["options"] == {
+        "temperature": 0.0,
+        "top_p": 0.2,
+        "num_ctx": 4096,
+        "num_predict": 768,
+    }
+    assert seen_request["timeout"] == 15
+    assert OllamaClient(config).timeout_seconds == 120
 
 
 def test_openai_compatible_client_records_usage(monkeypatch: pytest.MonkeyPatch) -> None:
     recorded: list[LLMUsage] = []
+    seen_request = {}
     config = LLMConfig.model_validate(
         {
-            "default_provider": "minimax",
+            "model": "minimax:chat",
+            "models": {
+                "minimax": {
+                    "chat": {
+                        "model": "MiniMax-M3",
+                    }
+                }
+            },
             "providers": {"minimax": {"api_key": "test-key"}},
         },
     )
 
     def fake_post(*args, **kwargs):
+        seen_request.update(kwargs)
         request = httpx.Request("POST", "https://api.minimax.io/v1/chat/completions")
         return httpx.Response(
             200,
             request=request,
             json={
-                "choices": [{"message": {"content": "ok"}}],
+                "choices": [{"message": {"reasoning_content": "brief reasoning", "content": "ok"}}],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 3,
@@ -168,7 +215,11 @@ def test_openai_compatible_client_records_usage(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr("pino_llm.providers.httpx.post", fake_post)
 
-    client = build_llm_client(config, usage_recorder=recorded.append)
+    client = build_llm_client(
+        config,
+        usage_recorder=recorded.append,
+        timeout_seconds=15,
+    )
     result = client.complete([LLMMessage(role="user", content="hello")], operation="chat")
 
     assert result == "ok"
@@ -179,16 +230,18 @@ def test_openai_compatible_client_records_usage(monkeypatch: pytest.MonkeyPatch)
     assert recorded[0].input_tokens == 10
     assert recorded[0].output_tokens == 3
     assert recorded[0].cached_input_tokens == 4
+    assert seen_request["timeout"] == 15
+    assert getattr(client, "last_reasoning") == "brief reasoning"
 
 
 def test_infercom_client_requires_api_key_when_selected() -> None:
     with pytest.raises(LLMError, match="api_key"):
-        build_llm_client(LLMConfig(default_provider="infercom"))
+        build_llm_client(llm_config("infercom", "MiniMax-M2.5"))
 
 
 def test_minimax_client_requires_api_key_when_selected() -> None:
     with pytest.raises(LLMError, match="llm.providers.minimax.api_key"):
-        build_llm_client(LLMConfig(default_provider="minimax"))
+        build_llm_client(llm_config("minimax", "MiniMax-M3"))
 
 
 def test_echo_client_can_request_web_open_for_urls() -> None:

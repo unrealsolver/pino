@@ -122,9 +122,9 @@ ranking after the basic refinement and candidate-generation gates are visible.
 
 Start with a small staged pipeline:
 
-1. Capture the raw record.
-2. Extract zero or more normalized refinement rows.
-3. Compute reusable category data for each refinement row.
+1. Capture the raw record and split compound sources into atomic records when needed.
+2. Extract one normalized refinement for each atomic record.
+3. Compute reusable category data for the refinement.
 4. Query and rank refinements for the active Pino profile.
 
 The extraction stage should return only normalized facts:
@@ -133,28 +133,26 @@ The extraction stage should return only normalized facts:
 {
   "content_kind": "event",
   "summary": "Open modular synth jam in Vilnius.",
-  "relevant_from": "2026-06-05T16:00:00Z",
-  "relevant_to": "2026-06-05T20:00:00Z",
   "schedule": null,
   "location": "Example venue"
 }
 ```
 
+If the model cannot reliably produce one item, it returns only
+`{"error": "short reason"}`.
+
 `schedule` is optional canonical temporal data. It describes only when an item
 occurs; participation or availability semantics do not belong in it. Missing
-schedule data is valid and keeps the current coarse-window behavior.
+schedule data is valid.
 
-`relevant_from` and `relevant_to` are the broad searchable envelope. For a
-scheduled item they are derived from `schedule`, never authored independently,
-and must not be displayed as occurrences. For an item without a schedule they
-may hold the best coarse interval known from the source. A valid schedule that
-produces no occurrence in a requested window does not fall back to its broad
-envelope.
+`relevant_from` and `relevant_to` are internal searchable-envelope fields derived
+from `schedule`; the LLM never authors them. They remain null when an item has no
+schedule and must not be displayed as occurrences. A valid schedule that produces
+no occurrence in a requested window does not fall back to its broad envelope.
 
-When a source record describes repeated instances of the same event, store one
-refinement row with a `recurrence` schedule instead of one refinement row per
-date. Multiple refinement rows are for genuinely different events in the same
-source record, not for occurrences that can be projected from one schedule.
+When an atomic source record describes repeated instances of the same event,
+store one refinement with a `recurrence` schedule instead of one refinement per
+date. Genuinely different events must be split upstream.
 
 Schedule v1 is a versioned union of explicit occurrences and weekly recurrence.
 Times are local wall times in the IANA `timezone`.
@@ -169,8 +167,7 @@ Times are local wall times in the IANA `timezone`.
       "start": "2026-06-01T18:30",
       "end": "2026-06-01T20:10"
     }
-  ],
-  "source_text": "1 June, 18:30-20:10"
+  ]
 }
 ```
 
@@ -188,8 +185,7 @@ Times are local wall times in the IANA `timezone`.
       "start": "18:00",
       "end": "19:30"
     }
-  ],
-  "source_text": "Every Tuesday and Thursday, 18:00-19:30"
+  ]
 }
 ```
 
@@ -198,8 +194,7 @@ the start is on the following local day. Recurrence `from` and `until` are
 inclusive local dates; `until: null` means unbounded. Each rule keeps weekdays
 and its time together so different weekday/time combinations do not form an
 accidental Cartesian product. Exceptional finite date lists should use explicit
-occurrences in v1 rather than add a broader recurrence language. `source_text`
-is optional provenance and has no query semantics.
+occurrences in v1 rather than add a broader recurrence language.
 
 The Web API should project schedules into per-occurrence display rows inside the
 requested window while keeping the canonical refinement row as source of truth.

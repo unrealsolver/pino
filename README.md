@@ -85,16 +85,44 @@ Target machine:
 - 64 GB RAM.
 - 16-core / 32-thread CPU.
 
-## LLM Providers
+## LLM Models and Providers
+
+Pino accepts fully qualified model profile references, not provider model identifiers,
+at its entry points. `llm.model` selects the chat profile, `refinement.model` selects
+the refinement profile, and `pino eval schedules --model` accepts one or more
+evaluation profiles. Every reference must resolve through the `llm.models` registry;
+there is no implicit provider or raw-model fallback.
+
+```yaml
+llm:
+  model: ollama:chat
+  models:
+    ollama:
+      chat:
+        model: qwen3.5:9b
+      schedule-fast:
+        model: gemma4:e4b
+        temperature: 0
+        top_p: 0.1
+        think: false
+        num_ctx: 4096
+        num_predict: 768
+  providers:
+    ollama:
+      base_url: http://localhost:11434
+```
+
+Definitions use plain names inside a provider namespace, such as
+`llm.models.ollama.schedule-fast`. References elsewhere use the fully qualified
+`provider:name` form, such as `ollama:schedule-fast`. `model`, `temperature`, and
+`top_p` are typed profile fields. `think`, `num_ctx`, and `num_predict` are optional
+Ollama-only fields; unknown fields and Ollama-only fields on other providers are
+configuration errors. Provider blocks hold connections and credentials only. See
+`config.example.yaml` for all supported providers and representative profiles.
 
 ### MiniMax
 
-MiniMax is the primary provider for local config. Pino calls its OpenAI-compatible API.
-
-Default models:
-
-- Smart/default model: `MiniMax-M3`.
-- Simpler tasks: `MiniMax-M3`.
+Pino calls MiniMax through its OpenAI-compatible API.
 
 The API key should be referenced from local config with `api_key: env:MINIMAX_API_KEY`
 and stored in `.env` or the process environment.
@@ -131,11 +159,7 @@ and stored in `.env` or the process environment.
 
 ### Ollama
 
-Ollama is the local fallback provider and integration-test provider.
-
-Default model:
-
-- `gpt-oss-20b`.
+Ollama is the local provider and integration-test provider.
 
 ## Integrations
 
@@ -187,11 +211,11 @@ Repeated `pino check` runs should report duplicates instead of appending the sam
 
 Source adapters capture raw records cheaply and losslessly. Their payloads may preserve source-native fields for audit and future reprocessing, but query code must not depend on adapter-specific normalized metadata.
 
-`pino refine` converts unrefined records into reusable normalized refinement items. One source record may produce multiple refinement rows when it describes several events. Refinements own:
+`pino refine` converts each atomic source record into one reusable normalized refinement item. Sources that contain genuinely different events must be split before refinement. Refinements own:
 
 - content kind: `event`, `advertisement`, `announcement`, `non_event`, or `unknown`
 - concise summary
-- normalized relevance window
+- canonical schedule and its derived relevance window
 - human-readable location
 - versioned taxonomy scores
 
@@ -269,11 +293,41 @@ stored source cursor as Telethon `min_id` and fetch all newer messages.
 
 ## Refinement
 
-`pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. The default local config uses the `simple` model alias, which resolves to MiniMax `MiniMax-M3`.
+`pino refine` extracts reusable normalized items from unrefined records with a bounded LLM pass. It uses the opaque profile alias selected by `refinement.model`.
 
 Refinement prompts are arranged for MiniMax automatic prompt caching: the stable system prompt with schema and category definitions is sent first, and the per-record source payload is sent last. MiniMax reports cache reads in response usage as `prompt_tokens_details.cached_tokens`.
 
 Refinements are cached by record ID. `pino evaluate` remains as a temporary alias for `pino refine`.
+
+### Schedule model evaluation
+
+Use the reviewed Afisha Vilnius fixtures to compare explicitly selected model profiles:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run pino eval schedules \
+  --model ollama:schedule-fast \
+  --model minimax:schedule-m3 \
+  --timeout 15
+```
+
+Only fixtures marked `ok: true` are scored; `ok: false` fixtures are excluded and a
+missing `ok` marker is an error. The evaluator reuses the production refinement
+prompt and parser, compares canonical schedule meaning, and reports exact accuracy
+by schedule kind, invalid responses, total/min/p50/mean/max latency, and generation
+throughput when the provider reports generation duration. Ollama token/sec uses native
+`eval_count` and `eval_duration`; the aggregate is weighted by generation duration.
+Each request has a 15-second timeout by default; a timeout counts as an invalid case
+and evaluation continues. Every invocation calls the model afresh; use `--limit N`
+for a smoke test. Each run creates a live `summary.yaml` under
+`.pino/evals/afisha_vilnius`; it exists before the first request and is updated after
+every case. Raw responses for every case are written immediately as separate `.json`
+or `.txt` files; when a provider returns separate reasoning, it is written under the run's
+`reasoning/` directory. YAML case rows contain only the fixture name, error (or `null`),
+and wall duration; aggregate scores, timing, throughput, alias, and resolved provider
+settings remain in the summary. Failure details and artifact paths print immediately
+in the CLI. Completed evaluation requests are also persisted in `llm_usage_events`
+under operation `evaluation.schedule`, so benchmark usage remains distinguishable
+from production refinement. No model is selected or run implicitly.
 
 Current config entry point:
 
@@ -303,7 +357,8 @@ The initial tool set is intentionally small:
 
 For v1, `records.relevant` should return enough detail for conversational follow-up without a targeted record lookup tool. A later `records.get` by id can be added if users often ask for deeper detail about a specific result.
 
-The committed example config uses the local `echo` provider so the chat loop can be tested without network access. Set `llm.default_provider` to `infercom` or `ollama` in local config to test real providers.
+The committed example config selects `echo:default` so the chat loop can be tested
+without network access. Select another alias in `llm.model` to use a real provider.
 
 Chat controls:
 

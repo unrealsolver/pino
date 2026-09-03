@@ -58,14 +58,22 @@ class _OpenAICompatibleClient:
         *,
         provider: str,
         usage_recorder: UsageRecorder | None = None,
+        timeout_seconds: float = 60,
     ) -> None:
+        profile = config.selected_profile()
+        if profile.provider != provider:
+            raise ValueError(
+                f"model profile {config.model!r} uses {profile.provider!r}, not {provider!r}"
+            )
         provider_config = getattr(config.providers, provider)
-        self.model = config.selected_model()
+        self.model = profile.model
         self.provider = provider
         self.base_url = provider_config.base_url.rstrip("/")
-        self.temperature = config.temperature
-        self.top_p = config.top_p
+        self.temperature = profile.temperature
+        self.top_p = profile.top_p
         self.usage_recorder = usage_recorder
+        self.timeout_seconds = timeout_seconds
+        self.last_reasoning: str | None = None
         if not provider_config.api_key:
             raise LLMError(
                 f"{provider} provider requires llm.providers.{provider}.api_key",
@@ -76,6 +84,7 @@ class _OpenAICompatibleClient:
         self.api_key = provider_config.api_key
 
     def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
+        self.last_reasoning = None
         url = f"{self.base_url}/chat/completions"
         request_body = {
             "model": self.model,
@@ -89,7 +98,7 @@ class _OpenAICompatibleClient:
                 url,
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json=request_body,
-                timeout=60,
+                timeout=self.timeout_seconds,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -124,7 +133,11 @@ class _OpenAICompatibleClient:
             )
             if self.usage_recorder is not None:
                 self.usage_recorder(usage)
-        return data["choices"][0]["message"]["content"]
+        message = data["choices"][0]["message"]
+        reasoning = message.get("reasoning_content") or message.get("thinking")
+        if isinstance(reasoning, str) and reasoning.strip():
+            self.last_reasoning = reasoning
+        return message["content"]
 
 
 class InfercomClient(_OpenAICompatibleClient):
@@ -133,8 +146,14 @@ class InfercomClient(_OpenAICompatibleClient):
         config: LLMConfig,
         *,
         usage_recorder: UsageRecorder | None = None,
+        timeout_seconds: float = 60,
     ) -> None:
-        super().__init__(config, provider="infercom", usage_recorder=usage_recorder)
+        super().__init__(
+            config,
+            provider="infercom",
+            usage_recorder=usage_recorder,
+            timeout_seconds=timeout_seconds,
+        )
 
 
 class MinimaxClient(_OpenAICompatibleClient):
@@ -143,8 +162,14 @@ class MinimaxClient(_OpenAICompatibleClient):
         config: LLMConfig,
         *,
         usage_recorder: UsageRecorder | None = None,
+        timeout_seconds: float = 60,
     ) -> None:
-        super().__init__(config, provider="minimax", usage_recorder=usage_recorder)
+        super().__init__(
+            config,
+            provider="minimax",
+            usage_recorder=usage_recorder,
+            timeout_seconds=timeout_seconds,
+        )
 
 
 class OllamaClient:
@@ -153,16 +178,32 @@ class OllamaClient:
         config: LLMConfig,
         *,
         usage_recorder: UsageRecorder | None = None,
+        timeout_seconds: float = 120,
     ) -> None:
-        self.model = config.selected_model()
+        profile = config.selected_profile()
+        if profile.provider != "ollama":
+            raise ValueError(
+                f"model profile {config.model!r} uses {profile.provider!r}, not 'ollama'"
+            )
+        self.model = profile.model
         self.base_url = config.providers.ollama.base_url.rstrip("/")
-        self.temperature = config.temperature
-        self.top_p = config.top_p
+        self.temperature = profile.temperature
+        self.top_p = profile.top_p
+        self.think = profile.think
+        self.num_ctx = profile.num_ctx
+        self.num_predict = profile.num_predict
         self.usage_recorder = usage_recorder
+        self.timeout_seconds = timeout_seconds
         self.last_reasoning: str | None = None
+        self.last_output_tokens: int | None = None
+        self.last_generation_duration_ms: float | None = None
+        self.last_tokens_per_second: float | None = None
 
     def complete(self, messages: list[LLMMessage], *, operation: str = "unknown") -> str:
         self.last_reasoning = None
+        self.last_output_tokens = None
+        self.last_generation_duration_ms = None
+        self.last_tokens_per_second = None
         url = f"{self.base_url}/api/chat"
         request_body = {
             "model": self.model,
@@ -173,12 +214,18 @@ class OllamaClient:
                 "top_p": self.top_p,
             },
         }
+        if self.think is not None:
+            request_body["think"] = self.think
+        if self.num_ctx is not None:
+            request_body["options"]["num_ctx"] = self.num_ctx
+        if self.num_predict is not None:
+            request_body["options"]["num_predict"] = self.num_predict
         started = perf_counter()
         try:
             response = httpx.post(
                 url,
                 json=request_body,
-                timeout=120,
+                timeout=self.timeout_seconds,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -206,6 +253,16 @@ class OllamaClient:
         )
         if usage and self.usage_recorder is not None:
             self.usage_recorder(usage)
+        output_tokens = _integer_usage_value(data.get("eval_count"))
+        eval_duration_ns = _integer_usage_value(data.get("eval_duration"))
+        if output_tokens is not None and eval_duration_ns is not None:
+            self.last_output_tokens = output_tokens
+            self.last_generation_duration_ms = eval_duration_ns / 1_000_000
+            if eval_duration_ns > 0:
+                self.last_tokens_per_second = round(
+                    output_tokens * 1_000_000_000 / eval_duration_ns,
+                    2,
+                )
         message = data["message"]
         reasoning = message.get("thinking")
         if isinstance(reasoning, str) and reasoning.strip():
@@ -217,16 +274,30 @@ def build_llm_client(
     config: LLMConfig,
     *,
     usage_recorder: UsageRecorder | None = None,
+    timeout_seconds: float | None = None,
 ) -> LLMClient:
-    if config.default_provider == "echo":
+    provider = config.selected_provider()
+    if provider == "echo":
         return EchoClient()
-    if config.default_provider == "infercom":
-        return InfercomClient(config, usage_recorder=usage_recorder)
-    if config.default_provider == "minimax":
-        return MinimaxClient(config, usage_recorder=usage_recorder)
-    if config.default_provider == "ollama":
-        return OllamaClient(config, usage_recorder=usage_recorder)
-    raise ValueError(f"Unsupported LLM provider: {config.default_provider}")
+    if provider == "infercom":
+        return InfercomClient(
+            config,
+            usage_recorder=usage_recorder,
+            timeout_seconds=timeout_seconds if timeout_seconds is not None else 60,
+        )
+    if provider == "minimax":
+        return MinimaxClient(
+            config,
+            usage_recorder=usage_recorder,
+            timeout_seconds=timeout_seconds if timeout_seconds is not None else 60,
+        )
+    if provider == "ollama":
+        return OllamaClient(
+            config,
+            usage_recorder=usage_recorder,
+            timeout_seconds=timeout_seconds if timeout_seconds is not None else 120,
+        )
+    raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
 def _openai_messages(messages: list[LLMMessage]) -> list[dict[str, str]]:
@@ -237,7 +308,9 @@ def _openai_messages(messages: list[LLMMessage]) -> list[dict[str, str]]:
         elif message.role == "tool":
             normalized.append({"role": "user", "content": f"Tool result:\n{message.content}"})
         else:
-            normalized.append({"role": "user", "content": f"{message.role} message:\n{message.content}"})
+            normalized.append(
+                {"role": "user", "content": f"{message.role} message:\n{message.content}"}
+            )
     return normalized
 
 
@@ -273,17 +346,11 @@ def _provider_http_error(
 
 def _diagnostic_request(request_body: dict[str, Any]) -> dict[str, Any]:
     messages = request_body.get("messages", [])
-    diagnostic = {
-        key: value
-        for key, value in request_body.items()
-        if key not in {"messages"}
-    }
+    diagnostic = {key: value for key, value in request_body.items() if key not in {"messages"}}
     if isinstance(messages, list):
         diagnostic["message_count"] = len(messages)
         diagnostic["message_roles"] = [
-            message.get("role", "unknown")
-            for message in messages
-            if isinstance(message, dict)
+            message.get("role", "unknown") for message in messages if isinstance(message, dict)
         ]
     return diagnostic
 

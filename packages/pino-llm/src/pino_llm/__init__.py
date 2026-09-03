@@ -1,9 +1,11 @@
 from pino_llm.config import (
-    EchoConfig,
     InfercomConfig,
     LLMConfig,
     MinimaxConfig,
+    ModelProfileConfig,
+    ModelRegistryConfig,
     OllamaConfig,
+    ProviderName,
     ProviderConfigs,
 )
 from pino_llm.errors import LLMError
@@ -13,7 +15,6 @@ from pino_llm.protocol import LLMAction, LLMToolCall, parse_action
 from pino_llm.usage import LLMUsage, UsageRecorder
 
 __all__ = [
-    "EchoConfig",
     "InfercomConfig",
     "LLMClient",
     "LLMConfig",
@@ -21,7 +22,10 @@ __all__ = [
     "LLMMessage",
     "LLMUsage",
     "MinimaxConfig",
+    "ModelProfileConfig",
+    "ModelRegistryConfig",
     "OllamaConfig",
+    "ProviderName",
     "ProviderConfigs",
     "build_llm_client",
     "LLMAction",

@@ -141,7 +141,12 @@ The package also owns the simple JSON action protocol used by `pino chat`: model
 
 The application should still be partly useful without LLM calls. Fetching, storing, listing, simple filtering, and deterministic tests should not require a remote model.
 
-Record refinement is LLM-assisted. Deterministic code controls batching, config, persistence, and caching; the configured model extracts reusable multilingual normalized items and versioned taxonomy scores. The default refinement model alias is `simple`, which resolves to MiniMax `MiniMax-M3` in the current config.
+Record refinement is LLM-assisted. Deterministic code controls batching, config,
+persistence, and caching; the configured model extracts reusable multilingual
+normalized items and versioned taxonomy scores. Pino entry points select strict opaque
+`provider:name` references from the typed `llm.models` registry, where definitions use
+plain names inside provider namespaces. Each profile owns its provider model and
+inference settings, while provider blocks contain connection details and credentials.
 
 ## Interactive Agent Shape
 

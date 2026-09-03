@@ -35,6 +35,12 @@ from pino_core import (
     render_refinement_system_prompt,
 )
 from pino_core.db import current_database_revision, show_migration_history, upgrade_database
+from pino_core.schedule_evaluation import (
+    ScheduleEvalProgress,
+    ScheduleKindScore,
+    evaluate_schedule_model,
+    load_schedule_eval_corpus,
+)
 from pino_core.storage import normalize_database_url
 from pino_integration import build_sources
 
@@ -45,12 +51,14 @@ sources_app = typer.Typer(no_args_is_help=True)
 debug_app = typer.Typer(no_args_is_help=True)
 db_app = typer.Typer(no_args_is_help=True)
 usage_app = typer.Typer(no_args_is_help=True)
+eval_app = typer.Typer(no_args_is_help=True)
 app.add_typer(chat_app, name="chat")
 app.add_typer(memory_app, name="memory")
 app.add_typer(sources_app, name="sources")
 app.add_typer(debug_app, name="debug")
 app.add_typer(db_app, name="db")
 app.add_typer(usage_app, name="usage")
+app.add_typer(eval_app, name="eval")
 
 console = Console()
 
@@ -148,6 +156,144 @@ def evaluate(
     _run_refine(config_path=config_path, limit=limit, debug=debug, selected_id=None)
 
 
+@eval_app.command("schedules")
+def eval_schedules(
+    models: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Fully qualified model profile reference (provider:name).",
+        ),
+    ] = None,
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    fixtures: Annotated[
+        Path,
+        typer.Option("--fixtures", exists=True, file_okay=False, readable=True),
+    ] = Path("packages/pino-core/tests/integration/golden/afisha_vilnius"),
+    output_dir: Annotated[Path, typer.Option("--output-dir")] = Path(".pino/evals/afisha_vilnius"),
+    limit: Annotated[int | None, typer.Option("--limit", "-n", min=1)] = None,
+    timeout: Annotated[int, typer.Option("--timeout", min=1, help="Seconds per request.")] = 15,
+) -> None:
+    """Compare explicit model profiles against reviewed schedule fixtures."""
+    if not models:
+        raise typer.BadParameter("at least one --model is required", param_hint="--model")
+    config = get_config(config_path)
+    for model in models:
+        try:
+            config.llm.profile(model)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--model") from exc
+    corpus = load_schedule_eval_corpus(fixtures)
+    store = get_store(config)
+    selected_total = min(limit, len(corpus.fixtures)) if limit is not None else len(corpus.fixtures)
+    reports = []
+    for model in models:
+        console.print(f"Evaluating {model} on {selected_total} fixture(s)...")
+        report = evaluate_schedule_model(
+            config=config,
+            model=model,
+            corpus=corpus,
+            output_dir=output_dir,
+            limit=limit,
+            usage_recorder=store.add_llm_usage_event,
+            on_progress=print_schedule_eval_progress,
+            timeout_seconds=timeout,
+        )
+        reports.append(report)
+        console.print(
+            Text(
+                f"Completed {model}: {report.summary.passed}/{report.summary.total} exact "
+                f"({report.summary.accuracy:.1%}), {report.summary.invalid} invalid. "
+                f"Summary: {report.summary_path}",
+                style="green" if report.summary.passed == report.summary.total else "yellow",
+            )
+        )
+
+    table = Table(
+        "Model",
+        "Exact",
+        "Occurrence",
+        "Recurrence",
+        "No schedule",
+        "Invalid",
+        "Generation",
+        "Time total / min / p50 / mean / max",
+    )
+    for report in reports:
+        summary = report.summary
+        table.add_row(
+            plain_text(summary.model),
+            plain_text(f"{summary.passed}/{summary.total} ({summary.accuracy:.1%})"),
+            plain_text(_format_schedule_score(summary.by_kind["occurrences"])),
+            plain_text(_format_schedule_score(summary.by_kind["recurrence"])),
+            plain_text(_format_schedule_score(summary.by_kind["null"])),
+            plain_text(summary.invalid),
+            plain_text(
+                f"{summary.output_tokens} tok / {summary.tokens_per_second:.1f} tok/s"
+                if summary.tokens_per_second is not None
+                else f"{summary.output_tokens} tok"
+                if summary.output_tokens
+                else "-"
+            ),
+            plain_text(
+                " / ".join(
+                    _format_duration_ms(value)
+                    for value in (
+                        summary.total_duration_ms,
+                        summary.min_duration_ms,
+                        summary.p50_duration_ms,
+                        summary.mean_duration_ms,
+                        summary.max_duration_ms,
+                    )
+                )
+            ),
+        )
+    console.print(table)
+    console.print(
+        Text(
+            f"Excluded {corpus.excluded} human-marked bad fixture(s).",
+            style="dim",
+        )
+    )
+
+
+def print_schedule_eval_progress(progress: ScheduleEvalProgress) -> None:
+    if progress.status == "started":
+        console.print(Text(f"Live summary: {progress.summary_path}", style="dim"))
+        return
+    console.print(
+        Text(
+            f"[{progress.model} {progress.completed}/{progress.total}] "
+            f"{progress.fixture}: {progress.status} | exact {progress.passed}, "
+            f"invalid {progress.invalid} | {progress.elapsed_ms / 1000:.1f}s",
+            style="dim" if progress.status == "pass" else "yellow",
+        )
+    )
+    if progress.case is None or progress.case.passed:
+        return
+    console.print(
+        Panel(
+            plain_text(json_dumps(progress.case.expected)),
+            title=f"{progress.case.fixture} expected",
+            border_style="red",
+        )
+    )
+    console.print(
+        Panel(
+            plain_text(json_dumps(progress.case.actual)),
+            title=f"{progress.case.fixture} actual",
+            border_style="red",
+        )
+    )
+    if progress.case.error:
+        console.print(Text(f"Error: {progress.case.error}", style="red"))
+    if progress.response_path is not None:
+        console.print(Text(f"Response: {progress.response_path}", style="dim"))
+    if progress.reasoning_path is not None:
+        console.print(Text(f"Reasoning: {progress.reasoning_path}", style="dim"))
+
+
 @db_app.command("upgrade")
 def db_upgrade(
     config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
@@ -242,7 +388,9 @@ def usage_recent(
     config = get_config(config_path)
     store = get_store(config)
     rows = store.list_llm_usage_events(limit=limit)
-    table = Table("Created", "Provider", "Model", "Operation", "Input", "Cached", "Output", "Duration")
+    table = Table(
+        "Created", "Provider", "Model", "Operation", "Input", "Cached", "Output", "Duration"
+    )
     for row in rows:
         table.add_row(
             plain_text(row.created_at.isoformat()),
@@ -283,8 +431,8 @@ def _run_refine(
     result = service.refine_pending(limit=limit, on_progress=print_refinement_progress)
     if debug:
         table = Table("Field", "Value")
-        table.add_row("provider", plain_text(llm_config.default_provider))
-        table.add_row("model", plain_text(llm_config.selected_model()))
+        table.add_row("provider", plain_text(llm_config.selected_provider()))
+        table.add_row("model", plain_text(llm_config.model))
         table.add_row("requested", plain_text(result.requested))
         table.add_row("refined", plain_text(result.refined))
         table.add_row("items", plain_text(result.items))
@@ -319,8 +467,8 @@ def _run_refine_debug_id(
     print_refinement_debug_rerun(
         selected_id=normalized_id,
         resolved_kind=resolved_kind,
-        provider=llm_config.default_provider,
-        model=llm_config.selected_model(),
+        provider=llm_config.selected_provider(),
+        model=llm_config.model,
         existing_refinement=existing_refinement,
         result=result,
     )
@@ -388,12 +536,18 @@ def print_refinement_debug_rerun(
         console.print(Panel(plain_text(result.reasoning), title="Reasoning", border_style="blue"))
     console.print(Panel(plain_text(result.raw_response), title="Raw response", border_style="blue"))
     console.print(
-        Panel(plain_text(json_dumps(result.parsed_response)), title="Parsed response", border_style="blue")
+        Panel(
+            plain_text(json_dumps(result.parsed_response)),
+            title="Parsed response",
+            border_style="blue",
+        )
     )
     console.print(
         Panel(
             plain_text(
-                json_dumps([refinement.model_dump(mode="json") for refinement in result.refinements])
+                json_dumps(
+                    [refinement.model_dump(mode="json") for refinement in result.refinements]
+                )
             ),
             title="Generated refinements",
             border_style="blue",
@@ -548,8 +702,8 @@ def print_chat_tool_calls(result) -> None:
 
 def print_chat_config_debug(config: PinoConfig) -> None:
     table = Table("Field", "Value")
-    table.add_row("provider", plain_text(config.llm.default_provider))
-    table.add_row("model", plain_text(config.llm.selected_model()))
+    table.add_row("provider", plain_text(config.llm.selected_provider()))
+    table.add_row("model", plain_text(config.llm.model))
     table.add_row("history_limit", plain_text(config.chat.history_limit))
     table.add_row("active_memory_limit", plain_text(config.chat.active_memory_limit))
     table.add_row("max_tool_rounds", plain_text(config.chat.max_tool_rounds))
@@ -559,8 +713,8 @@ def print_chat_config_debug(config: PinoConfig) -> None:
 
 def print_chat_debug(config: PinoConfig, result) -> None:
     table = Table("Field", "Value")
-    table.add_row("provider", plain_text(config.llm.default_provider))
-    table.add_row("model", plain_text(config.llm.selected_model()))
+    table.add_row("provider", plain_text(config.llm.selected_provider()))
+    table.add_row("model", plain_text(config.llm.model))
     table.add_row("tool_calls", plain_text(", ".join(result.tool_calls) or "<none>"))
     console.print(Panel(table, title="Chat debug", border_style="blue"))
 
@@ -671,6 +825,20 @@ def _format_int(value: int) -> str:
 
 def _format_percent(value: float) -> str:
     return f"{value:.1%}"
+
+
+def _format_schedule_score(score: ScheduleKindScore) -> str:
+    if not score.total:
+        return "-"
+    return f"{score.passed}/{score.total} ({score.accuracy:.1%})"
+
+
+def _format_duration_ms(value: int) -> str:
+    if value >= 60_000:
+        return f"{value / 60_000:.1f}m"
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}s"
+    return f"{value}ms"
 
 
 def _truncate_inline(value: str, limit: int) -> str:

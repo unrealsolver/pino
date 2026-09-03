@@ -82,7 +82,7 @@ class TaxonomyCategoryConfig(BaseModel):
 class RefinementConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "simple"
+    model: str = "echo:default"
     batch_size: int = 10
     schema_version: int = 1
     taxonomy_version: int = 1
@@ -175,6 +175,11 @@ class PinoConfig(BaseModel):
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
     sources: list[SourceConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_model_profiles(self) -> PinoConfig:
+        self.llm.profile(self.refinement.model)
+        return self
 
 
 def load_config(path: Path | str | None = None) -> PinoConfig:
