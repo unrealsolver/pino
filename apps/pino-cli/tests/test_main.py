@@ -531,7 +531,13 @@ def test_refinement_progress_prints_forward_status(monkeypatch) -> None:
     output = StringIO()
     monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
     record = Record(kind="event", source="test", title="Synth jam", text="Open synth jam")
-    refinement = Refinement(record_id=record.id, content_kind="event", refiner="test")
+    refinement = Refinement(
+        record_id=record.id,
+        content_kind="event",
+        relevant_from=datetime(2026, 6, 5, 16, 0, tzinfo=timezone.utc),
+        summary="Open synth jam",
+        refiner="test",
+    )
 
     main.print_refinement_progress(RefinementProgress(status="selected", total=1))
     main.print_refinement_progress(
@@ -551,6 +557,7 @@ def test_refinement_progress_prints_forward_status(monkeypatch) -> None:
     assert "Refining 1 record(s)..." in rendered
     assert "[1/1] Synth jam" in rendered
     assert "refined 1 item(s)" in rendered
+    assert "2026-06-05T16:00:00+00:00 — Open synth jam" in rendered
 
 
 def test_refinement_progress_prints_empty_selection(monkeypatch) -> None:

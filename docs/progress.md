@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-03 04:34 EEST — /root
+
+- Intended: make successful `pino refine` progress show a compact first-item representation using `relevant_from` and `summary`, while retaining the item count.
+- Areas: refinement CLI progress rendering, focused test, and this progress log.
+- Result (04:34 EEST): successful refinement progress retains its item count and now appends the first refinement as `<relevant_from or undated> — <summary or no summary>`, with the summary bounded to 100 characters.
+- Verification: CLI tests passed (19 tests); the full suite passed (196 tests); Ruff lint passed repository-wide and formatting passed for the two touched Python files; `git diff --check` passed.
+- Follow-up: none.
+
 ## 2026-09-03 04:23 EEST — /root
 
 - Intended: move `chat` and `refine` model selection into provider-neutral LLM roles whose values are ordinary fully qualified profile references; remove role-named provider definitions and the old `llm.model` / `refinement.model` selectors.

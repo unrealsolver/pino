@@ -584,7 +584,17 @@ def print_refinement_progress(progress: RefinementProgress) -> None:
         return
 
     if progress.status == "refined" and progress.refinements is not None:
-        console.print(Text(f"    refined {len(progress.refinements)} item(s)", style="green"))
+        message = f"    refined {len(progress.refinements)} item(s)"
+        if progress.refinements:
+            refinement = progress.refinements[0]
+            relevant_from = (
+                refinement.relevant_from.isoformat()
+                if refinement.relevant_from is not None
+                else "undated"
+            )
+            summary = _truncate_inline(refinement.summary or "<no summary>", 100)
+            message += f": {relevant_from} — {summary}"
+        console.print(Text(message, style="green"))
         if progress.qc is not None and progress.qc.schedule is not None:
             flag = progress.qc.schedule
             console.print(Text(f"    schedule QC {flag.level}: {flag.message}", style="yellow"))
