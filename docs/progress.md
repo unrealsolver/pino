@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-06 03:04 EEST — /root
+
+- Intended: fix Kaveikti listing extraction and raise clear extraction errors; isolate provider fetch failures in CheckPipeline with nullable result errors, preserving database error propagation and cursors.
+- Areas: Kaveikti parser/fixtures/tests, core pipeline/tests, and this progress log.
+- Result: Kaveikti parses current links, locations and images without microdata and raises ValueError for missing cards or wholly unparseable listings. Fetch exceptions become SourceCheckResult.error (type and message); other providers continue, failed cursors remain unchanged, and storage failures still propagate. CLI feedback deferred to the next step.
+- Verification: focused pipeline/Kaveikti/CLI tests passed (34 tests); saved live listing parsed 21 records; Ruff format/check and git diff --check passed. Used UV_CACHE_DIR=/tmp/uv-cache after the default cache was read-only; no database ingestion was run.
+- Follow-up: render source errors in the CLI separately. Zero-card Kaveikti pages currently raise because no reliable explicit empty-state marker has been verified; listings with some valid cards retain the existing skip behavior for malformed cards.
+
 ## 2026-09-04 00:33 EEST — /root
 
 - Intended: add canonical nullable record publication time, backfill preserved Telegram timestamps, and add a zero-argument `pino sources stats` Rich grid covering eight Vilnius-aligned weeks by default.

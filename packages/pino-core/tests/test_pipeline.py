@@ -1,8 +1,58 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from pino_core import CheckPipeline, DigestService, Record, Refinement, SQLiteStore
 from pino_core.sources import CursorFetchResult, StaticYamlSource
+
+
+@pytest.mark.parametrize("cursor_source", [False, True])
+def test_failed_fetch_preserves_cursor_and_continues(tmp_path: Path, cursor_source: bool) -> None:
+    class FailedSource:
+        name = "failed"
+
+        def fetch(self) -> list[Record]:
+            raise ValueError("extraction failed")
+
+    class FailedCursorSource:
+        name = "failed"
+
+        def fetch_since(self, cursor: str | None) -> CursorFetchResult:
+            assert cursor == "42"
+            raise ValueError("extraction failed")
+
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    store.set_source_cursor("failed", "42")
+    failed = FailedCursorSource() if cursor_source else FailedSource()
+    result = CheckPipeline(store, [failed, CursorSource()]).run()
+
+    assert result.fetched == result.inserted == 1
+    assert result.duplicates == 0
+    assert result.pending_refinement_new == 1
+    assert store.get_source_cursor("failed") == "42"
+    assert len(store.list_records()) == 1
+    assert result.sources is not None
+    failure, success = result.sources
+    assert failure.error == "ValueError: extraction failed"
+    assert failure.fetched == failure.inserted == failure.duplicates == 0
+    assert failure.cursor_updated is False
+    assert failure.cursor_status == ("unchanged" if cursor_source else "unsupported")
+    assert success.error is None
+    assert success.inserted == 1
+
+
+def test_storage_failure_still_propagates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+
+    def fail_write(record: Record) -> None:
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(store, "add_record", fail_write)
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        CheckPipeline(store, [CursorSource()]).run()
+    assert store.get_source_cursor("cursor-source") is None
 
 
 def test_check_pipeline_stores_static_source_records(tmp_path: Path) -> None:

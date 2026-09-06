@@ -32,11 +32,18 @@ class KaveiktiSource:
 def parse_kaveikti_records(html: str, *, source_name: str, page_url: str) -> list[Record]:
     """Parse event cards from a kaveikti.lt listing page."""
     soup = BeautifulSoup(html, "html.parser")
+    blocks = soup.select(".block.event-block")
+    if not blocks:
+        raise ValueError(f"{source_name}: no event cards found at {page_url}")
     records: list[Record] = []
-    for index, block in enumerate(soup.select(".block.event-block")):
+    for index, block in enumerate(blocks):
         record = _parse_event_block(block, source_name=source_name, page_url=page_url, index=index)
         if record is not None:
             records.append(record)
+    if not records:
+        raise ValueError(
+            f"{source_name}: none of {len(blocks)} event cards could be parsed at {page_url}"
+        )
     return records
 
 
@@ -48,17 +55,19 @@ def _parse_event_block(
     index: int,
 ) -> Record | None:
     title_el = block.select_one(".title [itemprop='name']") or block.select_one(".title a")
-    link_el = block.select_one(".title a[itemprop='url']") or block.select_one(
-        ".block-head a[itemprop='url']",
+    link_el = block.select_one(".title a[href]") or block.select_one(
+        ".block-head a[href]",
     )
     if title_el is None or link_el is None:
         return None
 
     title = _clean_text(title_el.get_text(" ", strip=True))
     href = link_el.get("href")
+    if not title or not href:
+        return None
     url = urljoin(page_url, str(href)) if href else None
     category = _text_or_none(block.select_one(".type-label"))
-    location = _text_or_none(block.select_one(".location a"))
+    location = _text_or_none(block.select_one(".location a, .location span"))
     display_time = _display_time(block)
     start_at = _meta_content(block, "startDate")
     end_at = _meta_content(block, "endDate")
@@ -124,7 +133,7 @@ def _display_time(block: Tag) -> str | None:
 
 
 def _image_url(block: Tag, page_url: str) -> str | None:
-    image = block.select_one("img[itemprop='image']")
+    image = block.select_one(".block-head img") or block.select_one("img[itemprop='image']")
     if image is None:
         return None
     src = image.get("src")

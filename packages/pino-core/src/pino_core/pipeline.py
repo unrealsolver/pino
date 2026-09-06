@@ -23,6 +23,7 @@ class SourceCheckResult:
     kind: Literal["web", "tg"] = "web"
     cursor_updated: bool = False
     cursor_status: Literal["unsupported", "none", "unchanged", "updated"] = "unsupported"
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,11 +62,32 @@ class CheckPipeline:
             previous_cursor = None
             if is_cursor_source:
                 previous_cursor = self.store.get_source_cursor(source.name)
-                fetch_result = source.fetch_since(previous_cursor)
-                fetched = fetch_result.records
-                next_cursor = fetch_result.cursor
-            else:
-                fetched = source.fetch()
+            try:
+                if is_cursor_source:
+                    fetch_result = source.fetch_since(previous_cursor)
+                    fetched = fetch_result.records
+                    next_cursor = fetch_result.cursor
+                else:
+                    fetched = source.fetch()
+            except Exception as exc:
+                source_results.append(
+                    SourceCheckResult(
+                        name=source.name,
+                        fetched=0,
+                        inserted=0,
+                        duplicates=0,
+                        kind=_source_kind(source),
+                        cursor_status=(
+                            "unsupported"
+                            if not is_cursor_source
+                            else "unchanged"
+                            if previous_cursor is not None
+                            else "none"
+                        ),
+                        error=f"{type(exc).__name__}: {exc}",
+                    ),
+                )
+                continue
             source_inserted = 0
             source_duplicates = 0
             fetched_count += len(fetched)
