@@ -211,6 +211,12 @@ Storage computes a unique fingerprint for each record:
 
 Repeated `pino check` runs should report duplicates instead of appending the same source item repeatedly.
 
+`pino check` prints each source as it is fetched and stored, then reports success or
+the fetch error immediately. The final report marks failed sources and repeats their
+errors. Fetch failures do not stop other sources or cause a nonzero exit; database
+failures still abort the command. An `OK` source with zero fetched items returned an
+empty result successfully; this alone does not prove its extractor is healthy.
+
 ## Records And Refinements
 
 Source adapters capture raw records cheaply and losslessly. Their payloads may preserve source-native fields for audit and future reprocessing, but query code must not depend on adapter-specific normalized metadata.

@@ -301,6 +301,66 @@ def test_check_result_prints_pending_refinement_counts(monkeypatch) -> None:
     assert "tg:afisha-vilnius" in rendered
     assert "unchanged" in rendered
     assert "Synth night" in rendered
+    assert "no source failures" in rendered
+
+
+@pytest.mark.parametrize("all_failed", [False, True])
+def test_check_reports_activity_and_failures_before_completion(tmp_path, monkeypatch, all_failed):
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    monkeypatch.setattr(main, "get_config", lambda _: PinoConfig())
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    monkeypatch.setattr(main, "get_store", lambda _: store)
+
+    class FailedSource:
+        name = "broken"
+        source_kind = "web"
+
+        def fetch(self):
+            assert "Fetching web:broken" in output.getvalue()
+            assert "Check complete" not in output.getvalue()
+            raise ValueError("missing [event] cards")
+
+    class HealthySource:
+        name = "healthy"
+        source_kind = "tg"
+
+        def fetch(self):
+            rendered = output.getvalue()
+            assert "FAILED web:broken: ValueError: missing [event] cards" in rendered
+            assert "Fetching tg:healthy" in rendered
+            assert "Check complete" not in rendered
+            return [Record(kind="note", source=self.name, text="test")]
+
+    original_add = store.add_record
+
+    def add_record(record):
+        assert "Storing tg:healthy" in output.getvalue()
+        assert "Check complete" not in output.getvalue()
+        return original_add(record)
+
+    monkeypatch.setattr(store, "add_record", add_record)
+    sources = [FailedSource()] if all_failed else [FailedSource(), HealthySource()]
+    monkeypatch.setattr(main, "build_sources", lambda _: sources)
+
+    main.check(config_path=None)
+
+    rendered = output.getvalue()
+    assert "Check complete — 1 source(s) failed" in rendered
+    assert rendered.count("ValueError: missing [event] cards") == 2
+    assert "no source failures" not in rendered
+    if not all_failed:
+        assert "OK tg:healthy: 1 fetched, 1 new, 0 duplicates" in rendered
+        assert len(store.list_records()) == 1
+
+
+def test_check_result_distinguishes_no_sources(monkeypatch):
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, force_terminal=False, width=120))
+    main.print_check_result(
+        CheckResult(fetched=0, inserted=0, duplicates=0, records=[], sources=[])
+    )
+    assert "no sources checked" in output.getvalue()
 
 
 def test_sources_list_prefixes_source_names(monkeypatch) -> None:

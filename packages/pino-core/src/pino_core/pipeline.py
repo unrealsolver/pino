@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -38,6 +39,14 @@ class CheckResult:
 
 
 @dataclass(frozen=True)
+class CheckProgress:
+    name: str
+    kind: Literal["web", "tg"]
+    status: Literal["fetching", "storing", "finished"]
+    result: SourceCheckResult | None = None
+
+
+@dataclass(frozen=True)
 class DigestResult:
     title: str
     body: str
@@ -48,7 +57,7 @@ class CheckPipeline:
         self.store = store
         self.sources = sources
 
-    def run(self) -> CheckResult:
+    def run(self, *, on_progress: Callable[[CheckProgress], None] | None = None) -> CheckResult:
         self.store.init_schema()
         records: list[Record] = []
         fetched_count = 0
@@ -57,6 +66,8 @@ class CheckPipeline:
         inserted_ids: list[str] = []
         source_results: list[SourceCheckResult] = []
         for source in self.sources:
+            if on_progress is not None:
+                on_progress(CheckProgress(source.name, _source_kind(source), "fetching"))
             next_cursor = None
             is_cursor_source = isinstance(source, CursorSourceAdapter)
             previous_cursor = None
@@ -87,7 +98,15 @@ class CheckPipeline:
                         error=f"{type(exc).__name__}: {exc}",
                     ),
                 )
+                if on_progress is not None:
+                    on_progress(
+                        CheckProgress(
+                            source.name, _source_kind(source), "finished", source_results[-1]
+                        )
+                    )
                 continue
+            if on_progress is not None:
+                on_progress(CheckProgress(source.name, _source_kind(source), "storing"))
             source_inserted = 0
             source_duplicates = 0
             fetched_count += len(fetched)
@@ -123,6 +142,10 @@ class CheckPipeline:
                     cursor_status=cursor_status,
                 ),
             )
+            if on_progress is not None:
+                on_progress(
+                    CheckProgress(source.name, _source_kind(source), "finished", source_results[-1])
+                )
         pending_refinement_total = self.store.count_unrefined_records()
         pending_refinement_new = self.store.count_unrefined_records(record_ids=inserted_ids)
         return CheckResult(

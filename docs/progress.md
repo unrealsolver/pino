@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-06 03:28 EEST — /root
+
+- Intended: show immediate source activity and failures in `pino check`, with an explicit final health summary.
+- Areas: core pipeline progress callback, CLI rendering, focused tests, README.
+- Result: added optional immutable CheckProgress events following the existing refinement callback pattern; CLI prints preparation, fetching, storing and immediate OK/FAILED outcomes. Final report explicitly names failures (or no failures/no sources), marks source rows and repeats error details as literal text. Existing fetch-failure exit behavior is preserved.
+- Verification: `UV_CACHE_DIR=/tmp/uv-cache uv run pytest packages/pino-core/tests/test_pipeline.py apps/pino-cli/tests/test_main.py -q` passed (32 tests), including assertions during fetch/storage to prove timely output, continuation, all-source failure, and literal error rendering. Ruff format/check and `git diff --check` passed. No live ingestion was run.
+- Follow-up: none planned.
+
 ## 2026-09-06 03:04 EEST — /root
 
 - Intended: fix Kaveikti listing extraction and raise clear extraction errors; isolate provider fetch failures in CheckPipeline with nullable result errors, preserving database error propagation and cursors.

@@ -36,6 +36,7 @@ from pino_core import (
 )
 from pino_core.db import current_database_revision, show_migration_history, upgrade_database
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
+from pino_core.pipeline import CheckProgress
 from pino_core.schedule_evaluation import (
     ScheduleEvalProgress,
     ScheduleKindScore,
@@ -79,33 +80,72 @@ def check(
     config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
 ) -> None:
     """Fetch configured sources and store records."""
+    console.print(Text("Preparing source check…", style="dim"))
     config = get_config(config_path)
     store = get_store(config)
     pipeline = CheckPipeline(store=store, sources=build_sources(config.sources))
-    result = pipeline.run()
+    console.print(Text(f"Checking {len(pipeline.sources)} source(s)…"))
+    result = pipeline.run(on_progress=print_check_progress)
     print_check_result(result)
 
 
+def print_check_progress(progress: CheckProgress) -> None:
+    label = _format_source_label(progress.kind, progress.name)
+    if progress.status == "fetching":
+        console.print(Text(f"Fetching {label}…"))
+    elif progress.status == "storing":
+        console.print(Text(f"Storing {label}…", style="dim"))
+    elif progress.result is not None:
+        result = progress.result
+        if result.error is not None:
+            console.print(Text(f"FAILED {label}: {result.error}", style="red"))
+        else:
+            console.print(
+                Text(
+                    f"OK {label}: {result.fetched} fetched, {result.inserted} new, "
+                    f"{result.duplicates} duplicates",
+                    style="green",
+                )
+            )
+
+
 def print_check_result(result: CheckResult) -> None:
+    failures = [source for source in result.sources or [] if source.error is not None]
     summary = Table("Metric", "Count", show_edge=False)
     summary.add_row("Fetched", plain_text(result.fetched))
     summary.add_row("Inserted", plain_text(result.inserted))
     summary.add_row("Duplicates", plain_text(result.duplicates))
     summary.add_row("Pending refinement", plain_text(result.pending_refinement_total))
     summary.add_row("Pending from this check", plain_text(result.pending_refinement_new))
-    console.print(Panel(summary, title="Check complete", border_style="green"))
+    if failures:
+        title = f"Check complete — {len(failures)} source(s) failed"
+    elif result.sources:
+        title = "Check complete — no source failures"
+    else:
+        title = "Check complete — no sources checked"
+    console.print(Panel(summary, title=title, border_style="red" if failures else "green"))
 
     if result.sources:
-        sources = Table("Source", "Fetched", "Inserted", "Duplicates", "Cursor")
+        sources = Table("Source", "Status", "Fetched", "Inserted", "Duplicates", "Cursor")
         for source in result.sources:
             sources.add_row(
                 plain_text(_format_source_label(source.kind, source.name)),
+                Text("FAILED", style="red")
+                if source.error is not None
+                else Text("OK", style="green"),
                 plain_text(source.fetched),
                 plain_text(source.inserted),
                 plain_text(source.duplicates),
                 _format_cursor_status(source.cursor_status),
             )
         console.print(sources)
+        for source in failures:
+            console.print(
+                Text(
+                    f"FAILED {_format_source_label(source.kind, source.name)}: {source.error}",
+                    style="red",
+                )
+            )
 
     if result.records:
         records = Table("New record", "Source", "Kind")
