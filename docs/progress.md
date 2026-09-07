@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-07 02:13 EEST — /root
+
+- Intended: place API occurrence intervals on each overlapping visible calendar day, with unique row keys and continuation labels.
+- Areas: frontend event grouping/time formatting, event card, and focused tests.
+- Result: frontend groups occurrence intervals into overlapping visible days using shared event references and date-qualified row keys. Midnight ends are exclusive; recurrence gaps remain intact; continuation cards show Ongoing and partial boundary days show From/Until times. API and browser-local calendar timezone semantics are preserved.
+- Verification: `cd web && bun run test` passed (19 tests), including visible-window clipping, recurrence gaps, DST boundaries, invalid intervals, unique virtual keys and hiding repeated rows; `bun run build` passed; `git diff --check` passed. Build reports the existing-size JavaScript chunk warning; no browser visual check was performed.
+- Follow-up: none planned.
+
 ## 2026-09-06 03:28 EEST — /root
 
 - Intended: show immediate source activity and failures in `pino check`, with an explicit final health summary.

@@ -44,11 +44,11 @@ export function defaultDateTo(dateFrom: Date): Date {
 
 export function groupEventsByDay(
   events: EventItem[],
-  _windowStart?: Date,
-  _windowEnd?: Date
+  windowStart?: Date,
+  windowEnd?: Date
 ): EventDay[] {
   const grouped = new Map<string, EventOccurrence[]>();
-  const rows = events.flatMap((event) => eventOccurrence(event));
+  const rows = events.flatMap((event) => eventOccurrences(event, windowStart, windowEnd));
   rows.sort(compareOccurrences);
   for (const row of rows) {
     const key = localDateKey(row.day);
@@ -63,12 +63,31 @@ export function groupEventsByDay(
   }));
 }
 
-function eventOccurrence(event: EventItem): EventOccurrence[] {
-  const start = new Date(event.starts_at);
-  if (Number.isNaN(start.getTime())) {
+function eventOccurrences(event: EventItem, windowStart?: Date, windowEnd?: Date): EventOccurrence[] {
+  const start = parseValidDate(event.starts_at);
+  const end = parseValidDate(event.ends_at);
+  if (!start || (event.ends_at && (!end || end < start))) {
     return [];
   }
-  return [{ key: event.occurrence_id, event, day: startOfLocalDay(start) }];
+  const from = Math.max(start.getTime(), windowStart?.getTime() ?? -Infinity);
+  const to = Math.min(end?.getTime() ?? start.getTime(), windowEnd?.getTime() ?? Infinity);
+  // Missing/zero duration is a point event; interval endings are exclusive.
+  const isPoint = !end || end.getTime() === start.getTime();
+  if (isPoint) {
+    if (start.getTime() < from || start.getTime() >= (windowEnd?.getTime() ?? Infinity)) {
+      return [];
+    }
+    const day = startOfLocalDay(start);
+    return [{ key: `${event.occurrence_id}:${localDateKey(day)}`, event, day }];
+  }
+  if (to <= from) {
+    return [];
+  }
+  const rows: EventOccurrence[] = [];
+  for (let day = startOfLocalDay(new Date(from)); day.getTime() < to; day = addDays(day, 1)) {
+    rows.push({ key: `${event.occurrence_id}:${localDateKey(day)}`, event, day });
+  }
+  return rows;
 }
 
 export function formatTimeRange(event: EventItem, occurrenceDay?: Date): string {
@@ -83,7 +102,17 @@ export function formatTimeRange(event: EventItem, occurrenceDay?: Date): string 
   }
   const end = new Date(event.ends_at);
   if (occurrenceDay && !sameLocalDate(start, end)) {
-    return "All day";
+    const dayStart = startOfLocalDay(occurrenceDay);
+    const dayEnd = addDays(dayStart, 1);
+    if (start <= dayStart && end >= dayEnd) {
+      return "All day";
+    }
+    if (start > dayStart) {
+      return `From ${startText}`;
+    }
+    return `Until ${end.toLocaleTimeString(UI_LOCALE, {
+      hour: "2-digit", minute: "2-digit", hour12: false
+    })}`;
   }
   if (!sameLocalDate(start, end)) {
     return `${dateRangeFormatter.format(start)}-${dateRangeFormatter.format(end)}`;

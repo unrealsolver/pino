@@ -10,8 +10,60 @@ import {
   topCategories
 } from "./eventUtils";
 import type { EventItem } from "./api";
+import { buildVirtualListItems } from "./routes/EventRoute/utils";
 
 describe("event utilities", () => {
+  it("projects a long interval only into the visible days without copying the event", () => {
+    const row = event({
+      starts_at: "2025-01-01T00:00:00+02:00",
+      ends_at: "2027-01-01T00:00:00+02:00"
+    });
+    const days = groupEventsByDay([row], new Date(2026, 5, 7), new Date(2026, 5, 10));
+    expect(days.map((day) => day.key)).toEqual(["2026-06-07", "2026-06-08", "2026-06-09"]);
+    expect(days.every((day) => day.events[0].event === row)).toBe(true);
+    const items = buildVirtualListItems(days, new Set(), false);
+    expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
+    expect(buildVirtualListItems(days, new Set([row.refinement_id]), false)
+      .every((item) => item.type === "day")).toBe(true);
+  });
+
+  it("keeps recurrence gaps and excludes midnight endings", () => {
+    const days = groupEventsByDay([
+      event({ occurrence_id: "one", starts_at: "2026-06-07T18:00:00+03:00",
+        ends_at: "2026-06-09T00:00:00+03:00" }),
+      event({ occurrence_id: "two", starts_at: "2026-06-10T10:00:00+03:00" })
+    ], new Date(2026, 5, 7), new Date(2026, 5, 11));
+    expect(days.map((day) => day.key)).toEqual(["2026-06-07", "2026-06-08", "2026-06-10"]);
+  });
+
+  it("clips point events and rejects invalid intervals", () => {
+    const days = groupEventsByDay([
+      event({ starts_at: "2026-06-06T10:00:00+03:00" }),
+      event({ starts_at: "2026-06-07T00:00:00+03:00" }),
+      event({ starts_at: "2026-06-08T00:00:00+03:00" }),
+      event({ starts_at: "invalid" }),
+      event({ ends_at: "invalid" }),
+      event({ ends_at: "2026-06-01T00:00:00+03:00" })
+    ], new Date(2026, 5, 7), new Date(2026, 5, 8));
+    expect(days).toHaveLength(1);
+    expect(days[0].events).toHaveLength(1);
+  });
+
+  it.each([
+    [new Date(2026, 2, 28), new Date(2026, 2, 31), ["2026-03-28", "2026-03-29", "2026-03-30"]],
+    [new Date(2026, 9, 24), new Date(2026, 9, 27), ["2026-10-24", "2026-10-25", "2026-10-26"]]
+  ])("uses calendar days across DST changes", (start, end, expected) => {
+    const days = groupEventsByDay([event({ starts_at: start.toISOString(), ends_at: end.toISOString() })], start, end);
+    expect(days.map((day) => day.key)).toEqual(expected);
+  });
+
+  it("labels partial first and last days accurately", () => {
+    const row = event({ starts_at: "2026-06-07T18:30:00+03:00", ends_at: "2026-06-09T09:15:00+03:00" });
+    expect(formatTimeRange(row, new Date(2026, 5, 7))).toBe("From 18:30");
+    expect(formatTimeRange(row, new Date(2026, 5, 8))).toBe("All day");
+    expect(formatTimeRange(row, new Date(2026, 5, 9))).toBe("Until 09:15");
+  });
+
   it("groups events by local day and sorts by start time", () => {
     const days = groupEventsByDay([
       event({ refinement_id: "late", starts_at: "2026-06-10T20:00:00+03:00" }),

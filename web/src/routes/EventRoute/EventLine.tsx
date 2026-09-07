@@ -33,6 +33,9 @@ export function EventLine({
         <Text fw={600} c="amber.9">
           {formatTimeRange(event, occurrence.day)}
         </Text>
+        {new Date(event.starts_at) < occurrence.day && (
+          <Text size="xs" c="wood.7">Ongoing</Text>
+        )}
         {overflow && (
           <Text className="eventOverflow" size="xs" c="wood.7">
             {overflow}
