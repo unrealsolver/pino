@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-08 02:59 EEST — /root
+
+- Intended: replace overflow offsets with a compact Mantine progress bar and remaining-day label, with dates on hover.
+- Areas: event card, event utilities/tests, styles.
+- Result: replaced overflow offsets/Ongoing text with a thin amber Mantine progress bar and N days left / Ends today. Full occurrence dates are available via hover, keyboard focus or touch. Progress uses the card's local calendar day and actual occurrence bounds; single-day events omit the bar. Removed obsolete overflow formatter/styles.
+- Verification: frontend tests passed (21 tests); production build passed with bundle-size warning; git diff --check passed. Covered countdown, midnight ends, missing/invalid dates and DST. No browser visual inspection performed.
+- Follow-up: user visual review.
+
 ## 2026-09-07 02:13 EEST — /root
 
 - Intended: place API occurrence intervals on each overlapping visible calendar day, with unique row keys and continuation labels.

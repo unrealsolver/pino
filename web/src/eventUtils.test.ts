@@ -4,7 +4,7 @@ import {
   DEFAULT_EVENT_WINDOW_DAYS,
   addDays,
   defaultDateTo,
-  formatEventOverflow,
+  eventProgress,
   formatTimeRange,
   groupEventsByDay,
   topCategories
@@ -134,7 +134,7 @@ describe("event utilities", () => {
     expect(formatTimeRange(row, new Date("2026-06-07T00:00:00+03:00"))).toBe("All day");
   });
 
-  it("formats clipped long-event overflow metadata", () => {
+  it("shows progress and days remaining relative to the card day", () => {
     const row = event({
       starts_at: "2026-06-07T21:00:00Z",
       ends_at: "2026-06-27T21:00:00Z",
@@ -142,10 +142,14 @@ describe("event utilities", () => {
       relevant_to: "2026-07-17T21:00:00Z"
     });
 
-    expect(formatEventOverflow(row)).toBe("-5d | +20d");
+    expect(eventProgress(row, new Date(2026, 5, 8))?.value).toBe(0);
+    expect(eventProgress(row, new Date(2026, 5, 8))?.label).toBe("19 days left");
+    expect(eventProgress(row, new Date(2026, 5, 26))?.label).toBe("1 day left");
+    expect(eventProgress(row, new Date(2026, 5, 27))?.label).toBe("Ends today");
+    expect(eventProgress(row, new Date(2026, 5, 27))?.value).toBe(100);
   });
 
-  it("does not render NaN when original event bounds are missing", () => {
+  it("uses occurrence bounds when original event bounds are missing", () => {
     const row = event({
       starts_at: "2026-06-08T00:00:00+03:00",
       ends_at: "2026-06-28T00:00:00+03:00",
@@ -153,7 +157,7 @@ describe("event utilities", () => {
       relevant_to: null
     });
 
-    expect(formatEventOverflow(row)).toBeNull();
+    expect(eventProgress(row, new Date(2026, 5, 8))?.label).toBe("19 days left");
   });
 
   it("ignores invalid original event bounds", () => {
@@ -164,7 +168,20 @@ describe("event utilities", () => {
       relevant_to: "also-not-a-date"
     });
 
-    expect(formatEventOverflow(row)).toBeNull();
+    expect(eventProgress(row, new Date(2026, 5, 8))?.label).toBe("19 days left");
+  });
+
+  it("omits progress for single-day, undated, or invalid intervals", () => {
+    const day = new Date(2026, 5, 10);
+    expect(eventProgress(event(), day)).toBeNull();
+    expect(eventProgress(event({ ends_at: "invalid" }), day)).toBeNull();
+    expect(eventProgress(event({ ends_at: "2026-06-11T00:00:00+03:00" }), day)).toBeNull();
+  });
+
+  it("counts calendar days across daylight-saving changes", () => {
+    const row = event({ starts_at: "2026-03-28T00:00:00+02:00", ends_at: "2026-03-31T00:00:00+03:00" });
+    expect(eventProgress(row, new Date(2026, 2, 29))?.value).toBe(50);
+    expect(eventProgress(row, new Date(2026, 2, 29))?.label).toBe("1 day left");
   });
 
   it("adds days without mutating the original date", () => {

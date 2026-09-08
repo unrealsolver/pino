@@ -92,10 +92,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.eventOverflow {
-  font-variant-numeric: tabular-nums;
-}
-
 .eventMain {
   min-width: 0;
 }

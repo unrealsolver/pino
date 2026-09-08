@@ -125,20 +125,25 @@ export function formatTimeRange(event: EventItem, occurrenceDay?: Date): string 
   return `${startText}-${endText}`;
 }
 
-export function formatEventOverflow(event: EventItem): string | null {
-  const visibleStart = parseValidDate(event.starts_at);
-  if (!visibleStart) {
+export function eventProgress(event: EventItem, day: Date) {
+  const start = parseValidDate(event.starts_at);
+  const end = parseValidDate(event.ends_at);
+  if (!start || !end || end <= start || Number.isNaN(day.getTime())) {
     return null;
   }
-  const originalStart = parseValidDate(event.relevant_from);
-  const beforeDays = originalStart ? diffCalendarDays(originalStart, visibleStart) : 0;
-  const visibleEnd = parseValidDate(event.ends_at);
-  const originalEnd = parseValidDate(event.relevant_to);
-  const afterDays = visibleEnd && originalEnd ? diffCalendarDays(visibleEnd, originalEnd) : 0;
-  if (beforeDays <= 0 && afterDays <= 0) {
+  // Midnight belongs to the preceding event day, consistent with calendar grouping.
+  const lastDay = new Date(end.getTime() - 1);
+  const span = diffCalendarDays(start, lastDay);
+  if (span === 0) {
     return null;
   }
-  return `-${beforeDays}d | +${afterDays}d`;
+  const elapsed = Math.min(span, diffCalendarDays(start, day));
+  const remaining = span - elapsed;
+  return {
+    value: elapsed / span * 100,
+    label: remaining === 0 ? "Ends today" : `${remaining} ${remaining === 1 ? "day" : "days"} left`,
+    range: `${dateRangeFormatter.format(start)} – ${dateRangeFormatter.format(lastDay)}`
+  };
 }
 
 export function topCategories(event: EventItem, maxItems = 3): string[] {

@@ -1,8 +1,8 @@
-import { ActionIcon, Badge, Group, Paper, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Group, Paper, Progress, Text, Tooltip } from "@mantine/core";
 import { ExternalLink, Eye, EyeOff } from "lucide-react";
 
 import {
-  formatEventOverflow,
+  eventProgress,
   formatTimeRange,
   topCategories,
   type EventOccurrence
@@ -19,7 +19,7 @@ export function EventLine({
 }) {
   const event = occurrence.event;
   const categories = topCategories(event);
-  const overflow = formatEventOverflow(event);
+  const progress = eventProgress(event, occurrence.day);
   return (
     <Paper
       className="eventLine"
@@ -33,13 +33,23 @@ export function EventLine({
         <Text fw={600} c="amber.9">
           {formatTimeRange(event, occurrence.day)}
         </Text>
-        {new Date(event.starts_at) < occurrence.day && (
-          <Text size="xs" c="wood.7">Ongoing</Text>
-        )}
-        {overflow && (
-          <Text className="eventOverflow" size="xs" c="wood.7">
-            {overflow}
-          </Text>
+        {progress && (
+          <Tooltip
+            label={`${progress.range} · relative to this calendar day`}
+            withArrow
+            events={{ hover: true, focus: true, touch: true }}
+          >
+            <div tabIndex={0} aria-label={`${progress.label}, ${progress.range}`}>
+              <Text size="xs" c="wood.7" mt={4} mb={4}>{progress.label}</Text>
+              <Progress
+                value={progress.value}
+                size="xs"
+                radius="xl"
+                color="amber"
+                aria-label="Event duration elapsed"
+              />
+            </div>
+          </Tooltip>
         )}
       </div>
       <div className="eventMain">
