@@ -1,5 +1,67 @@
 # Pino
 
+### Cover images
+
+```yaml
+media:
+  directory: .pino/media
+  public_url: /media
+```
+
+`pino check` (including the chat source-check tool) caches source `payload.image_url`
+or ordered `payload.image_urls` covers as WebP, quality 80, fitting within 1200×1200
+without upscaling. The first image is the cover. Files are named by normalized content
+hash, and the database stores only relative filenames and original source URLs.
+Existing files are reused; missing or failed covers are retried when a record is fetched
+again, including duplicates. Images are best-effort and never reject a source record.
+Remote image URLs must resolve to public addresses; downloads are limited to 10 MiB,
+25 million decoded pixels, and a 15-second download budget (DNS uses system timeouts).
+Animated images use the first frame. Originals and metadata are not retained.
+
+For local development:
+
+```sh
+uv run pino-web --serve-media
+cd web && bun run dev
+```
+
+The development server mounts the media directory at the path in `public_url`
+(`/media` by default); Vite proxies `/media` to it. For a custom local prefix, update
+the Vite proxy too. Use a relative public URL in development. Production may use
+`https://media.example.com` or another URL prefix. Ansible/nginx owns the production
+directory, permissions, static serving and `Cache-Control: public, max-age=31536000,
+immutable`; do not enable `--serve-media` there. Relative filesystem paths resolve
+from the process working directory; use an absolute directory in deployment.
+Back up the media directory with the database. No automatic cleanup is performed.
+
+Migration `0002` adds the ordered `records.images` JSON field; run
+`uv run pino db upgrade` for an existing PostgreSQL database before ingestion.
+SQLite upgrades through normal initialization. Existing rows start with no covers
+and acquire them only when fetched again or explicitly backfilled. Web/static sources provide image
+URLs. Telegram downloads photos and image documents through the configured Telethon
+session, including album covers associated with a caption. Photo-only posts are retained.
+Normal checks process media only for records fetched in that run; they do not scan
+stored history or automatically retry Telegram photos after the cursor has advanced.
+Downloads retain the same byte/pixel limits and per-photo timeout.
+For an explicit backfill/repair script, pass selected stored records to
+`source.enrich_media(records, MediaStore(config.media))` and persist each returned record
+with `store.set_record_media(record)`. The hook reuses cached files and retries missing
+covers without resetting the ingestion cursor. To run it explicitly from the CLI:
+
+```sh
+uv run pino sources backfill-media
+uv run pino sources backfill-media afisha-vilnius
+```
+
+The command processes stored records in batches of 100 and reports progress; no new
+posts are fetched and no refinements or cursors change. Existing cached covers are
+reused. Rerun to retry failures. The optional argument is the configured source name;
+without it, all enabled sources are processed. Normal checks never run this backfill.
+
+Source integrations that need authenticated downloads implement `MediaSourceAdapter`;
+the shared check pipeline persists their best-effort results after saving records. Both
+CLI and chat checks use this path, and all sources share the same media storage and API.
+
 Pino is a local-only personal agentic assistant for Ruslan. Her job is to monitor selected text sources, remember useful context, and surface only the information that is worth acting on.
 
 This project is intentionally not a general-purpose assistant. The first useful version should be a small, inspectable system that can run scheduled checks and produce concise digests.

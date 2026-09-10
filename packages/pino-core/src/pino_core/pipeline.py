@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
+from pino_core.config import MediaConfig
+from pino_core.media import MediaStore
 from pino_core.models import Record, Refinement, utc_now
-from pino_core.sources import CursorSourceAdapter, SourceAdapter
+from pino_core.sources import CursorSourceAdapter, SourceAdapter, MediaSourceAdapter
 from pino_core.storage import DatabaseStore
 
 
@@ -53,9 +56,16 @@ class DigestResult:
 
 
 class CheckPipeline:
-    def __init__(self, store: DatabaseStore, sources: list[SourceAdapter]) -> None:
+    def __init__(
+        self,
+        store: DatabaseStore,
+        sources: list[SourceAdapter],
+        *,
+        media: MediaConfig | None = None,
+    ) -> None:
         self.store = store
         self.sources = sources
+        self.media = MediaStore(media) if media is not None else None
 
     def run(self, *, on_progress: Callable[[CheckProgress], None] | None = None) -> CheckResult:
         self.store.init_schema()
@@ -110,18 +120,37 @@ class CheckPipeline:
             source_inserted = 0
             source_duplicates = 0
             fetched_count += len(fetched)
+            media_candidates: list[Record] = []
             for record in fetched:
                 result = self.store.add_record(record)
+                stored_record = result.record
+                media_candidates.append(stored_record)
+                if self.media is not None and not isinstance(source, MediaSourceAdapter):
+                    stored_record = self.media.enrich(stored_record, payload=record.payload)
+                    if stored_record.images != result.record.images:
+                        self.store.set_record_images(stored_record)
                 if result.inserted:
                     inserted_count += 1
                     source_inserted += 1
                     inserted_ids.append(result.record.id)
-                    records.append(result.record)
+                    records.append(stored_record)
                 else:
                     duplicate_count += 1
                     source_duplicates += 1
             if next_cursor is not None:
                 self.store.set_source_cursor(source.name, next_cursor)
+            if self.media is not None and isinstance(source, MediaSourceAdapter):
+                try:
+                    enriched = source.enrich_media(media_candidates, self.media)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "Media retrieval failed for %s: %s", source.name, exc
+                    )
+                    enriched = []
+                for item in enriched:
+                    self.store.set_record_media(item)
+                changed = {item.id: item for item in enriched}
+                records = [changed.get(item.id, item) for item in records]
             cursor_status: Literal["unsupported", "none", "unchanged", "updated"]
             if not is_cursor_source:
                 cursor_status = "unsupported"

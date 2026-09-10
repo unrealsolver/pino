@@ -53,6 +53,11 @@ export function EventLine({
         )}
       </div>
       <div className="eventMain">
+        {event.images?.[0] && (
+          <a href={event.images[0]} target="_blank" rel="noreferrer" aria-label={`View cover for ${event.title}`}>
+            <img className="eventCover" src={event.images[0]} alt="" loading="lazy" width={80} height={100} />
+          </a>
+        )}
         <Group gap="xs" wrap="nowrap">
           <Text className="eventTitle" fw={600}>
             {event.title}

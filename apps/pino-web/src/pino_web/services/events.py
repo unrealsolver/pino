@@ -75,6 +75,7 @@ class EventService:
                 self.local_timezone,
                 window_start=window_start,
                 window_end=window_end,
+                media_public_url=self.config.media.public_url,
             )
         ]
         events.sort(key=lambda event: event.starts_at)
@@ -126,6 +127,7 @@ def _to_event_items(
     *,
     window_start: datetime,
     window_end: datetime,
+    media_public_url: str = "/media",
 ) -> list[EventItem]:
     record = result.record
     refinement = result.refinement
@@ -150,6 +152,7 @@ def _to_event_items(
         )
     return [
         EventItem(
+            images=[f"{media_public_url.rstrip('/')}/{image.path}" for image in record.images],
             refinement_id=refinement.id,
             occurrence_id=occurrence_id,
             title=record.title or refinement.summary or "Untitled event",
@@ -168,6 +171,7 @@ def _to_event_items(
         )
         for occurrence_id, starts_at, ends_at in occurrences
     ]
+
 
 def _expand_default_occurrences(
     refinement: Refinement,

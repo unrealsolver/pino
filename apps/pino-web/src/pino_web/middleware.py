@@ -17,6 +17,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._requests: dict[str, deque[float]] = defaultdict(deque)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if not request.url.path.startswith("/api/"):
+            return await call_next(request)
         client = request.client.host if request.client else "unknown"
         now = monotonic()
         history = self._requests[client]

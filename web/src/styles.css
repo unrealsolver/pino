@@ -96,6 +96,13 @@ body {
   min-width: 0;
 }
 
+.eventCover {
+  float: left;
+  object-fit: cover;
+  border-radius: var(--mantine-radius-sm);
+  margin-right: var(--mantine-spacing-sm);
+}
+
 .eventTitle {
   min-width: 0;
   overflow-wrap: anywhere;

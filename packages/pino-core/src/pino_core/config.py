@@ -56,6 +56,34 @@ class StorageConfig(BaseModel):
         return self.backends()[self.use].database_url(self.use)
 
 
+class MediaConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    directory: Path = Path(".pino/media")
+    public_url: str = "/media"
+
+    @model_validator(mode="after")
+    def validate_public_url(self) -> MediaConfig:
+        from urllib.parse import urlsplit
+
+        url = urlsplit(self.public_url)
+        local_prefix = (
+            self.public_url.startswith("/")
+            and not self.public_url.startswith("//")
+            and bool(url.path.strip("/"))
+        )
+        remote_prefix = url.scheme in {"http", "https"} and bool(url.hostname)
+        if (
+            url.username
+            or url.password
+            or url.query
+            or url.fragment
+            or not (local_prefix or remote_prefix)
+        ):
+            raise ValueError("media.public_url must be an absolute HTTP(S) URL or a /path prefix")
+        return self
+
+
 class ChatConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -169,6 +197,7 @@ class PinoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    media: MediaConfig = Field(default_factory=MediaConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)

@@ -8,6 +8,7 @@ import yaml
 
 from pino_core.config import SourceConfig
 from pino_core.models import Record
+from pino_core.media import MediaStore
 
 
 class SourceAdapter(Protocol):
@@ -32,6 +33,12 @@ class CursorSourceAdapter(Protocol):
 
 
 SourceFactory = Callable[[SourceConfig], SourceAdapter]
+
+
+@runtime_checkable
+class MediaSourceAdapter(Protocol):
+    def enrich_media(self, records: list[Record], media: MediaStore) -> list[Record]:
+        """Return changed records after best-effort authenticated media retrieval."""
 
 
 class SourceRegistry:

@@ -74,6 +74,7 @@ records_table = Table(
     Column("text", Text, nullable=False),
     Column("url", String),
     Column("published_at", DateTime(timezone=True)),
+    Column("images", JSON, nullable=False, server_default="[]"),
     Column("captured_at", DateTime(timezone=True), nullable=False),
     Column("payload", JSON, nullable=False),
     Column("provenance", JSON, nullable=False),
@@ -240,6 +241,15 @@ class DatabaseStore:
             session.commit()
             return InsertResult(record=record, inserted=True)
 
+    def set_record_images(self, record: Record) -> None:
+        with Session(self.engine) as session:
+            session.execute(
+                update(records_table)
+                .where(records_table.c.id == record.id)
+                .values(images=record.model_dump(mode="json")["images"])
+            )
+            session.commit()
+
     def get_source_cursor(self, source: str) -> str | None:
         with Session(self.engine) as session:
             return session.execute(
@@ -276,6 +286,27 @@ class DatabaseStore:
                 select(records_table).where(records_table.c.id == record_id),
             ).first()
             return Record.model_validate(dict(row._mapping)) if row is not None else None
+
+    def set_record_media(self, record: Record) -> None:
+        with Session(self.engine) as session:
+            session.execute(
+                update(records_table)
+                .where(records_table.c.id == record.id)
+                .values(images=record.model_dump(mode="json")["images"], payload=record.payload)
+            )
+            session.commit()
+
+    def list_media_backfill_batch(
+        self, source: str, *, after_id: str = "", limit: int = 100
+    ) -> list[Record]:
+        with Session(self.engine) as session:
+            rows = session.execute(
+                select(records_table)
+                .where(records_table.c.source == source, records_table.c.id > after_id)
+                .order_by(records_table.c.id)
+                .limit(limit)
+            )
+            return [Record.model_validate(dict(row._mapping)) for row in rows]
 
     def list_unrefined_records(self, limit: int = 20) -> list[Record]:
         with Session(self.engine) as session:

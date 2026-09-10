@@ -13,6 +13,7 @@ import httpx
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import MemoryEntry, Record, Refinement, utc_now
 from pino_core.pipeline import CheckPipeline, DigestService
+from pino_core.config import MediaConfig
 from pino_core.sources import SourceAdapter
 from pino_core.storage import DatabaseStore, RecordRefinementStatus
 
@@ -44,6 +45,7 @@ def build_tools(
     sources: list[SourceAdapter],
     *,
     web_fetcher: WebFetcher | None = None,
+    media: MediaConfig | None = None,
 ) -> dict[str, Tool]:
     def memory_add(arguments: dict[str, Any]) -> str:
         content = str(arguments.get("content", "")).strip()
@@ -110,9 +112,7 @@ def build_tools(
         if not filtered:
             return f"No relevant records found for {window_label}."
         lines = [f"Relevant records for {window_label}:"]
-        lines.extend(
-            _format_relevant_record(record, refinement) for record, refinement in filtered
-        )
+        lines.extend(_format_relevant_record(record, refinement) for record, refinement in filtered)
         return "\n".join(lines)
 
     def digest_create(arguments: dict[str, Any]) -> str:
@@ -121,7 +121,7 @@ def build_tools(
         return DigestService(store).create_digest(limit=limit, window_days=window_days).body
 
     def sources_check(arguments: dict[str, Any]) -> str:
-        result = CheckPipeline(store=store, sources=sources).run()
+        result = CheckPipeline(store=store, sources=sources, media=media).run()
         return (
             f"Fetched {result.fetched}; inserted {result.inserted}; "
             f"duplicates {result.duplicates}. "
@@ -239,9 +239,7 @@ def _resolve_relevant_window(
         start = datetime.combine(date_from, time.min, tzinfo=local_timezone).astimezone(
             ZoneInfo("UTC")
         )
-        end = datetime.combine(date_to, time.max, tzinfo=local_timezone).astimezone(
-            ZoneInfo("UTC")
-        )
+        end = datetime.combine(date_to, time.max, tzinfo=local_timezone).astimezone(ZoneInfo("UTC"))
         if date_from == date_to:
             label = f"{date_from:%Y-%m-%d} ({DEFAULT_SOURCE_TIMEZONE})"
         else:

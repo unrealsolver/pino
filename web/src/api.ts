@@ -1,4 +1,5 @@
 export type EventItem = {
+  images?: string[];
   refinement_id: string;
   occurrence_id: string;
   title: string;

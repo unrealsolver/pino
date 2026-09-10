@@ -28,6 +28,13 @@ def ensure_utc_datetime(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
+class RecordImage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str = Field(pattern=r"^[0-9a-f]{64}\.webp$")
+    source_url: str
+
+
 class Record(BaseModel):
     """Persistable unit of captured or derived information.
 
@@ -47,6 +54,7 @@ class Record(BaseModel):
     text: str
     url: str | None = None
     published_at: datetime | None = None
+    images: list[RecordImage] = Field(default_factory=list)
     captured_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)

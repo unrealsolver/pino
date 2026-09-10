@@ -1,3 +1,7 @@
+media:
+  directory: .pino/media
+  public_url: /media
+
 storage:
   use: local
   local:

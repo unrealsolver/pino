@@ -37,6 +37,24 @@ def test_upgrade_uses_database_store_engine(monkeypatch) -> None:
     assert command_calls[0].attributes["connection"] is not None
 
 
+def test_images_migration_preserves_existing_records(tmp_path):
+    url = f"sqlite:///{tmp_path / 'images.sqlite'}"
+    config = alembic_config(url)
+    engine = create_engine(url)
+    config.attributes["connection"] = engine
+    command.upgrade(config, "0001")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO records (id,kind,source,fingerprint,text,captured_at,payload,provenance) VALUES ('old','event','test','old','keep me',CURRENT_TIMESTAMP,'{}','{}')"
+            )
+        )
+    command.upgrade(config, "head")
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT text, images FROM records WHERE id = 'old'")).one()
+        assert row == ("keep me", "[]")
+
+
 def test_alembic_ini_does_not_point_direct_commands_at_sqlite() -> None:
     assert "sqlalchemy.url =\n" in Path("alembic.ini").read_text()
 
@@ -56,7 +74,7 @@ def test_upgrade_bootstraps_current_sqlite_schema(tmp_path: Path) -> None:
         assert actual_columns == set(table.columns.keys())
     with engine.begin() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "0001"
+    assert revision == "0002"
     assert "refinement_schedule_index" not in inspector.get_table_names()
 
 

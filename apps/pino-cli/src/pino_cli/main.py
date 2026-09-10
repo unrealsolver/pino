@@ -37,6 +37,8 @@ from pino_core import (
 from pino_core.db import current_database_revision, show_migration_history, upgrade_database
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.pipeline import CheckProgress
+from pino_core.media import MediaStore
+from pino_core.sources import MediaSourceAdapter
 from pino_core.schedule_evaluation import (
     ScheduleEvalProgress,
     ScheduleKindScore,
@@ -83,7 +85,7 @@ def check(
     console.print(Text("Preparing source check…", style="dim"))
     config = get_config(config_path)
     store = get_store(config)
-    pipeline = CheckPipeline(store=store, sources=build_sources(config.sources))
+    pipeline = CheckPipeline(store=store, sources=build_sources(config.sources), media=config.media)
     console.print(Text(f"Checking {len(pipeline.sources)} source(s)…"))
     result = pipeline.run(on_progress=print_check_progress)
     print_check_result(result)
@@ -639,7 +641,7 @@ def debug_prompts(
     config = get_config(config_path)
     store = get_store(config)
     sources = build_sources(config.sources)
-    tools = build_tools(store, sources)
+    tools = build_tools(store, sources, media=config.media)
 
     console.rule("Chat system prompt")
     console.print(
@@ -677,7 +679,7 @@ def chat_main(
     agent = ChatAgent(
         store=store,
         provider=build_llm_client(llm_config, usage_recorder=store.add_llm_usage_event),
-        tools=build_tools(store, sources),
+        tools=build_tools(store, sources, media=config.media),
         config=config.chat,
         goals=config.profile.goals,
     )
@@ -957,6 +959,63 @@ def memory_list(
             plain_text(row.content),
         )
     console.print(table)
+
+
+@sources_app.command("backfill-media")
+def sources_backfill_media(
+    source_name: Annotated[
+        str | None, typer.Argument(help="Configured source name; defaults to all enabled sources.")
+    ] = None,
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Backfill covers on existing records without fetching new posts."""
+    config = get_config(config_path)
+    selected = [
+        source
+        for source in config.sources
+        if source.enabled and (source_name is None or source.name == source_name)
+    ]
+    if source_name is not None and not selected:
+        raise typer.BadParameter(f"No enabled source named {source_name!r}")
+    store = get_store(config)
+    media = MediaStore(config.media)
+    total = updated = failed_batches = 0
+    for configured in selected:
+        console.print(Text(f"Backfilling media: {configured.name}…"))
+        try:
+            source = build_sources([configured])[0]
+        except Exception as exc:
+            console.print(Text(f"FAILED {configured.name}: {exc}", style="red"))
+            failed_batches += 1
+            continue
+        after_id = ""
+        while batch := store.list_media_backfill_batch(configured.name, after_id=after_id):
+            console.print(
+                Text(f"{configured.name}: processing {len(batch)} stored records…", style="dim")
+            )
+            try:
+                changed = (
+                    source.enrich_media(batch, media)
+                    if isinstance(source, MediaSourceAdapter)
+                    else [media.enrich(record, payload=record.payload) for record in batch]
+                )
+            except Exception as exc:
+                console.print(Text(f"FAILED {configured.name} batch: {exc}", style="red"))
+                failed_batches += 1
+                changed = []
+            originals = {record.id: record for record in batch}
+            for record in changed:
+                if record != originals[record.id]:
+                    store.set_record_media(record)
+                    updated += 1
+            total += len(batch)
+            after_id = batch[-1].id
+            console.print(Text(f"Scanned {total}; updated {updated}."))
+    console.print(
+        Text(
+            f"Media backfill complete: {total} scanned, {updated} updated, {failed_batches} source/batch failures. Individual image failures are logged and can be retried by rerunning."
+        )
+    )
 
 
 @sources_app.command("list")

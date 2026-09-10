@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class EventItem(BaseModel):
+    images: list[str] = Field(default_factory=list)
     refinement_id: str
     occurrence_id: str
     title: str

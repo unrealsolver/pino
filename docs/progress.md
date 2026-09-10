@@ -2,6 +2,38 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-10 02:41 EEST — /root
+
+- Intended: add explicit CLI cover backfill over stored records in bounded batches, reusing existing media hooks.
+- Areas: CLI, storage batch query, tests and README.
+- Result: added `pino sources backfill-media [SOURCE_NAME]`, processing all enabled sources or one configured source in keyset-paginated batches of 100. Reuses authenticated/URL media paths, persists changed records, and reports progress and batch failures; normal checks remain unchanged.
+- Verification: CLI tests passed (25 tests), including 101-record batching for both media paths, repeat-run idempotence and cursor/refinement preservation. Ruff, CLI help and git diff --check passed. No live backfill run.
+- Follow-up: command can be removed after one-off backfill.
+
+## 2026-09-10 02:39 EEST — /root
+
+- Intended: remove automatic historical media backfill; enrich only fetched records and retain the explicit media hook for future scripts.
+- Areas: pipeline/storage, Telegram media tests, README.
+- Result: normal checks pass only fetched records to media enrichment; removed the full-source storage query. Preserved and documented explicit enrich_media + set_record_media hooks for selected-record repair/backfill scripts. Historical Telegram covers are no longer retried automatically after cursor advancement.
+- Verification: focused pipeline and source-cover tests passed (17 tests), including no historical retry on an empty fetch and successful explicit repair/backfill. Ruff formatting and git diff --check passed; no live ingestion run.
+- Follow-up: optional explicit backfill script later.
+
+## 2026-09-10 01:14 EEST — /root
+
+- Intended: complete cover ingestion for Telegram as well as URL-based web/static sources, including albums, old records and retry after cursor advancement.
+- Areas: optional authenticated source media hook, Telegram transport, storage/pipeline, tests/docs.
+- Result: implemented optional MediaSourceAdapter hook at the post-storage boundary and Telegram authenticated downloads into the shared bounded WebP normalizer. Supports photos/image documents, album members attached to captions and photo-only posts; persists discovery/expected-image metadata and revisits retained source records to backfill old covers or retry failures after cursor advancement. Cached images are reused and missing files reacquired. Existing web/static URL ingestion remains shared; documentation no longer defers Telegram.
+- Verification: full Python suite passed (234 tests), then additional Telegram image-document/session-failure cases passed in the focused suite (5 tests). Added pipeline cover tests for Kaveikti, Vilnius Events and static YAML, plus Telegram album retry/cursor/cache/backfill/size tests. Ruff and git diff --check passed. No live Telegram account or database was accessed; transport tests use controlled clients.
+- Follow-up: album lookup uses Telegram's maximum ten-member neighbourhood around the caption; edited post refresh remains explicit rather than part of ordinary checks.
+
+## 2026-09-09 02:09 EEST — /root
+
+- Intended: add filesystem WebP cover caching, media config, ordered record image references/migration, ingestion enrichment, API/UI covers and opt-in development static serving.
+- Areas: core media/storage/config/pipeline, web API/CLI/frontend, tests/dependencies/docs.
+- Result: added configurable media directory/public URL, ordered RecordImage JSON references and migration 0002, Pillow normalization to max 1200×1200 WebP quality 80, content-hash filenames and atomic writes. Central ingestion caches URL-based covers, retries missing images on repeated fetches and preserves records on media failures. API renders configurable URLs; UI displays lazy-loaded covers. Opt-in --serve-media and Vite proxy support development; deployment stays with Ansible/nginx. Added local/example config and README instructions. Telegram authenticated photo retrieval remains a separate transport follow-up.
+- Verification: full Python suite passed (228 tests), frontend tests passed (21), production build passed, Ruff check/format and git diff --check passed. Tested normalization/deduplication, limits/URL validation and DNS pinning, retry/reuse, existing-row migration, API URL projection, opt-in static serving/cache headers and path traversal. CLI help checked. Dependency pin added after full-suite metadata test caught its omission. No live DB migration, ingestion or browser visual check performed; existing build-size and Starlette TestClient warnings remain.
+- Follow-up: Telegram photo transport; deployment remains external Ansible/nginx.
+
 ## 2026-09-08 02:59 EEST — /root
 
 - Intended: replace overflow offsets with a compact Mantine progress bar and remaining-day label, with dates on hover.

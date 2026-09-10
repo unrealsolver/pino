@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -10,6 +12,7 @@ from telethon import TelegramClient
 
 from pino_core.config import SourceConfig
 from pino_core.models import Record
+from pino_core.media import MediaStore, MAX_BYTES, DOWNLOAD_SECONDS
 from pino_core.sources import CursorFetchResult, SourceAdapter
 
 
@@ -73,10 +76,122 @@ class TelegramChannelSource:
                 )
                 if record is not None:
                     records.append(record)
+        # Telegram albums can carry their caption on only one member.
+        groups = {
+            record.payload.get("grouped_id")
+            for record in records
+            if record.payload.get("grouped_id")
+        }
+        for group in groups:
+            members = [record for record in records if record.payload.get("grouped_id") == group]
+            captioned = [record for record in members if not record.payload.get("media_only")]
+            keep = captioned or members[:1]
+            records = [record for record in records if record not in members or record in keep]
         return CursorFetchResult(
             records=records,
             cursor=str(next_message_id) if next_message_id is not None else None,
         )
+
+    def enrich_media(self, records: list[Record], media: MediaStore) -> list[Record]:
+        pending = []
+        for record in records:
+            expected = record.payload.get("telegram_image_ids", [])
+            cached = {
+                image.source_url
+                for image in record.images
+                if (media.directory / image.path).is_file()
+            }
+            if not record.payload.get("telegram_media_checked") or any(
+                _message_url(_channel_ref(self.channel), message_id) not in cached
+                for message_id in expected
+            ):
+                pending.append(record)
+        return asyncio.run(self._enrich_media(pending, media)) if pending else []
+
+    async def _enrich_media(self, records: list[Record], media: MediaStore) -> list[Record]:
+        changed = []
+        async with self._client_factory(
+            str(self.session_path), self.api_id, self.api_hash
+        ) as client:
+            for record in records:
+                try:
+                    # Bound the album operation as well as each individual download.
+                    async with asyncio.timeout(DOWNLOAD_SECONDS * 12):
+                        message = await client.get_messages(
+                            self.channel, ids=record.payload["message_id"]
+                        )
+                        if message is None:
+                            raise ValueError("Telegram message no longer available")
+                        messages = [message]
+                        group = getattr(message, "grouped_id", None)
+                        if group:
+                            # Telegram albums contain at most ten adjacent media messages.
+                            nearby = await client.get_messages(
+                                self.channel,
+                                ids=list(range(max(1, message.id - 9), message.id + 10)),
+                            )
+                            messages = [
+                                item
+                                for item in nearby
+                                if item and getattr(item, "grouped_id", None) == group
+                            ]
+                        photos = sorted(
+                            (item for item in messages if _has_image(item)),
+                            key=lambda item: item.id,
+                        )
+                        payload = {
+                            **record.payload,
+                            "telegram_media_checked": True,
+                            "telegram_image_ids": [item.id for item in photos],
+                        }
+                        images = list(record.images)
+                        for photo in photos:
+                            url = _message_url(_channel_ref(self.channel), photo.id)
+                            existing = next(
+                                (image for image in images if image.source_url == url), None
+                            )
+                            if existing and (media.directory / existing.path).is_file():
+                                continue
+                            try:
+                                output = _LimitedImageBuffer()
+                                async with asyncio.timeout(DOWNLOAD_SECONDS):
+                                    await client.download_media(photo, file=output)
+                                image = media.save(output.getvalue(), source_url=url)
+                                if existing:
+                                    images[images.index(existing)] = image
+                                else:
+                                    images.append(image)
+                            except Exception as exc:
+                                logging.getLogger(__name__).warning(
+                                    "Telegram cover %s failed: %s", photo.id, exc
+                                )
+                        order = {
+                            _message_url(_channel_ref(self.channel), photo.id): index
+                            for index, photo in enumerate(photos)
+                        }
+                        images.sort(key=lambda image: order.get(image.source_url, len(order)))
+                        changed.append(
+                            record.model_copy(update={"images": images, "payload": payload})
+                        )
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "Telegram media for %s failed: %s", record.id, exc
+                    )
+        return changed
+
+
+class _LimitedImageBuffer(BytesIO):
+    def write(self, data: bytes) -> int:
+        if self.tell() + len(data) > MAX_BYTES:
+            raise ValueError("Telegram image exceeds download size limit")
+        return super().write(data)
+
+
+def _has_image(message: Any) -> bool:
+    document = getattr(message, "document", None)
+    return bool(getattr(message, "photo", None)) or bool(
+        document and str(getattr(document, "mime_type", "")).startswith("image/")
+    )
 
 
 def parse_telegram_message(
@@ -88,13 +203,20 @@ def parse_telegram_message(
 ) -> Record | None:
     text = _message_text(message)
     if not text:
-        return None
+        if not _has_image(message):
+            return None
+        text = "Telegram photo"
 
     message_id = getattr(message, "id", None)
     posted_at = _to_utc(getattr(message, "date", None))
     channel_ref = _channel_ref(channel)
     normalized_scopes = location_scopes or []
     payload = {
+        "telegram_media_checked": not _has_image(message)
+        and not bool(getattr(message, "grouped_id", None)),
+        "telegram_image_ids": [],
+        "grouped_id": getattr(message, "grouped_id", None),
+        "media_only": not bool(_message_text(message)),
         "channel": channel,
         "message_id": message_id,
         "posted_at_utc": posted_at.isoformat() if posted_at is not None else None,
