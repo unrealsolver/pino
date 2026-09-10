@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-11 01:26 EEST — /root
+
+- Intended: use derived summaries as event row titles, show source/original body, reserve cover space and anchor IDs below content.
+- Areas: event API projection/schema, frontend row/styles, focused verification.
+- Result: API titles prefer the derived summary and expose original record text; rows show source and two-line body preview, use a fixed 80×100 Mantine Image with blank fallback, and anchor selectable IDs at the bottom of the content column.
+- Verification: event API tests passed (13), frontend tests passed (21), production build and git diff --check passed. Existing bundle-size warning remains; no browser visual inspection performed.
+- Follow-up: visual review.
+
 ## 2026-09-10 02:41 EEST — /root
 
 - Intended: add explicit CLI cover backfill over stored records in bounded batches, reusing existing media hooks.

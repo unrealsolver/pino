@@ -1,5 +1,5 @@
-import { ActionIcon, Badge, Group, Paper, Progress, Text, Tooltip } from "@mantine/core";
-import { ExternalLink, Eye, EyeOff } from "lucide-react";
+import { ActionIcon, Badge, Group, Image, Paper, Progress, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import { ExternalLink, Eye, EyeOff, MapPin } from "lucide-react";
 
 import {
   eventProgress,
@@ -20,6 +20,18 @@ export function EventLine({
   const event = occurrence.event;
   const categories = topCategories(event);
   const progress = eventProgress(event, occurrence.day);
+  const cover = (
+    <Image
+      src={event.images?.[0]}
+      fallbackSrc="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='100'/%3E"
+      alt=""
+      loading="lazy"
+      w={80}
+      h={100}
+      radius="sm"
+      bg="wood.1"
+    />
+  );
   return (
     <Paper
       className="eventLine"
@@ -53,40 +65,51 @@ export function EventLine({
         )}
       </div>
       <div className="eventMain">
-        {event.images?.[0] && (
+        {event.images?.[0] ? (
           <a href={event.images[0]} target="_blank" rel="noreferrer" aria-label={`View cover for ${event.title}`}>
-            <img className="eventCover" src={event.images[0]} alt="" loading="lazy" width={80} height={100} />
+            {cover}
           </a>
-        )}
-        <Group gap="xs" wrap="nowrap">
-          <Text className="eventTitle" fw={600}>
-            {event.title}
-          </Text>
-          {event.url && (
-            <ActionIcon
-              component="a"
-              href={event.url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Open ${event.title}`}
-              size="sm"
-              variant="subtle"
-            >
-              <ExternalLink size={14} />
-            </ActionIcon>
+        ) : cover}
+        <div className="eventBody">
+          <Group gap="xs" wrap="nowrap" align="start">
+            <Text className="eventTitle" fw={600} lineClamp={2} title={event.title}>
+              {event.summary}
+            </Text>
+            {event.url && (
+              <ActionIcon
+                component="a"
+                href={event.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${event.title}`}
+                size="sm"
+                variant="subtle"
+              >
+                <ExternalLink size={14} />
+              </ActionIcon>
+            )}
+            <Text textWrap="nowrap" size="xs" c="wood.7">{event.source}</Text>
+          </Group>
+          {event.title && (
+            <Text size="sm" c="dimmed" lineClamp={2}>
+              {event.title}
+            </Text>
           )}
-        </Group>
-        {event.summary && (
-          <Text size="sm" c="dimmed" lineClamp={2}>
-            {event.summary}
+          {event.location && (
+            <Group gap="0">
+              <ThemeIcon variant="subtle" size="sm" ml="-6">
+                <MapPin size={14} />
+              </ThemeIcon>
+              <Text size="sm" c="dimmed">{event.location}</Text>
+            </Group>
+          )}
+          <Text className="eventId" size="xs" c="wood.6">
+            ID{" "}
+            <Text component="span" inherit c="wood.7" style={{ userSelect: "all" }}>
+              {event.refinement_id}
+            </Text>
           </Text>
-        )}
-        <Text size="xs" c="wood.6">
-          ID{" "}
-          <Text component="span" inherit c="wood.7" style={{ userSelect: "all" }}>
-            {event.refinement_id}
-          </Text>
-        </Text>
+        </div>
       </div>
       <Group className="eventTags" gap={6} wrap="wrap">
         {categories.map((category) => (

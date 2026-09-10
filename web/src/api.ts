@@ -3,6 +3,7 @@ export type EventItem = {
   refinement_id: string;
   occurrence_id: string;
   title: string;
+  text?: string;
   source: string;
   url: string | null;
   summary: string | null;

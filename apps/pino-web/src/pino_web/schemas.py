@@ -10,6 +10,7 @@ class EventItem(BaseModel):
     refinement_id: str
     occurrence_id: str
     title: str
+    text: str = ""
     source: str
     url: str | None
     summary: str | None
