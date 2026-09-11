@@ -2,6 +2,30 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-12 01:24 EEST — /root
+
+- Intended: enforce a 10-second response-generation deadline on all API requests, including readiness.
+- Areas: API middleware, timeout tests, production documentation.
+- Result: all API paths including health return safe no-store JSON 504 after a 10-second response-generation deadline; non-API paths unchanged. Documented synchronous-work and transfer limitations.
+- Verification: full pytest suite 257 passed; Ruff and git diff --check passed. Tests cover health/API deadlines, recovery, non-API exemption and sending 504 before a blocked synchronous handler finishes.
+- Follow-up: synchronous DB work still requires database-side timeouts.
+
+## 2026-09-12 01:22 EEST — /root
+
+- Intended: finish production API checks: Python dependency audit, safe DB failures, abusive query validation and HTTP probes.
+- Areas: API, storage tests, production deployment documentation; verify existing startup/pool/limiter changes.
+- Result: safe JSON 503s for DB failures; boundary dates/oversized categories rejected; exact 370-day bound. Verified prior startup migration guard, readiness probe, bounded limiter and pool pre-ping; fixed affected storage mocks. Documented private health probes, nginx abuse limits and API-role DB timeouts.
+- Verification: full pytest suite 252 passed; pip-audit found no known third-party vulnerabilities; Ruff, CLI help and git diff --check passed. One existing Starlette TestClient deprecation warning remains.
+- Follow-up: nginx/PostgreSQL settings and smoke checks remain deployment work; public/private access decision still required. Frontend advisories deferred to CI.
+
+## 2026-09-12 01:15 EEST — /root
+
+- Intended: remove frontend dependency overrides and retain locked resolutions.
+- Areas: web/package.json; lockfile verification.
+- Result: removed overrides; existing lockfile unchanged (SHA-256 verified).
+- Verification: bun install --frozen-lockfile passed with no changes; git diff --check passed.
+- Follow-up: dependency advisories remain a CI concern.
+
 ## 2026-09-12 00:21 EEST — /root
 
 - Intended: replace remaining non-zero spacing literals with Mantine tokens, setting xs=4px and md=16px while preserving existing theme edits.

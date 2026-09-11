@@ -1,5 +1,7 @@
 # Pino
 
+Production deployment: [Ansible/nginx integration and release checks](docs/production.md).
+
 ### Cover images
 
 ```yaml

@@ -4,10 +4,11 @@ from importlib.resources import files
 
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy.engine import Engine
 
-from pino_core.storage import DatabaseStore
-from pino_core.storage import normalize_database_url
+from pino_core.storage import DatabaseStore, normalize_database_url
 
 
 def alembic_config(database_url: str) -> Config:
@@ -29,6 +30,19 @@ def upgrade_database(
 
 def current_database_revision(database_url: str) -> None:
     command.current(_engine_config(database_url), verbose=True)
+
+
+def require_current_schema(engine: Engine) -> None:
+    """Check schema version without performing DDL (production API startup)."""
+    script = ScriptDirectory.from_config(
+        alembic_config(engine.url.render_as_string(hide_password=False))
+    )
+    with engine.connect() as connection:
+        actual = set(MigrationContext.configure(connection).get_current_heads())
+    if actual != set(script.get_heads()):
+        raise RuntimeError(
+            "Database schema is not current; run pino db upgrade before starting the API"
+        )
 
 
 def show_migration_history(database_url: str) -> None:

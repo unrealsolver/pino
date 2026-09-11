@@ -205,7 +205,7 @@ class DatabaseStore:
         if url.get_backend_name() == "sqlite" and url.database not in {None, "", ":memory:"}:
             Path(url.database).parent.mkdir(parents=True, exist_ok=True)
         self.database_url = url
-        self.engine = create_engine(url, future=True)
+        self.engine = create_engine(url, future=True, pool_pre_ping=True)
 
     def init_schema(self) -> None:
         from pino_core.db import upgrade_database

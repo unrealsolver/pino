@@ -47,14 +47,20 @@ class EventService:
         *,
         filters: EventFilters,
     ) -> EventListResponse:
-        window_start, window_end = _resolve_window(
-            filters.date_from,
-            filters.date_to,
-            self.local_timezone,
-        )
+        try:
+            window_start, window_end = _resolve_window(
+                filters.date_from,
+                filters.date_to,
+                self.local_timezone,
+            )
+            # Leave room for timezone conversion and overnight recurrence expansion.
+            if any(value.year in (1, 9999) for value in (window_start, window_end)):
+                raise OverflowError
+        except OverflowError:
+            raise EventQueryError("date range is outside supported datetime bounds") from None
         if window_end < window_start:
             raise EventQueryError("date_to must be on or after date_from")
-        if (window_end - window_start).days > MAX_QUERY_DAYS:
+        if window_end - window_start > timedelta(days=MAX_QUERY_DAYS):
             raise EventQueryError(f"date range cannot exceed {MAX_QUERY_DAYS} days")
 
         known_categories = _known_categories(self.config)

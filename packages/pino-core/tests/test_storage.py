@@ -13,10 +13,10 @@ from pino_core import ChatMessage, DatabaseStore, MemoryEntry, Record, Refinemen
 
 
 def test_database_store_normalizes_postgresql_url_to_psycopg(monkeypatch) -> None:
-    created: list[tuple[object, bool]] = []
+    created: list[tuple[object, bool, bool]] = []
 
-    def fake_create_engine(url: object, *, future: bool) -> SimpleNamespace:
-        created.append((url, future))
+    def fake_create_engine(url: object, *, future: bool, pool_pre_ping: bool) -> SimpleNamespace:
+        created.append((url, future, pool_pre_ping))
         return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
 
     monkeypatch.setattr("pino_core.storage.create_engine", fake_create_engine)
@@ -24,7 +24,7 @@ def test_database_store_normalizes_postgresql_url_to_psycopg(monkeypatch) -> Non
     store = DatabaseStore("postgresql://pino:secret@example.test/pino")
 
     assert store.database_url.drivername == "postgresql+psycopg"
-    assert created == [(store.database_url, True)]
+    assert created == [(store.database_url, True, True)]
 
 
 def test_database_store_init_schema_uses_migrations_on_existing_engine(monkeypatch) -> None:
@@ -32,7 +32,7 @@ def test_database_store_init_schema_uses_migrations_on_existing_engine(monkeypat
     migration_calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
         "pino_core.storage.create_engine",
-        lambda url, *, future: engine,
+        lambda url, *, future, pool_pre_ping: engine,
     )
     monkeypatch.setattr(
         "pino_core.db.upgrade_database",

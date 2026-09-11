@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from pino_web.deps import get_event_service
 from pino_web.schemas import EventListResponse
-from pino_web.services.events import DEFAULT_EVENT_LIMIT, EventFilters, EventQueryError, EventService
+from pino_web.services.events import (
+    DEFAULT_EVENT_LIMIT,
+    EventFilters,
+    EventQueryError,
+    EventService,
+)
 
 router = APIRouter(prefix="/api", tags=["events"])
 
@@ -19,7 +24,7 @@ def list_events(
     date_to: Annotated[datetime | None, Query(description="Inclusive end datetime.")] = None,
     category: Annotated[
         list[str] | None,
-        Query(description="Category names. Repeat the parameter to select multiple."),
+        Query(max_length=64, description="Category names. Repeat to select up to 64."),
     ] = None,
     min_score: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
     q: Annotated[str, Query(max_length=200)] = "",
