@@ -1,6 +1,7 @@
 import { Text } from "@mantine/core";
 
 import type { EventOccurrence } from "../../eventUtils";
+import classes from "./HiddenDayControl.module.css";
 
 export function HiddenDayControl({
   occurrences,
@@ -18,7 +19,7 @@ export function HiddenDayControl({
     return null;
   }
   return (
-    <Text className="hiddenDayText" size="xs" c="wood.7">
+    <Text className={classes.hiddenDayText} size="xs" c="wood.7">
       {hiddenIds.size} hidden
     </Text>
   );

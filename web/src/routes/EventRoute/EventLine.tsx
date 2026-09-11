@@ -1,4 +1,5 @@
-import { ActionIcon, Badge, Group, Image, Paper, Progress, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Group, Image, Paper, Progress, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import classes from "./EventLine.module.css";
 import { ExternalLink, Eye, EyeOff, MapPin } from "lucide-react";
 
 import {
@@ -34,14 +35,14 @@ export function EventLine({
   );
   return (
     <Paper
-      className="eventLine"
+      className={classes.eventLine}
       component="article"
       withBorder
       p="sm"
       bg={isHidden ? "wood.0" : "amber.0"}
       opacity={isHidden ? 0.56 : 1}
     >
-      <div className="eventTime">
+      <div className={classes.eventTime}>
         <Text fw={600} c="amber.9">
           {formatTimeRange(event, occurrence.day)}
         </Text>
@@ -64,15 +65,15 @@ export function EventLine({
           </Tooltip>
         )}
       </div>
-      <div className="eventMain">
+      <div className={classes.eventMain}>
         {event.images?.[0] ? (
           <a href={event.images[0]} target="_blank" rel="noreferrer" aria-label={`View cover for ${event.title}`}>
             {cover}
           </a>
         ) : cover}
-        <div className="eventBody">
+        <Stack gap={0} miw={0} mih={100}>
           <Group gap="xs" wrap="nowrap" align="start">
-            <Text className="eventTitle" fw={600} lineClamp={2} title={event.title}>
+            <Text className={classes.breakAnywhere} miw={0} fw={600} lineClamp={2} title={event.title}>
               {event.summary}
             </Text>
             {event.url && (
@@ -103,15 +104,15 @@ export function EventLine({
               <Text size="sm" c="dimmed">{event.location}</Text>
             </Group>
           )}
-          <Text className="eventId" size="xs" c="wood.6">
+          <Text className={classes.breakAnywhere} mt="auto" pt="xs" size="xs" c="wood.6">
             ID{" "}
-            <Text component="span" inherit c="wood.7" style={{ userSelect: "all" }}>
+            <Text component="span" inherit c="wood.7" className={classes.selectableId}>
               {event.refinement_id}
             </Text>
           </Text>
-        </div>
+        </Stack>
       </div>
-      <Group className="eventTags" gap={6} wrap="wrap">
+      <Group className={classes.eventTags} gap={6} wrap="wrap">
         {categories.map((category) => (
           <Badge key={category} size="sm" variant="light" color="wood">
             {category}
@@ -120,7 +121,7 @@ export function EventLine({
       </Group>
       <Tooltip label={isHidden ? "Show event" : "Hide event"} withArrow>
         <ActionIcon
-          className="eventHide"
+          className={classes.eventHide}
           size="sm"
           variant="subtle"
           color="wood"

@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { eventQueryKey, fetchEvents, type EventFilters } from "../../api";
 import { defaultDateTo, groupEventsByDay } from "../../eventUtils";
 import { EventFiltersForm } from "./EventFiltersForm";
+import classes from "./EventRoute.module.css";
 import { EventHeader } from "./EventHeader";
 import { VirtualEventList } from "./VirtualEventList";
 import { buildListRevision, buildVirtualListItems, createDefaultEventFilters } from "./utils";
@@ -68,7 +69,7 @@ export function EventRoute() {
   }
 
   return (
-    <main className="appShell">
+    <main className={classes.appShell}>
       <Container size="xl" px="lg" py="lg">
         <Stack gap="md">
           <EventHeader

@@ -2,6 +2,22 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-11 02:32 EEST — /root
+
+- Intended: split shared event-route CSS into matching component modules.
+- Areas: EventRoute, EventLine, VirtualEventList and HiddenDayControl styles/imports.
+- Result: each styled component now imports its matching .module.css; selectors moved without changing rules. Mantine-only components need no custom stylesheets.
+- Verification: production build passed; git diff --check passed. No new tests for this stylesheet-only relocation; existing bundle-size warning remains.
+- Follow-up: none.
+
+## 2026-09-11 01:52 EEST — /root
+
+- Intended: scope custom React styles with CSS modules, use Mantine props for simple styling and mt="auto" for the event ID; preserve current content semantics.
+- Areas: event route components/styles and Vite type declarations.
+- Result: moved custom route styling to EventRoute.module.css with classes.* references; global CSS now contains only document defaults. Filter sizing and virtual-row geometry use Mantine props; event content uses Stack with ID mt="auto"/pt="xs". Responsive grids/tag alignment and decorative rules stay in scoped CSS; runtime virtualizer transforms remain inline. Preserved current title/summary/location/source rendering.
+- Verification: frontend tests passed (21), production build and git diff --check passed. Build caught unsupported responsive Group.justify; restored its responsive rule in the CSS module. Existing bundle-size warning remains; no browser visual inspection performed.
+- Follow-up: none planned.
+
 ## 2026-09-11 01:26 EEST — /root
 
 - Intended: use derived summaries as event row titles, show source/original body, reserve cover space and anchor IDs below content.

@@ -1,0 +1,10 @@
+.appShell {
+  min-height: 100vh;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mantine-color-amber-0), transparent 6%),
+      var(--mantine-color-wood-0) calc(var(--mantine-spacing-xl) * 9)
+    ),
+    var(--mantine-color-wood-0);
+}

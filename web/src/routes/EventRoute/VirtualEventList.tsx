@@ -1,4 +1,5 @@
-import { Paper, Text } from "@mantine/core";
+import { Box, Paper, Text } from "@mantine/core";
+import classes from "./VirtualEventList.module.css";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
@@ -43,16 +44,20 @@ export function VirtualEventList({
   });
 
   return (
-    <div ref={listRef} className="virtualList" style={{ height: virtualizer.getTotalSize() }}>
+    <Box ref={listRef} pos="relative" w="100%" h={virtualizer.getTotalSize()}>
       {virtualizer.getVirtualItems().map((virtualRow) => {
         const item = items[virtualRow.index];
         if (!item) {
           return null;
         }
         return (
-          <div
+          <Box
             key={virtualRow.key}
-            className="virtualRow"
+            pos="absolute"
+            top={0}
+            left={0}
+            w="100%"
+            pb="xs"
             data-index={virtualRow.index}
             ref={virtualizer.measureElement}
             style={{
@@ -60,7 +65,7 @@ export function VirtualEventList({
             }}
           >
             {item.type === "day" ? (
-              <Paper className="dayHeader" withBorder p="xs" bg="wood.1" radius="sm">
+              <Paper className={classes.dayHeader} withBorder p="xs" bg="wood.1" radius="sm">
                 <Text component="h2" c="wood.9" size="sm" fw={700} m={0}>
                   {item.day.label}
                 </Text>
@@ -77,9 +82,9 @@ export function VirtualEventList({
                 }
               />
             )}
-          </div>
+          </Box>
         );
       })}
-    </div>
+    </Box>
   );
 }

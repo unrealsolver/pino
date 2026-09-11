@@ -20,7 +20,8 @@ export function EventFiltersForm({
     <Paper withBorder p="sm" bg="amber.0">
       <Group align="end" gap="sm" wrap="wrap">
         <MultiSelect
-          className="filterControl filterWide"
+          flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
+          miw="calc(var(--mantine-spacing-xl) * 8)"
           label="Tags"
           placeholder="Any category"
           data={categories}
@@ -31,7 +32,7 @@ export function EventFiltersForm({
           comboboxProps={{ withinPortal: false }}
         />
         <NumberInput
-          className="filterControl filterScore"
+          flex="0 0 calc(var(--mantine-spacing-xl) * 3.25)"
           label="Score"
           min={0}
           max={1}
@@ -43,7 +44,8 @@ export function EventFiltersForm({
           }
         />
         <TextInput
-          className="filterControl filterWide"
+          flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
+          miw="calc(var(--mantine-spacing-xl) * 8)"
           label="Text"
           placeholder="Search title, summary, text"
           leftSection={<Search size={16} />}
@@ -51,7 +53,8 @@ export function EventFiltersForm({
           onChange={(event) => form.setFieldValue("query", event.currentTarget.value)}
         />
         <DateTimePicker
-          className="filterControl filterDate"
+          flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
+          miw="calc(var(--mantine-spacing-xl) * 7)"
           label="From"
           valueFormat="YYYY-MM-DD HH:mm"
           value={filters.dateFrom}
@@ -65,7 +68,8 @@ export function EventFiltersForm({
           }}
         />
         <DateTimePicker
-          className="filterControl filterDate"
+          flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
+          miw="calc(var(--mantine-spacing-xl) * 7)"
           label="To"
           valueFormat="YYYY-MM-DD HH:mm"
           value={filters.dateTo}

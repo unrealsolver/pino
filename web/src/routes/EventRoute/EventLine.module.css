@@ -1,0 +1,54 @@
+.eventLine {
+  display: grid;
+  grid-template-columns:
+    calc(var(--mantine-spacing-xl) * 3.5)
+    minmax(0, 1fr)
+    minmax(calc(var(--mantine-spacing-xl) * 4), calc(var(--mantine-spacing-xl) * 8))
+    var(--mantine-spacing-xl);
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  min-height: calc(var(--mantine-spacing-xl) * 2);
+}
+
+.eventTime {
+  font-variant-numeric: tabular-nums;
+}
+
+.eventMain {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: var(--mantine-spacing-sm);
+  align-self: stretch;
+}
+
+.breakAnywhere {
+  overflow-wrap: anywhere;
+}
+
+.selectableId {
+  user-select: all;
+}
+
+.eventHide {
+  justify-self: end;
+}
+
+.eventTags {
+  justify-content: flex-end;
+}
+
+@media (max-width: 48rem) {
+  .eventLine {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .eventHide {
+    justify-self: start;
+  }
+
+  .eventTags {
+    justify-content: flex-start;
+  }
+}
