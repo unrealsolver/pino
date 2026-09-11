@@ -17,30 +17,31 @@ export const theme = createTheme({
     lg: rem(8),
     xl: rem(8)
   },
+  // TODO make new pallette: cloudy blue, pink and chick-yellow accents
   colors: {
     amber: [
-      "#fff7e7",
-      "#f4ead7",
-      "#e8d3ad",
-      "#dcbc82",
-      "#d3a85e",
-      "#cd9b46",
-      "#ca9438",
-      "#b27f2c",
-      "#9f7024",
-      "#895f19"
+      "#fff7e2",
+      "#fdeecf",
+      "#f9dca1",
+      "#f5ca73",
+      "#f1b845",
+      "#efad2a",
+      "#efa81a",
+      "#d4930b",
+      "#bd8201",
+      "#a46f00"
     ],
     wood: [
-      "#f8f2ea",
-      "#eadfce",
-      "#d7c2a1",
-      "#c5a471",
-      "#b99051",
-      "#b2833d",
-      "#ad7c32",
-      "#996b27",
-      "#895e20",
-      "#764f16"
+      "#fff5e6",
+      "#f7e8d6",
+      "#ead0b0",
+      "#ddb787",
+      "#d2a164",
+      "#cb934d",
+      "#c98d42",
+      "#b17831",
+      "#9e6a29",
+      "#8a5b1d"
     ]
   },
   components: {

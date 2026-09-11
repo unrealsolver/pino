@@ -53,7 +53,7 @@ export function EventLine({
             events={{ hover: true, focus: true, touch: true }}
           >
             <div tabIndex={0} aria-label={`${progress.label}, ${progress.range}`}>
-              <Text size="xs" c="wood.7" mt={4} mb={4}>{progress.label}</Text>
+              <Text size="xs" c="wood.7" my="xs">{progress.label}</Text>
               <Progress
                 value={progress.value}
                 size="xs"
@@ -98,7 +98,7 @@ export function EventLine({
           )}
           {event.location && (
             <Group gap="0">
-              <ThemeIcon variant="subtle" size="sm" ml="-6">
+              <ThemeIcon variant="subtle" size="sm" ml="-xs">
                 <MapPin size={14} />
               </ThemeIcon>
               <Text size="sm" c="dimmed">{event.location}</Text>
@@ -112,7 +112,7 @@ export function EventLine({
           </Text>
         </Stack>
       </div>
-      <Group className={classes.eventTags} gap={6} wrap="wrap">
+      <Group className={classes.eventTags} gap="xs" wrap="wrap">
         {categories.map((category) => (
           <Badge key={category} size="sm" variant="light" color="wood">
             {category}

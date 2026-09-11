@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-12 00:21 EEST — /root
+
+- Intended: replace remaining non-zero spacing literals with Mantine tokens, setting xs=4px and md=16px while preserving existing theme edits.
+- Areas: theme and EventLine spacing props.
+- Result: theme now defines xs=rem(4) and md=rem(16); progress-label spacing uses my="xs", tag gap uses xs and location-icon margin uses -xs. The latter two normalize 6px to 4px. Zero/auto values and image/icon dimensions remain unchanged; existing theme edits preserved.
+- Verification: production build and git diff --check passed. No new tests for spacing-only edits; existing bundle-size warning remains.
+- Follow-up: none.
+
 ## 2026-09-11 02:32 EEST — /root
 
 - Intended: split shared event-route CSS into matching component modules.
