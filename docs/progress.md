@@ -2,6 +2,38 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-13 01:18 EEST — /root
+
+- Intended: make production decisions a self-contained implementation handoff, including identities, isolation, abuse protection and acceptance checks.
+- Areas: docs/production.md.
+- Result: added deploy/runtime/nginx permissions, systemd baseline, host/CI security, implementation deliverables, unresolved inputs and target-host acceptance checks. Corrected migration example to use the new release before switching current.
+- Verification: documentation consistency review and git diff --check passed. No runtime, CI or VPS changes made.
+- Follow-up: infrastructure/tooling implementation belongs to the receiving agent; unresolved deployment inputs remain explicit.
+
+## 2026-09-12 03:48 EEST — /root
+
+- Intended: finalize versioned release delivery, FE/BE activation and uv cache/environment decisions.
+- Areas: docs/production.md.
+- Result: recorded explicit versions with automated immutable tags/releases, one FE/BE artifact, SSH delivery, atomic current symlink, shared uv cache and per-release virtualenvs; marked the flow decided but unimplemented.
+- Verification: documentation consistency review and git diff --check passed. No runtime changes or deployment performed.
+- Follow-up: implement release/deploy tooling separately; host identities/access and data delivery remain open.
+
+## 2026-09-12 03:30 EEST — /root
+
+- Intended: record API/static-only production and remove production jobs from deployment guidance.
+- Areas: docs/production.md.
+- Result: recorded API/static-only production; removed timer/worker deployment steps and runtime credentials; retained one-off release migrations with a separate credential.
+- Verification: reviewed remaining job/session references; git diff --check passed. Documentation only.
+- Follow-up: how events and covers reach production remains undecided.
+
+## 2026-09-12 02:07 EEST — /root
+
+- Intended: record confirmed go-live infrastructure decisions and propose a lightweight application redeploy flow.
+- Areas: docs/production.md.
+- Result: recorded GitHub Actions, single shared Linux VPS, separate Ansible and existing nginx/TLS; marked artifact/SSH release deployment as a proposal, with scoped restart, health checks and schema-aware rollback.
+- Verification: reviewed documentation for consistency; git diff --check passed. No runtime changes or deployment performed.
+- Follow-up: approve redeploy proposal before implementing workflow/script.
+
 ## 2026-09-12 01:24 EEST — /root
 
 - Intended: enforce a 10-second response-generation deadline on all API requests, including readiness.
