@@ -2,6 +2,14 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-13 22:19 EEST — /root
+
+- Intended: fix frontend CI failures caused by timezone-dependent test fixtures; pin test process to Europe/Vilnius without changing browser behavior.
+- Areas: web/package.json and event utility test documentation.
+- Result: reproduced the same six failures with TZ=UTC; test command now explicitly starts Vitest in Europe/Vilnius. Application timezone behavior unchanged.
+- Verification: all 21 frontend tests passed with UTC and America/New_York parent environments; frozen install unchanged; build and git diff --check passed. Existing bundle-size warning remains.
+- Follow-up: none planned.
+
 ## 2026-09-13 03:20 EEST — /root
 
 - Intended: adopt infra-contract.md as canonical; delegate deployment lifecycle to infrastructure pino-release, pass verified commit/checksum, remove duplicate server tooling and reconcile docs/tests.

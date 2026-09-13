@@ -12,6 +12,7 @@ import {
 import type { EventItem } from "./api";
 import { buildVirtualListItems } from "./routes/EventRoute/utils";
 
+// Browser-local fixtures assume Europe/Vilnius; the test script sets TZ before startup.
 describe("event utilities", () => {
   it("projects a long interval only into the visible days without copying the event", () => {
     const row = event({
