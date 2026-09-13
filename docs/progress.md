@@ -2,6 +2,30 @@
 
 Short decision log, newest first. Detailed command history lives in git.
 
+## 2026-09-13 03:20 EEST — /root
+
+- Intended: adopt infra-contract.md as canonical; delegate deployment lifecycle to infrastructure pino-release, pass verified commit/checksum, remove duplicate server tooling and reconcile docs/tests.
+- Areas: workflows, scripts, tests, production and timeout documentation.
+- Result: CI now verifies artifact checksum/manifest against the published tag's full commit and invokes canonical pino-release deploy as pino-deploy. Removed duplicate server deploy script, environment example, schema helper and associated lifecycle tests. Aligned archive ceilings and reduced production docs to the application-side runbook; canonical infra-contract.md unchanged.
+- Verification: 275 Python tests, Ruff, actionlint and git diff --check passed. Tested exact SSH invocation with mocked transport, commit mismatch rejection, and fresh archive verification/extraction/frozen runtime installation plus CLI startup help. No actual GitHub release or VPS deployment performed.
+- Follow-up: real VPS integration remains infrastructure acceptance work.
+
+## 2026-09-13 03:13 EEST — /root
+
+- Intended: reconcile deployment docs with Caddy and deliberately shared DB role; clarify API versus migration timeouts.
+- Areas: production contract, database-timeouts.md, deploy environment example.
+- Result: replaced nginx guidance with Caddy routing/proxy guidance; recorded accepted shared-role risk and API-only connection options. Clarified independent 120-second migration process limit and effective-session acceptance checks. No timeout behavior changed.
+- Verification: reviewed Caddy primary documentation, checked role/proxy references and git diff --check; bash syntax check passed for deployment environment example. No live DB settings verified.
+- Follow-up: verify real connection settings in infrastructure; migration command retains its separate 120-second deadline.
+
+## 2026-09-13 02:02 EEST — /root
+
+- Intended: implement repository CI, versioned release packaging and manual SSH deployment with safe activation/rollback; leave VPS provisioning to Ansible.
+- Areas: .github/workflows, scripts, tests and production runbook.
+- Result: added checks/release/deploy workflows with pinned actions and protected-environment integration; allowlisted versioned archives/checksums; non-root locked deployment, bounded commands, atomic activation and conservative rollback; documented exact GitHub/Ansible setup and recovery.
+- Verification: 281 Python and 21 frontend tests passed; frontend build, Ruff, bash syntax, actionlint and git diff --check passed. Built/extracted a real release, installed its frozen runtime in a fresh virtualenv and checked both CLI entrypoints. Existing Starlette deprecation and frontend bundle-size warnings remain. Deployment lifecycle tests use mocked host commands; no GitHub publication or real VPS deployment performed.
+- Follow-up: configure protected GitHub environment and provision/test the VPS integration separately.
+
 ## 2026-09-13 01:18 EEST — /root
 
 - Intended: make production decisions a self-contained implementation handoff, including identities, isolation, abuse protection and acceptance checks.

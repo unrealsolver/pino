@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published release tag, e.g. v0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pino-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch and verify published artifact
+        id: release
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ $VERSION =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ $(gh release view "$VERSION" --json isDraft --jq .isDraft) == false ]]
+          gh release download "$VERSION" --pattern "pino-$VERSION.tar.gz*" --dir artifact
+          read -r checksum filename < "artifact/pino-$VERSION.tar.gz.sha256"
+          [[ $checksum =~ ^[0-9a-f]{64}$ && $filename == "pino-$VERSION.tar.gz" ]]
+          commit=$(gh api "repos/$GH_REPO/commits/$VERSION" --jq .sha)
+          [[ $commit =~ ^[0-9a-f]{40}$ ]]
+          python3 scripts/release.py verify "artifact/pino-$VERSION.tar.gz" "$checksum" "$VERSION" "$commit"
+          printf 'checksum=%s\ncommit=%s\n' "$checksum" "$commit" >> "$GITHUB_OUTPUT"
+      - name: Upload and activate
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_CHECKSUM: ${{ steps.release.outputs.checksum }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: pino-deploy
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ $DEPLOY_HOST =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+          [[ $DEPLOY_USER =~ ^[a-z_][a-z0-9_-]*$ && $DEPLOY_PORT =~ ^[0-9]{1,5}$ ]]
+          key_dir=$(mktemp -d)
+          trap 'rm -f "$key_dir/key" "$key_dir/known_hosts"; rmdir "$key_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$key_dir/known_hosts"
+          chmod 600 "$key_dir/key" "$key_dir/known_hosts"
+          options=(-i "$key_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$key_dir/known_hosts" \
+            -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          incoming="/home/pino-deploy/incoming/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          ssh "${options[@]}" -p "$DEPLOY_PORT" "$target" "mkdir -p '$incoming'"
+          scp "${options[@]}" -P "$DEPLOY_PORT" "artifact/pino-$VERSION.tar.gz" "$target:$incoming/"
+          ssh "${options[@]}" -p "$DEPLOY_PORT" "$target" \
+            "pino-release deploy '$VERSION' '$incoming/pino-$VERSION.tar.gz' --sha256 '$RELEASE_CHECKSUM' --commit '$RELEASE_COMMIT'"
