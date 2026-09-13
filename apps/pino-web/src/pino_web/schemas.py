@@ -13,7 +13,6 @@ class EventItem(BaseModel):
     text: str = ""
     source: str
     url: str | None
-    summary: str | None
     location: str | None
     starts_at: datetime
     ends_at: datetime | None

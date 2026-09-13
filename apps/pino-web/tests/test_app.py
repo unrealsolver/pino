@@ -115,7 +115,6 @@ def test_event_item_serializes_refinement_with_utc_time(tmp_path: Path) -> None:
     assert item.occurrence_id.startswith(result[0].refinement.id)
     assert item.title == "Open synth jam"
     assert item.text == "A participatory synth event."
-    assert item.summary == "Open synth jam"
     assert item.matching_score == 0.8
     assert item.starts_at == datetime(2026, 6, 10, 15, 0, tzinfo=timezone.utc)
     assert item.relevant_from == datetime(2026, 6, 10, 15, 0, tzinfo=timezone.utc)

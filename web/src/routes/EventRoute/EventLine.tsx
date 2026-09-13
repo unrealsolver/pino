@@ -73,8 +73,8 @@ export function EventLine({
         ) : cover}
         <Stack gap={0} miw={0} mih={100}>
           <Group gap="xs" wrap="nowrap" align="start">
-            <Text className={classes.breakAnywhere} miw={0} fw={600} lineClamp={2} title={event.title}>
-              {event.summary}
+            <Text role="heading" aria-level={3} className={classes.breakAnywhere} miw={0} fw={600} lineClamp={2}>
+              {event.title}
             </Text>
             {event.url && (
               <ActionIcon
@@ -91,9 +91,9 @@ export function EventLine({
             )}
             <Text textWrap="nowrap" size="xs" c="wood.7">{event.source}</Text>
           </Group>
-          {event.title && (
+          {event.text && (
             <Text size="sm" c="dimmed" lineClamp={2}>
-              {event.title}
+              {event.text}
             </Text>
           )}
           {event.location && (

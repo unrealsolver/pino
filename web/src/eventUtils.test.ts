@@ -207,7 +207,6 @@ function event(overrides: Partial<EventItem> = {}): EventItem {
     title: "Event",
     source: "test",
     url: null,
-    summary: null,
     location: null,
     starts_at: "2026-06-10T10:00:00+03:00",
     ends_at: null,

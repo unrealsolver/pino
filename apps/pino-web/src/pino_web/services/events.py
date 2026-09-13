@@ -165,7 +165,6 @@ def _to_event_items(
             text=record.text,
             source=record.source,
             url=record.url,
-            summary=refinement.summary,
             location=refinement.location,
             starts_at=starts_at.astimezone(timezone.utc),
             ends_at=ends_at.astimezone(timezone.utc) if ends_at is not None else None,
