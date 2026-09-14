@@ -12,6 +12,19 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { EventRoute } from "./routes/EventRoute";
 import { theme } from "./theme";
 
+if (import.meta.env.PROD) {
+  void import("@plausible-analytics/tracker")
+    .then(({ init }) => {
+      init({
+        domain: "based.pino.lt",
+        endpoint: "https://analytics.based.lt/api/event"
+      });
+    })
+    .catch((error: unknown) => {
+      console.warn("Analytics initialization failed", error);
+    });
+}
+
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
