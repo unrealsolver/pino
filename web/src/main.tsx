@@ -16,7 +16,7 @@ if (import.meta.env.PROD) {
   void import("@plausible-analytics/tracker")
     .then(({ init }) => {
       init({
-        domain: "based.pino.lt",
+        domain: "pino.based.lt",
         endpoint: "https://analytics.based.lt/api/event"
       });
     })
