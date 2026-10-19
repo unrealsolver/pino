@@ -1,25 +1,8 @@
-import type { EventFilters } from "../../api";
-import {
-  defaultDateTo,
-  todayMorning,
-  type EventDay,
-  type EventOccurrence
-} from "../../eventUtils";
+import type { EventDay, EventOccurrence } from "../../eventUtils";
 
 export type VirtualListItem =
   | { key: string; type: "day"; day: EventDay }
   | { key: string; type: "event"; occurrence: EventOccurrence };
-
-export function createDefaultEventFilters(): EventFilters {
-  const dateFrom = todayMorning();
-  return {
-    categories: [],
-    minScore: 0,
-    query: "",
-    dateFrom,
-    dateTo: defaultDateTo(dateFrom)
-  };
-}
 
 export function buildVirtualListItems(
   days: EventDay[],

@@ -1,20 +1,35 @@
 import { Button, Group, MultiSelect, NumberInput, Paper, TextInput } from "@mantine/core";
 import { DateTimePicker } from "@mantine/dates";
-import type { UseFormReturnType } from "@mantine/form";
 import { Search } from "lucide-react";
+import { useMemo } from "react";
 
 import type { EventFilters } from "../../api";
-import { defaultDateTo, todayMorning } from "../../eventUtils";
-import { createDefaultEventFilters } from "./utils";
+import { MAX_EVENT_FILTER_QUERY_LENGTH } from "../../eventFilterUrl";
 
 export function EventFiltersForm({
   categories,
-  form
+  filters,
+  onCategoriesChange,
+  onScoreChange,
+  onQueryChange,
+  onDateFromChange,
+  onDateToChange,
+  onReset
 }: {
   categories: string[];
-  form: UseFormReturnType<EventFilters>;
+  filters: EventFilters;
+  onCategoriesChange: (categories: string[]) => void;
+  onScoreChange: (score: number) => void;
+  onQueryChange: (query: string) => void;
+  onDateFromChange: (value: Date | string | null) => void;
+  onDateToChange: (value: Date | string | null) => void;
+  onReset: () => void;
 }) {
-  const filters = form.values;
+  // Keep URL-provided names selectable even before the category metadata loads.
+  const categoryOptions = useMemo(
+    () => [...new Set([...categories, ...filters.categories])],
+    [categories, filters.categories]
+  );
 
   return (
     <Paper withBorder p="sm" bg="amber.0">
@@ -24,9 +39,9 @@ export function EventFiltersForm({
           miw="calc(var(--mantine-spacing-xl) * 8)"
           label="Tags"
           placeholder="Any category"
-          data={categories}
+          data={categoryOptions}
           value={filters.categories}
-          onChange={(categories) => form.setFieldValue("categories", categories)}
+          onChange={onCategoriesChange}
           searchable
           clearable
           comboboxProps={{ withinPortal: false }}
@@ -39,9 +54,7 @@ export function EventFiltersForm({
           step={0.1}
           decimalScale={2}
           value={filters.minScore}
-          onChange={(value) =>
-            form.setFieldValue("minScore", typeof value === "number" ? value : 0)
-          }
+          onChange={(value) => onScoreChange(typeof value === "number" ? value : 0)}
         />
         <TextInput
           flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
@@ -49,8 +62,9 @@ export function EventFiltersForm({
           label="Text"
           placeholder="Search title, summary, text"
           leftSection={<Search size={16} />}
+          maxLength={MAX_EVENT_FILTER_QUERY_LENGTH}
           value={filters.query}
-          onChange={(event) => form.setFieldValue("query", event.currentTarget.value)}
+          onChange={(event) => onQueryChange(event.currentTarget.value)}
         />
         <DateTimePicker
           flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
@@ -58,14 +72,7 @@ export function EventFiltersForm({
           label="From"
           valueFormat="YYYY-MM-DD HH:mm"
           value={filters.dateFrom}
-          onChange={(value) => {
-            const dateFrom = coercePickerDate(value) ?? todayMorning();
-            form.setValues({
-              ...form.values,
-              dateFrom,
-              dateTo: defaultDateTo(dateFrom)
-            });
-          }}
+          onChange={onDateFromChange}
         />
         <DateTimePicker
           flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
@@ -73,27 +80,12 @@ export function EventFiltersForm({
           label="To"
           valueFormat="YYYY-MM-DD HH:mm"
           value={filters.dateTo}
-          onChange={(value) =>
-            form.setFieldValue(
-              "dateTo",
-              coercePickerDate(value) ?? defaultDateTo(form.values.dateFrom)
-            )
-          }
+          onChange={onDateToChange}
         />
-        <Button variant="light" onClick={() => form.setValues(createDefaultEventFilters())}>
+        <Button variant="light" onClick={onReset}>
           Reset
         </Button>
       </Group>
     </Paper>
   );
-}
-
-function coercePickerDate(value: Date | string | null): Date | null {
-  if (value instanceof Date) {
-    return value;
-  }
-  if (typeof value === "string" && value) {
-    return new Date(value);
-  }
-  return null;
 }

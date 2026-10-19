@@ -26,8 +26,8 @@ const dateRangeFormatter = new Intl.DateTimeFormat(UI_LOCALE, {
   day: "2-digit"
 });
 
-export function todayMorning(): Date {
-  const value = new Date();
+export function todayMorning(reference: Date = new Date()): Date {
+  const value = new Date(reference);
   value.setHours(0, 0, 0, 0);
   return value;
 }

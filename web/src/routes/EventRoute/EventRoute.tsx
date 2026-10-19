@@ -1,23 +1,33 @@
 import { Alert, Button, Container, Group, Loader, Paper, Stack, Text } from "@mantine/core";
-import { useForm } from "@mantine/form";
 import { useLocalStorage } from "@mantine/hooks";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { eventQueryKey, fetchEvents, type EventFilters } from "../../api";
-import { defaultDateTo, groupEventsByDay } from "../../eventUtils";
+import {
+  eventFilterParamsNeedNormalization,
+  eventFiltersEqual,
+  eventFiltersToSearchParams,
+  hasEventFilterParams,
+  normalizeEventFilters,
+  parseEventFilterParams,
+  removeEventFilterParams
+} from "../../eventFilterUrl";
+import { defaultDateTo, groupEventsByDay, todayMorning } from "../../eventUtils";
 import { EventFiltersForm } from "./EventFiltersForm";
 import classes from "./EventRoute.module.css";
 import { EventHeader } from "./EventHeader";
 import { VirtualEventList } from "./VirtualEventList";
-import { buildListRevision, buildVirtualListItems, createDefaultEventFilters } from "./utils";
+import { buildListRevision, buildVirtualListItems } from "./utils";
 
 export function EventRoute() {
-  const initialFilters = useMemo(createDefaultEventFilters, []);
-  const filterForm = useForm<EventFilters>({
-    initialValues: initialFilters
-  });
-  const filters = filterForm.values;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  // The URL is the single authoritative filter state; controls read it directly.
+  const filters = useMemo(() => parseEventFilterParams(searchParams), [searchParams, location.key]);
+
   const [hiddenEventIdList, setHiddenEventIdList] = useLocalStorage<string[]>({
     key: "pino-web-hidden-event-ids",
     defaultValue: []
@@ -56,6 +66,45 @@ export function EventRoute() {
   const hasLoadedData = Boolean(eventsQuery.data);
   const isInitialLoading = eventsQuery.isPending && !eventsQuery.data;
 
+  function navigateToSearchParams(params: URLSearchParams, options: { replace?: boolean } = {}) {
+    const search = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+        hash: location.hash
+      },
+      { replace: options.replace ?? false }
+    );
+  }
+
+  function applyFilters(nextFilters: EventFilters, options: { replace?: boolean } = {}) {
+    const normalized = normalizeEventFilters(nextFilters);
+    if (eventFiltersEqual(filters, normalized)) {
+      canonicalizeFilters(normalized);
+      return;
+    }
+    navigateToSearchParams(eventFiltersToSearchParams(normalized, searchParams), options);
+  }
+
+  // Unchanged effective filters still replace the entry when owned keys need normalizing.
+  function canonicalizeFilters(current: EventFilters) {
+    if (!eventFilterParamsNeedNormalization(current, searchParams)) {
+      return;
+    }
+    navigateToSearchParams(eventFiltersToSearchParams(current, searchParams), { replace: true });
+  }
+
+  function resetFilters() {
+    const params = removeEventFilterParams(searchParams);
+    // Removing owned keys replaces the entry unless the effective filters truly change.
+    const replace = eventFiltersEqual(filters, parseEventFilterParams(params));
+    if (replace && !hasEventFilterParams(searchParams)) {
+      return;
+    }
+    navigateToSearchParams(params, { replace });
+  }
+
   function hideEvent(eventId: string) {
     setHiddenEventIdList((current) =>
       current.includes(eventId) ? current : [...current, eventId]
@@ -83,7 +132,22 @@ export function EventRoute() {
             onShowHiddenChange={setShowHidden}
           />
 
-          <EventFiltersForm categories={categories} form={filterForm} />
+          <EventFiltersForm
+            categories={categories}
+            filters={filters}
+            onCategoriesChange={(selected) => applyFilters({ ...filters, categories: selected })}
+            onScoreChange={(minScore) => applyFilters({ ...filters, minScore })}
+            onQueryChange={(query) => applyFilters({ ...filters, query }, { replace: true })}
+            onDateFromChange={(value) => {
+              const dateFrom = coercePickerDate(value) ?? todayMorning();
+              applyFilters({ ...filters, dateFrom, dateTo: defaultDateTo(dateFrom) });
+            }}
+            onDateToChange={(value) => {
+              const dateTo = coercePickerDate(value) ?? defaultDateTo(filters.dateFrom);
+              applyFilters({ ...filters, dateTo });
+            }}
+            onReset={resetFilters}
+          />
 
           {isInitialLoading && (
             <Group justify="center" py="xl">
@@ -116,10 +180,7 @@ export function EventRoute() {
                 <Button
                   variant="light"
                   onClick={() =>
-                    filterForm.setFieldValue(
-                      "dateTo",
-                      defaultDateTo(filterForm.values.dateTo ?? filterForm.values.dateFrom)
-                    )
+                    applyFilters({ ...filters, dateTo: defaultDateTo(filters.dateTo ?? filters.dateFrom) })
                   }
                 >
                   Next month
@@ -131,4 +192,15 @@ export function EventRoute() {
       </Container>
     </main>
   );
+}
+
+function coercePickerDate(value: Date | string | null): Date | null {
+  if (value instanceof Date) {
+    return value;
+  }
+  if (typeof value === "string" && value) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
 }
