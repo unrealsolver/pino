@@ -364,6 +364,7 @@ def test_event_repository_delegates_to_store_query_events() -> None:
         categories=["electronic_music"],
         min_score=0.4,
         text_query="jam",
+        city_id=None,
         limit=25,
     )
 
@@ -375,6 +376,7 @@ def test_event_repository_delegates_to_store_query_events() -> None:
             "categories": ["electronic_music"],
             "min_score": 0.4,
             "text_query": "jam",
+            "city_id": None,
             "limit": 25,
         }
     ]

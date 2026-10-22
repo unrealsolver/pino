@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo
 
+from pino_core.cities import City, resolve_city
 from pino_core.config import PinoConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Refinement
@@ -24,6 +25,7 @@ class EventFilters:
     min_score: float = 0.0
     query: str = ""
     limit: int = DEFAULT_EVENT_LIMIT
+    city: str | None = None
 
 
 class EventQueryError(ValueError):
@@ -47,11 +49,13 @@ class EventService:
         *,
         filters: EventFilters,
     ) -> EventListResponse:
+        selected_city = _selected_city(filters.city)
+        timezone_info = _city_timezone(selected_city) if selected_city else self.local_timezone
         try:
             window_start, window_end = _resolve_window(
                 filters.date_from,
                 filters.date_to,
-                self.local_timezone,
+                timezone_info,
             )
             # Leave room for timezone conversion and overnight recurrence expansion.
             if any(value.year in (1, 9999) for value in (window_start, window_end)):
@@ -71,6 +75,7 @@ class EventService:
             categories=selected_categories,
             min_score=filters.min_score,
             text_query=filters.query,
+            city_id=selected_city.id if selected_city is not None else None,
             limit=filters.limit,
         )
         events = [
@@ -78,7 +83,7 @@ class EventService:
             for result in results
             for item in _to_event_items(
                 result,
-                self.local_timezone,
+                timezone_info,
                 window_start=window_start,
                 window_end=window_end,
                 media_public_url=self.config.media.public_url,
@@ -86,10 +91,30 @@ class EventService:
         ]
         events.sort(key=lambda event: event.starts_at)
         return EventListResponse(
-            timezone=DEFAULT_SOURCE_TIMEZONE,
+            timezone=_timezone_name(timezone_info),
             categories=known_categories,
             events=events[: filters.limit],
         )
+
+
+def _selected_city(value: str | None) -> City | None:
+    if value is None:
+        return None
+    city = resolve_city(value)
+    if city is None:
+        raise EventQueryError(f"unknown city: {value}")
+    return city
+
+
+def _city_timezone(city: City) -> ZoneInfo:
+    return ZoneInfo(city.timezone)
+
+
+def _timezone_name(value: tzinfo) -> str:
+    key = getattr(value, "key", None)
+    if isinstance(key, str) and key:
+        return key
+    return value.tzname(None) or str(value)
 
 
 def _resolve_window(
@@ -166,6 +191,7 @@ def _to_event_items(
             source=record.source,
             url=record.url,
             location=refinement.location,
+            city_id=refinement.city_id,
             starts_at=starts_at.astimezone(timezone.utc),
             ends_at=ends_at.astimezone(timezone.utc) if ends_at is not None else None,
             relevant_from=refinement.relevant_from.astimezone(timezone.utc),

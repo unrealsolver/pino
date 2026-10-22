@@ -28,6 +28,10 @@ def list_events(
     ] = None,
     min_score: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
     q: Annotated[str, Query(max_length=200)] = "",
+    city: Annotated[
+        str | None,
+        Query(description="Supported city id. Omit for the unscoped feed."),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = DEFAULT_EVENT_LIMIT,
 ) -> EventListResponse:
     try:
@@ -37,6 +41,7 @@ def list_events(
             categories=category or [],
             min_score=min_score,
             query=q,
+            city=city,
             limit=limit,
         )
         return service.list_events(filters=filters)

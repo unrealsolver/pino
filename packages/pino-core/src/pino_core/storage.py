@@ -118,12 +118,14 @@ refinements_table = Table(
     Column("relevant_to", DateTime(timezone=True)),
     Column("schedule", JSON),
     Column("location", String),
+    Column("city_id", String),
     Column("category_scores", JSON, nullable=False),
     Column("embedding", JSON),
     Column("refiner", String, nullable=False),
     Column("refined_at", DateTime(timezone=True), nullable=False),
     Column("debug", JSON, nullable=False),
     UniqueConstraint("record_id", "item_index", name="uq_refinements_record_item"),
+    Index("ix_refinements_city_id", "city_id"),
 )
 
 source_cursors_table = Table(
@@ -414,6 +416,7 @@ class DatabaseStore:
         *,
         window_start: datetime,
         window_end: datetime,
+        city_id: str | None = None,
         scan_limit: int,
     ) -> Generator[tuple[Record, Refinement], None, None]:
         with Session(self.engine) as session:
@@ -438,6 +441,8 @@ class DatabaseStore:
                     ),
                 )
             )
+            if city_id is not None:
+                query = query.where(refinements_table.c.city_id == city_id)
             if self.engine.dialect.name == "postgresql":
                 timezones = list(
                     session.execute(
@@ -474,6 +479,7 @@ class DatabaseStore:
         categories: list[str] | None = None,
         min_score: float = 0.0,
         text_query: str = "",
+        city_id: str | None = None,
         limit: int = 200,
         scan_limit: int = _MAX_RELEVANT_SCAN,
     ) -> list[EventQueryResult]:
@@ -487,6 +493,7 @@ class DatabaseStore:
             self._iter_relevant_candidates(
                 window_start=window_start,
                 window_end=window_end,
+                city_id=city_id,
                 scan_limit=scan_limit,
             )
         ) as rows:

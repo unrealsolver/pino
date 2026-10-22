@@ -124,6 +124,7 @@ class Refinement(BaseModel):
     relevant_to: datetime | None = None
     schedule: dict[str, Any] | None = None
     location: str | None = None
+    city_id: str | None = None
     category_scores: dict[str, float] = Field(default_factory=dict)
     embedding: list[float] | None = None
     refiner: str

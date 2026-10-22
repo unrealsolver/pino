@@ -18,6 +18,7 @@ class EventRepository:
         min_score: float,
         text_query: str,
         limit: int,
+        city_id: str | None = None,
     ) -> list[EventQueryResult]:
         return self.store.query_events(
             window_start=window_start,
@@ -25,5 +26,6 @@ class EventRepository:
             categories=categories,
             min_score=min_score,
             text_query=text_query,
+            city_id=city_id,
             limit=limit,
         )

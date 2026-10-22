@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from pino_llm import LLMClient, LLMConfig, LLMMessage
 
+from pino_core.cities import list_cities, normalize_city_id
 from pino_core.config import RefinementConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.models import Record, Refinement
@@ -188,6 +189,7 @@ class RefinementService:
             summary=_optional_string(raw_item.get("summary")),
             schedule=_optional_schedule(raw_item.get("schedule")),
             location=_optional_string(raw_item.get("location")),
+            city_id=normalize_city_id(raw_item.get("city_id")),
             category_scores=_category_scores(raw_item.get("category_scores"), self.config),
             refiner=f"llm:{self.model}",
             debug={"raw": raw_item},
@@ -231,6 +233,10 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
     categories = "\n".join(
         f"- {category.name}: {category.description}" for category in config.categories
     )
+    supported_cities = "\n".join(
+        f"- {city.id}: {city.name} ({city.country_code}, {city.timezone})"
+        for city in list_cities()
+    )
     return (
         "You refine captured source records into reusable normalized items.\n"
         "Do not personalize output for one user's goals. Evaluate multilingual text.\n"
@@ -262,6 +268,12 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         "Use only configured category keys with positive evidence and scores from 0 to 1; omit zero-score categories.\n\n"
         "Categories:\n"
         f"{categories}\n\n"
+        "City assignment:\n"
+        "- Select city_id only from the supported cities list when the event itself is clearly located in that city.\n"
+        "- Input payload location_scopes is the configured source geography context. Use it as guidance, not a fixed assignment; you may choose a different supported city when the event warrants it.\n"
+        "- Use null when no supported city clearly applies, including online, country-wide, worldwide, or unknown locations. Never invent a city id.\n"
+        "Supported cities:\n"
+        f"{supported_cities}\n\n"
         "Normalized item JSON object shape:\n"
         "{\n"
         '  "content_kind": "event|advertisement|announcement|non_event|unknown",\n'
@@ -281,6 +293,7 @@ def render_refinement_system_prompt(config: RefinementConfig) -> str:
         '    "rules": [{"weekdays": ["monday|tuesday|wednesday|thursday|friday|saturday|sunday"], "start": "HH:MM", "end": "HH:MM or null"}]\n'
         "  },\n"
         '  "location": "venue or useful human-readable place, or null",\n'
+        '  "city_id": "supported city id or null",\n'
         '  "category_scores": {"category_name": 0.0}\n'
         "}\n"
         "Error JSON object shape:\n"

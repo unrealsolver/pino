@@ -14,6 +14,7 @@ class EventItem(BaseModel):
     source: str
     url: str | None
     location: str | None
+    city_id: str | None = None
     starts_at: datetime
     ends_at: datetime | None
     relevant_from: datetime
@@ -26,6 +27,18 @@ class EventListResponse(BaseModel):
     timezone: str
     categories: list[str]
     events: list[EventItem]
+
+
+class CityItem(BaseModel):
+    id: str
+    country_code: str
+    slug: str
+    name: str
+    timezone: str
+
+
+class CityListResponse(BaseModel):
+    cities: list[CityItem]
 
 
 class ErrorResponse(BaseModel):

@@ -5,7 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import pytest
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import IntegrityError
 
 from pino_llm import LLMUsage
 
@@ -156,6 +158,50 @@ def test_postgresql_relevant_query_uses_weekly_candidate_filter(monkeypatch) -> 
     assert "weekly_pattern && CAST(%(schedule_query_pattern_0)s AS INT4MULTIRANGE)" in sql
     assert compiled.params["schedule_query_timezone_0"] == "Europe/Vilnius"
     assert compiled.params["schedule_query_pattern_0"] == "{[0,31),[10050,10080)}"
+
+
+def test_postgresql_event_query_compiles_city_filter(monkeypatch) -> None:
+    executed: list[object] = []
+
+    class TimezoneResult:
+        def scalars(self) -> TimezoneResult:
+            return self
+
+        def __iter__(self):
+            return iter(["Europe/Vilnius"])
+
+    class FakeSession:
+        def __init__(self, engine: object) -> None:
+            self.engine = engine
+
+        def __enter__(self) -> FakeSession:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, statement: object):
+            executed.append(statement)
+            return TimezoneResult() if len(executed) == 1 else []
+
+    monkeypatch.setattr("pino_core.storage.Session", FakeSession)
+    store = object.__new__(DatabaseStore)
+    store.engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    timezone_info = ZoneInfo("Europe/Vilnius")
+
+    rows = store.query_events(
+        window_start=datetime(2026, 6, 7, 0, 0, tzinfo=timezone_info),
+        window_end=datetime(2026, 6, 8, 0, 0, tzinfo=timezone_info),
+        city_id="lt/vilnius",
+        limit=1,
+    )
+
+    assert rows == []
+    compiled = executed[1].compile(dialect=postgresql.dialect())
+    sql = str(compiled)
+    assert "refinements.city_id" in sql
+    assert "lt/vilnius" in compiled.params.values()
+
 
 
 def test_exact_schedule_filter_fills_pages_after_many_misses(monkeypatch) -> None:
@@ -623,3 +669,127 @@ def test_source_cursor_round_trip(tmp_path: Path) -> None:
 
     store.set_source_cursor("telegram", "43")
     assert store.get_source_cursor("telegram") == "43"
+
+
+def test_refinement_city_round_trip_change_and_clear(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="A", text="A"))
+
+    store.replace_refinements(
+        inserted.record.id,
+        [Refinement(record_id=inserted.record.id, content_kind="event", city_id="lt/vilnius", refiner="test")],
+    )
+    assert store.list_refinements(inserted.record.id)[0].city_id == "lt/vilnius"
+
+    store.replace_refinements(
+        inserted.record.id,
+        [Refinement(record_id=inserted.record.id, content_kind="event", city_id=None, refiner="test")],
+    )
+    assert store.list_refinements(inserted.record.id)[0].city_id is None
+
+    store.replace_refinements(
+        inserted.record.id,
+        [Refinement(record_id=inserted.record.id, content_kind="event", city_id="lt/vilnius", refiner="test")],
+    )
+    store.replace_refinements(
+        inserted.record.id,
+        [Refinement(record_id=inserted.record.id, content_kind="event", city_id="fixture/other", refiner="test")],
+    )
+    assert store.list_refinements(inserted.record.id)[0].city_id == "fixture/other"
+
+
+def test_refinement_replacement_is_atomic_when_city_rows_fail(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", title="A", text="A"))
+    store.replace_refinements(
+        inserted.record.id,
+        [
+            Refinement(
+                record_id=inserted.record.id,
+                content_kind="event",
+                summary="Original",
+                city_id="lt/vilnius",
+                refiner="test",
+            )
+        ],
+    )
+
+    with pytest.raises(IntegrityError):
+        store.replace_refinements(
+            inserted.record.id,
+            [
+                Refinement(
+                    record_id=inserted.record.id,
+                    item_index=0,
+                    content_kind="event",
+                    summary="Replacement",
+                    city_id="fixture/other",
+                    refiner="test",
+                ),
+                Refinement(
+                    record_id=inserted.record.id,
+                    item_index=0,
+                    content_kind="event",
+                    summary="Duplicate",
+                    city_id="fixture/other",
+                    refiner="test",
+                ),
+            ],
+        )
+
+    refinement = store.list_refinements(inserted.record.id)[0]
+    assert refinement.summary == "Original"
+    assert refinement.city_id == "lt/vilnius"
+
+
+def test_query_events_filters_city_before_scan_limit(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    other = store.add_record(Record(kind="event", source="test", title="Other", text="Other"))
+    selected = store.add_record(Record(kind="event", source="test", title="Selected", text="Selected"))
+    store.replace_refinements(
+        other.record.id,
+        [
+            Refinement(
+                record_id=other.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 6, 10, 9, 0, tzinfo=timezone.utc),
+                city_id="fixture/other",
+                refiner="test",
+            )
+        ],
+    )
+    store.replace_refinements(
+        selected.record.id,
+        [
+            Refinement(
+                record_id=selected.record.id,
+                content_kind="event",
+                relevant_from=datetime(2026, 6, 10, 10, 0, tzinfo=timezone.utc),
+                city_id="lt/vilnius",
+                refiner="test",
+            )
+        ],
+    )
+    window_start = datetime(2026, 6, 10, 0, 0, tzinfo=timezone.utc)
+    window_end = datetime(2026, 6, 11, 0, 0, tzinfo=timezone.utc)
+
+    unscoped = store.query_events(
+        window_start=window_start,
+        window_end=window_end,
+        limit=1,
+        scan_limit=1,
+    )
+    scoped = store.query_events(
+        window_start=window_start,
+        window_end=window_end,
+        city_id="lt/vilnius",
+        limit=1,
+        scan_limit=1,
+    )
+
+    assert [row.record.id for row in unscoped] == [other.record.id]
+    assert [row.record.id for row in scoped] == [selected.record.id]
+    assert scoped[0].refinement.city_id == "lt/vilnius"

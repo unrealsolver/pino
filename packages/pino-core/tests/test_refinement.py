@@ -2,8 +2,11 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 from pino_llm import LLMMessage
 
+from pino_core import cities as cities_module
+from pino_core.cities import City
 from pino_core.config import RefinementConfig
 from pino_core.models import Record
 from pino_core.quality import QCFlag, QCReport
@@ -533,3 +536,142 @@ def test_refinement_service_emits_progress_events(tmp_path: Path) -> None:
     assert events[1].record.title == "Synth jam"
     assert events[2].refinements is not None
     assert len(events[2].refinements) == 1
+
+
+def test_refinement_service_normalizes_supported_city_and_preserves_raw_candidate(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Vilnius jam", text="Vilnius jam")
+    )
+    client = StaticClient(
+        '{"content_kind": "event", "city_id": "  LT/Vilnius  ", "category_scores": {}}'
+    )
+
+    RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+
+    refinement = store.list_refinements(inserted.record.id)[0]
+    assert refinement.city_id == "lt/vilnius"
+    assert refinement.debug["raw"]["city_id"] == "  LT/Vilnius  "
+
+
+def test_refinement_service_keeps_missing_city_as_null(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="No city", text="No city")
+    )
+    client = StaticClient('{"content_kind": "event", "category_scores": {}}')
+
+    RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+
+    assert store.list_refinements(inserted.record.id)[0].city_id is None
+
+
+@pytest.mark.parametrize(
+    "raw_city",
+    [
+        "null",
+        '""',
+        '"unknown"',
+        '"vilnius"',
+        '"lt/vilnius/extra"',
+        "123",
+        '["lt/vilnius"]',
+        '{"id": "lt/vilnius"}',
+    ],
+)
+def test_refinement_invalid_city_candidates_become_null(
+    tmp_path: Path,
+    raw_city: str,
+) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(kind="event", source="test", title="Invalid city", text="Invalid city")
+    )
+    client = StaticClient(
+        f'{{"content_kind": "event", "city_id": {raw_city}, "category_scores": {{}}}}'
+    )
+
+    RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+
+    refinement = store.list_refinements(inserted.record.id)[0]
+    assert refinement.city_id is None
+    assert refinement.debug["raw"]["city_id"] == json.loads(raw_city)
+
+
+def test_refinement_prompt_includes_city_registry_and_location_scope_context() -> None:
+    prompt = render_refinement_system_prompt(RefinementConfig())
+
+    assert "Supported cities:" in prompt
+    assert "- lt/vilnius: Vilnius (lt, Europe/Vilnius)" in prompt
+    assert "location_scopes is the configured source geography context" in prompt
+    assert "not a fixed assignment" in prompt
+    assert '"city_id": "supported city id or null"' in prompt
+
+
+def test_refinement_llm_can_override_source_location_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cities_module,
+        "CITY_REGISTRY",
+        {
+            **cities_module.CITY_REGISTRY,
+            "lv/riga": City(
+                id="lv/riga",
+                country_code="lv",
+                slug="riga",
+                name="Riga",
+                timezone="Europe/Riga",
+            ),
+        },
+    )
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Riga concert",
+            text="Concert in Riga.",
+            payload={"location_scopes": ["LT/vilnius"]},
+        )
+    )
+    client = StaticClient(
+        '{"content_kind": "event", "city_id": "lv/riga", "category_scores": {}}'
+    )
+
+    RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+
+    assert store.list_refinements(inserted.record.id)[0].city_id == "lv/riga"
+    prompt = client.messages[0][0].content
+    assert "- lv/riga: Riga (lv, Europe/Riga)" in prompt
+    assert client.messages[0][1].content.count('"location_scopes"') == 1
+
+
+def test_refinement_rejected_city_does_not_fall_back_to_source_default(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            title="Kaunas event",
+            text="Unsupported city candidate.",
+            payload={"location_scopes": ["LT/vilnius"]},
+        )
+    )
+    client = StaticClient(
+        '{"content_kind": "event", "city_id": "LT/Kaunas", "category_scores": {}}'
+    )
+
+    RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+
+    refinement = store.list_refinements(inserted.record.id)[0]
+    assert refinement.city_id is None
+    assert refinement.debug["raw"]["city_id"] == "LT/Kaunas"

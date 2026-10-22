@@ -74,7 +74,7 @@ def test_upgrade_bootstraps_current_sqlite_schema(tmp_path: Path) -> None:
         assert actual_columns == set(table.columns.keys())
     with engine.begin() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "0002"
+    assert revision == "0003"
     assert "refinement_schedule_index" not in inspector.get_table_names()
 
 
@@ -137,6 +137,8 @@ def test_postgresql_baseline_contains_schedule_index(capsys) -> None:
     assert "add column published_at" in sql
     assert "payload ->> 'posted_at_utc'" in sql
     assert "create index ix_records_published_at" in sql
+    assert "add column city_id" in sql
+    assert "create index ix_refinements_city_id" in sql
 
 
 def test_publication_migration_backfills_sqlite_payload(tmp_path: Path) -> None:
@@ -165,3 +167,66 @@ def test_publication_migration_backfills_sqlite_payload(tmp_path: Path) -> None:
             text("SELECT published_at FROM records WHERE id = 'record-1'")
         ).scalar_one()
     assert published_at == "2026-08-17T09:30:00+00:00"
+
+
+def test_city_migration_preserves_refinements_created_at_revision_0002(tmp_path: Path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'pino.sqlite'}"
+    config = alembic_config(database_url)
+    engine = create_engine(database_url, future=True)
+    config.attributes["connection"] = engine
+    command.upgrade(config, "0002")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO refinements (
+                    id, record_id, item_index, schema_version, taxonomy_version,
+                    content_kind, summary, relevant_from, relevant_to, schedule,
+                    location, category_scores, embedding, refiner, refined_at, debug
+                ) VALUES (
+                    'refinement-1', 'record-1', 0, 1, 1,
+                    'event', 'Keep my summary', '2026-06-10 15:00:00', '2026-06-10 17:00:00', NULL,
+                    'Old venue', '{"metal_music": 0.75}', NULL, 'test', '2026-06-09 12:00:00',
+                    '{"raw": {"summary": "Keep my summary"}}'
+                )
+                """
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT city_id, summary, location, category_scores, debug
+                FROM refinements WHERE id = 'refinement-1'
+                """
+            )
+        ).one()
+    assert row.city_id is None
+    assert row.summary == "Keep my summary"
+    assert row.location == "Old venue"
+    assert row.category_scores == '{"metal_music": 0.75}'
+    assert row.debug == '{"raw": {"summary": "Keep my summary"}}'
+    assert "ix_refinements_city_id" in {
+        index["name"] for index in inspect(engine).get_indexes("refinements")
+    }
+
+
+def test_fresh_schema_has_indexed_nullable_refinement_city(tmp_path: Path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'pino.sqlite'}"
+
+    upgrade_database(database_url)
+
+    engine = create_engine(database_url, future=True)
+    inspector = inspect(engine)
+    city_column = next(
+        column
+        for column in inspector.get_columns("refinements")
+        if column["name"] == "city_id"
+    )
+    assert city_column["nullable"] is True
+    assert "ix_refinements_city_id" in {
+        index["name"] for index in inspector.get_indexes("refinements")
+    }

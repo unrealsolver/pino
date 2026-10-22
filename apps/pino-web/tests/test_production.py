@@ -111,6 +111,9 @@ def test_deadline_sends_response_before_blocked_sync_handler_finishes(tmp_path, 
         ({"date_from": "0001-01-01T00:00:00Z", "date_to": "0001-01-02T00:00:00Z"}, 400),
         ({"date_from": "2026-01-02T00:00:00Z", "date_to": "2026-01-01T00:00:00Z"}, 400),
         ({"date_from": "2026-01-01T00:00:00Z", "date_to": "2027-01-06T00:00:01Z"}, 400),
+        ({"city": "unknown"}, 400),
+        ({"city": ""}, 400),
+        ({"city": "lt/kaunas"}, 400),
     ],
 )
 def test_invalid_queries_never_reach_database(tmp_path, monkeypatch, params, status):
