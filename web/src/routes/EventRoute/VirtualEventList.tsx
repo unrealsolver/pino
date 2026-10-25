@@ -9,11 +9,13 @@ import type { VirtualListItem } from "./utils";
 
 export function VirtualEventList({
   items,
+  timeZone,
   hiddenEventIds,
   onHideEvent,
   onShowEvent
 }: {
   items: VirtualListItem[];
+  timeZone: string;
   hiddenEventIds: Set<string>;
   onHideEvent: (eventId: string) => void;
   onShowEvent: (eventId: string) => void;
@@ -74,6 +76,7 @@ export function VirtualEventList({
             ) : (
               <EventLine
                 occurrence={item.occurrence}
+                timeZone={timeZone}
                 isHidden={hiddenEventIds.has(item.occurrence.event.refinement_id)}
                 onToggleHidden={() =>
                   hiddenEventIds.has(item.occurrence.event.refinement_id)

@@ -1,10 +1,10 @@
 import { Alert, Button, Container, Group, Loader, Paper, Stack, Text } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { eventQueryKey, fetchEvents, type EventFilters } from "../../api";
+import { eventQueryKey, fetchEvents, type City, type EventFilters } from "../../api";
 import {
   eventFilterParamsNeedNormalization,
   eventFiltersEqual,
@@ -15,18 +15,30 @@ import {
   removeEventFilterParams
 } from "../../eventFilterUrl";
 import { defaultDateTo, groupEventsByDay, todayMorning } from "../../eventUtils";
+import { pickerValueToInstant, type PickerValueResult } from "../../timezone";
 import { EventFiltersForm } from "./EventFiltersForm";
 import classes from "./EventRoute.module.css";
 import { EventHeader } from "./EventHeader";
 import { VirtualEventList } from "./VirtualEventList";
 import { buildListRevision, buildVirtualListItems } from "./utils";
 
-export function EventRoute() {
+type DateFieldErrors = { from?: string; to?: string };
+
+export function EventRoute({ city }: { city: City }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const timeZone = city.timezone;
   // The URL is the single authoritative filter state; controls read it directly.
-  const filters = useMemo(() => parseEventFilterParams(searchParams), [searchParams, location.key]);
+  const filters = useMemo(
+    () => parseEventFilterParams(searchParams, new Date(), timeZone),
+    [searchParams, location.key, timeZone]
+  );
+  const [dateErrors, setDateErrors] = useState<DateFieldErrors>({});
+
+  useEffect(() => {
+    setDateErrors({});
+  }, [location.key]);
 
   const [hiddenEventIdList, setHiddenEventIdList] = useLocalStorage<string[]>({
     key: "pino-web-hidden-event-ids",
@@ -37,19 +49,28 @@ export function EventRoute() {
     defaultValue: false
   });
   const eventsQuery = useQuery({
-    queryKey: eventQueryKey(filters),
-    queryFn: ({ signal }) => fetchEvents(filters, { signal }),
-    placeholderData: keepPreviousData
+    queryKey: eventQueryKey(city.id, filters),
+    queryFn: ({ signal }) => fetchEvents(city.id, filters, { signal }),
+    // Only keep previous results for filter edits in the same city; switching
+    // cities must never show the previous city's placeholder events.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === city.id ? previousData : undefined
   });
 
   const categories = eventsQuery.data?.categories ?? [];
   const calendarWindowEnd = useMemo(
-    () => filters.dateTo ?? defaultDateTo(filters.dateFrom),
-    [filters.dateFrom, filters.dateTo]
+    () => filters.dateTo ?? defaultDateTo(filters.dateFrom, timeZone),
+    [filters.dateFrom, filters.dateTo, timeZone]
   );
   const days = useMemo(
-    () => groupEventsByDay(eventsQuery.data?.events ?? [], filters.dateFrom, calendarWindowEnd),
-    [calendarWindowEnd, eventsQuery.data?.events, filters.dateFrom]
+    () =>
+      groupEventsByDay(
+        eventsQuery.data?.events ?? [],
+        filters.dateFrom,
+        calendarWindowEnd,
+        timeZone
+      ),
+    [calendarWindowEnd, eventsQuery.data?.events, filters.dateFrom, timeZone]
   );
   const hiddenEventIds = useMemo(() => new Set(hiddenEventIdList), [hiddenEventIdList]);
   const listItems = useMemo(
@@ -79,7 +100,7 @@ export function EventRoute() {
   }
 
   function applyFilters(nextFilters: EventFilters, options: { replace?: boolean } = {}) {
-    const normalized = normalizeEventFilters(nextFilters);
+    const normalized = normalizeEventFilters(nextFilters, timeZone);
     if (eventFiltersEqual(filters, normalized)) {
       canonicalizeFilters(normalized);
       return;
@@ -96,13 +117,66 @@ export function EventRoute() {
   }
 
   function resetFilters() {
+    setDateErrors({});
     const params = removeEventFilterParams(searchParams);
     // Removing owned keys replaces the entry unless the effective filters truly change.
-    const replace = eventFiltersEqual(filters, parseEventFilterParams(params));
+    const replace = eventFiltersEqual(
+      filters,
+      parseEventFilterParams(params, new Date(), timeZone)
+    );
     if (replace && !hasEventFilterParams(searchParams)) {
       return;
     }
     navigateToSearchParams(params, { replace });
+  }
+
+  function dateErrorMessage(result: PickerValueResult): string | null {
+    if (result.error === "nonexistent") {
+      return `That time does not exist in ${city.name} on that date. Choose another time.`;
+    }
+    if (result.error === "invalid") {
+      return "Choose a valid date and time.";
+    }
+    return null;
+  }
+
+  function changeDateFrom(value: Date | string | null) {
+    const result = pickerValueToInstant(value, filters.dateFrom, timeZone);
+    const error = dateErrorMessage(result);
+    setDateErrors((current) => ({ ...current, from: error ?? undefined }));
+    if (error || !result.instant) {
+      if (!result.instant && !error) {
+        const dateFrom = todayMorning(undefined, timeZone);
+        applyFilters({ ...filters, dateFrom, dateTo: defaultDateTo(dateFrom, timeZone) });
+      }
+      return;
+    }
+    // Re-emitting the unchanged displayed wall time is a true no-op, so it must
+    // not reset a separately edited To value.
+    if (result.instant.getTime() === filters.dateFrom.getTime()) {
+      canonicalizeFilters(filters);
+      return;
+    }
+    applyFilters({
+      ...filters,
+      dateFrom: result.instant,
+      dateTo: defaultDateTo(result.instant, timeZone)
+    });
+  }
+
+  function changeDateTo(value: Date | string | null) {
+    const result = pickerValueToInstant(value, filters.dateTo, timeZone);
+    const error = dateErrorMessage(result);
+    setDateErrors((current) => ({ ...current, to: error ?? undefined }));
+    if (error) {
+      return;
+    }
+    const dateTo = result.instant ?? defaultDateTo(filters.dateFrom, timeZone);
+    if (filters.dateTo && dateTo.getTime() === filters.dateTo.getTime()) {
+      canonicalizeFilters(filters);
+      return;
+    }
+    applyFilters({ ...filters, dateTo });
   }
 
   function hideEvent(eventId: string) {
@@ -122,6 +196,7 @@ export function EventRoute() {
       <Container size="xl" px="lg" py="lg">
         <Stack gap="md">
           <EventHeader
+            cityName={city.name}
             hasLoadedData={hasLoadedData}
             isFetching={eventsQuery.isFetching}
             showHidden={showHidden}
@@ -135,17 +210,14 @@ export function EventRoute() {
           <EventFiltersForm
             categories={categories}
             filters={filters}
+            timeZone={timeZone}
+            dateFromError={dateErrors.from}
+            dateToError={dateErrors.to}
             onCategoriesChange={(selected) => applyFilters({ ...filters, categories: selected })}
             onScoreChange={(minScore) => applyFilters({ ...filters, minScore })}
             onQueryChange={(query) => applyFilters({ ...filters, query }, { replace: true })}
-            onDateFromChange={(value) => {
-              const dateFrom = coercePickerDate(value) ?? todayMorning();
-              applyFilters({ ...filters, dateFrom, dateTo: defaultDateTo(dateFrom) });
-            }}
-            onDateToChange={(value) => {
-              const dateTo = coercePickerDate(value) ?? defaultDateTo(filters.dateFrom);
-              applyFilters({ ...filters, dateTo });
-            }}
+            onDateFromChange={changeDateFrom}
+            onDateToChange={changeDateTo}
             onReset={resetFilters}
           />
 
@@ -172,6 +244,7 @@ export function EventRoute() {
               <VirtualEventList
                 key={listRevision}
                 items={listItems}
+                timeZone={timeZone}
                 hiddenEventIds={hiddenEventIds}
                 onHideEvent={hideEvent}
                 onShowEvent={showEvent}
@@ -180,7 +253,10 @@ export function EventRoute() {
                 <Button
                   variant="light"
                   onClick={() =>
-                    applyFilters({ ...filters, dateTo: defaultDateTo(filters.dateTo ?? filters.dateFrom) })
+                    applyFilters({
+                      ...filters,
+                      dateTo: defaultDateTo(filters.dateTo ?? filters.dateFrom, timeZone)
+                    })
                   }
                 >
                   Next month
@@ -192,15 +268,4 @@ export function EventRoute() {
       </Container>
     </main>
   );
-}
-
-function coercePickerDate(value: Date | string | null): Date | null {
-  if (value instanceof Date) {
-    return value;
-  }
-  if (typeof value === "string" && value) {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  return null;
 }

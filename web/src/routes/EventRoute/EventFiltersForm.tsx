@@ -1,14 +1,18 @@
-import { Button, Group, MultiSelect, NumberInput, Paper, TextInput } from "@mantine/core";
-import { DateTimePicker } from "@mantine/dates";
+import { Box, Button, Group, MultiSelect, NumberInput, Paper, TextInput } from "@mantine/core";
 import { Search } from "lucide-react";
 import { useMemo } from "react";
 
 import type { EventFilters } from "../../api";
 import { MAX_EVENT_FILTER_QUERY_LENGTH } from "../../eventFilterUrl";
+import { formatPickerValue } from "../../timezone";
+import { CityDateTimePicker } from "./CityDateTimePicker";
 
 export function EventFiltersForm({
   categories,
   filters,
+  timeZone,
+  dateFromError,
+  dateToError,
   onCategoriesChange,
   onScoreChange,
   onQueryChange,
@@ -18,6 +22,9 @@ export function EventFiltersForm({
 }: {
   categories: string[];
   filters: EventFilters;
+  timeZone: string;
+  dateFromError?: string;
+  dateToError?: string;
   onCategoriesChange: (categories: string[]) => void;
   onScoreChange: (score: number) => void;
   onQueryChange: (query: string) => void;
@@ -66,22 +73,22 @@ export function EventFiltersForm({
           value={filters.query}
           onChange={(event) => onQueryChange(event.currentTarget.value)}
         />
-        <DateTimePicker
-          flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
-          miw="calc(var(--mantine-spacing-xl) * 7)"
-          label="From"
-          valueFormat="YYYY-MM-DD HH:mm"
-          value={filters.dateFrom}
-          onChange={onDateFromChange}
-        />
-        <DateTimePicker
-          flex="1 1 calc(var(--mantine-spacing-xl) * 6)"
-          miw="calc(var(--mantine-spacing-xl) * 7)"
-          label="To"
-          valueFormat="YYYY-MM-DD HH:mm"
-          value={filters.dateTo}
-          onChange={onDateToChange}
-        />
+        <Box flex="1 1 calc(var(--mantine-spacing-xl) * 6)" miw="calc(var(--mantine-spacing-xl) * 7)">
+          <CityDateTimePicker
+            label="From"
+            value={formatPickerValue(filters.dateFrom, timeZone)}
+            error={dateFromError}
+            onChange={onDateFromChange}
+          />
+        </Box>
+        <Box flex="1 1 calc(var(--mantine-spacing-xl) * 6)" miw="calc(var(--mantine-spacing-xl) * 7)">
+          <CityDateTimePicker
+            label="To"
+            value={filters.dateTo ? formatPickerValue(filters.dateTo, timeZone) : null}
+            error={dateToError}
+            onChange={onDateToChange}
+          />
+        </Box>
         <Button variant="light" onClick={onReset}>
           Reset
         </Button>

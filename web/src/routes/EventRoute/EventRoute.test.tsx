@@ -7,10 +7,18 @@ import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterProvider, createMemoryRouter, useLocation } from "react-router-dom";
 
-import type { EventItem } from "../../api";
+import type { City, EventItem } from "../../api";
 import { addDays, defaultDateTo, todayMorning } from "../../eventUtils";
 import { theme } from "../../theme";
 import { EventRoute } from "./EventRoute";
+
+const CITY: City = {
+  id: "lt/vilnius",
+  country_code: "lt",
+  slug: "vilnius",
+  name: "Vilnius",
+  timezone: "Europe/Vilnius"
+};
 
 vi.mock("./VirtualEventList", () => ({
   VirtualEventList: ({ items }: { items: Array<{ key: string }> }) => (
@@ -358,7 +366,7 @@ function renderRoute(initialEntries: string[], initialIndex = initialEntries.len
         path: "/event/",
         element: (
           <>
-            <EventRoute />
+            <EventRoute city={CITY} />
             <NavigationProbe />
           </>
         )

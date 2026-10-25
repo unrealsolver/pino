@@ -7,6 +7,7 @@ export type EventItem = {
   source: string;
   url: string | null;
   location: string | null;
+  city_id?: string | null;
   starts_at: string;
   ends_at: string | null;
   relevant_from: string;
@@ -19,6 +20,18 @@ export type EventListResponse = {
   timezone: string;
   categories: string[];
   events: EventItem[];
+};
+
+export type City = {
+  id: string;
+  country_code: string;
+  slug: string;
+  name: string;
+  timezone: string;
+};
+
+export type CityListResponse = {
+  cities: City[];
 };
 
 export type EventFilters = {
@@ -37,7 +50,9 @@ export type SerializedEventFilters = {
   dateTo: string | null;
 };
 
-export type EventQueryKey = ["events", SerializedEventFilters];
+export type EventQueryKey = ["events", string, SerializedEventFilters];
+
+export const CITIES_QUERY_KEY = ["cities"] as const;
 
 export function serializeEventFilters(filters: EventFilters): SerializedEventFilters {
   return {
@@ -49,16 +64,37 @@ export function serializeEventFilters(filters: EventFilters): SerializedEventFil
   };
 }
 
-export function eventQueryKey(filters: EventFilters): EventQueryKey {
-  return ["events", serializeEventFilters(filters)];
+/** The canonical city id is part of the key; short and qualified routes share it. */
+export function eventQueryKey(cityId: string, filters: EventFilters): EventQueryKey {
+  return ["events", cityId, serializeEventFilters(filters)];
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(body?.detail || `Request failed with ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+export async function fetchCities(
+  options: { signal?: AbortSignal } = {}
+): Promise<CityListResponse> {
+  const response = await fetch("/api/cities", {
+    headers: { Accept: "application/json" },
+    signal: options.signal
+  });
+  return readJson<CityListResponse>(response);
 }
 
 export async function fetchEvents(
+  cityId: string,
   filters: EventFilters,
   options: { signal?: AbortSignal } = {}
 ): Promise<EventListResponse> {
   const serializedFilters = serializeEventFilters(filters);
   const params = new URLSearchParams();
+  params.set("city", cityId);
   params.set("date_from", serializedFilters.dateFrom);
   if (serializedFilters.dateTo) {
     params.set("date_to", serializedFilters.dateTo);
@@ -78,9 +114,5 @@ export async function fetchEvents(
     headers: { Accept: "application/json" },
     signal: options.signal
   });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail || `Request failed with ${response.status}`);
-  }
-  return (await response.json()) as EventListResponse;
+  return readJson<EventListResponse>(response);
 }

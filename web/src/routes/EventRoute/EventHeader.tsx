@@ -2,6 +2,7 @@ import { ActionIcon, Checkbox, Group, Text, Title } from "@mantine/core";
 import { CalendarClock, RefreshCw } from "lucide-react";
 
 export function EventHeader({
+  cityName,
   hasLoadedData,
   isFetching,
   showHidden,
@@ -9,6 +10,7 @@ export function EventHeader({
   onRefresh,
   onShowHiddenChange
 }: {
+  cityName: string;
   hasLoadedData: boolean;
   isFetching: boolean;
   showHidden: boolean;
@@ -22,7 +24,7 @@ export function EventHeader({
         <CalendarClock size={28} strokeWidth={1.8} />
         <div>
           <Title order={1} size="h2">
-            Events
+            Events in {cityName}
           </Title>
           <Text size="sm" c="dimmed">
             {hasLoadedData ? `${visibleEventCount} visible` : "Loading"}

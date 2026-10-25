@@ -11,16 +11,18 @@ import {
 
 export function EventLine({
   occurrence,
+  timeZone,
   isHidden,
   onToggleHidden
 }: {
   occurrence: EventOccurrence;
+  timeZone: string;
   isHidden: boolean;
   onToggleHidden: () => void;
 }) {
   const event = occurrence.event;
   const categories = topCategories(event);
-  const progress = eventProgress(event, occurrence.day);
+  const progress = eventProgress(event, occurrence.day, timeZone);
   const cover = (
     <Image
       src={event.images?.[0]}
@@ -44,7 +46,7 @@ export function EventLine({
     >
       <div className={classes.eventTime}>
         <Text fw={600} c="amber.9">
-          {formatTimeRange(event, occurrence.day)}
+          {formatTimeRange(event, occurrence.day, timeZone)}
         </Text>
         {progress && (
           <Tooltip

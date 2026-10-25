@@ -1,4 +1,13 @@
 import type { EventItem } from "./api";
+import {
+  addCalendarDaysInTimeZone,
+  dateKeyInTimeZone,
+  defaultTimeZone,
+  diffCalendarDaysInTimeZone,
+  formatInTimeZone,
+  startOfDayInTimeZone,
+  todayMidnightInTimeZone
+} from "./timezone";
 
 export const DEFAULT_EVENT_WINDOW_DAYS = 30;
 
@@ -15,55 +24,66 @@ export type EventOccurrence = {
 };
 
 const UI_LOCALE = "en-LT";
-const dayFormatter = new Intl.DateTimeFormat(UI_LOCALE, {
-  weekday: "long",
-  month: "long",
-  day: "numeric"
-});
-const dateRangeFormatter = new Intl.DateTimeFormat(UI_LOCALE, {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit"
-});
 
-export function todayMorning(reference: Date = new Date()): Date {
-  const value = new Date(reference);
-  value.setHours(0, 0, 0, 0);
-  return value;
+/** City-local midnight for "today"; legacy callers may omit the timezone. */
+export function todayMorning(
+  reference: Date = new Date(),
+  timeZone: string = defaultTimeZone()
+): Date {
+  return todayMidnightInTimeZone(reference, timeZone);
 }
 
-export function addDays(value: Date, days: number): Date {
-  const next = new Date(value);
-  next.setDate(next.getDate() + days);
-  return next;
+/** Adds calendar days while preserving the city-local clock time across DST. */
+export function addDays(
+  value: Date,
+  days: number,
+  timeZone: string = defaultTimeZone()
+): Date {
+  return addCalendarDaysInTimeZone(value, days, timeZone);
 }
 
-export function defaultDateTo(dateFrom: Date): Date {
-  return addDays(dateFrom, DEFAULT_EVENT_WINDOW_DAYS);
+export function defaultDateTo(
+  dateFrom: Date,
+  timeZone: string = defaultTimeZone()
+): Date {
+  return addDays(dateFrom, DEFAULT_EVENT_WINDOW_DAYS, timeZone);
 }
 
 export function groupEventsByDay(
   events: EventItem[],
   windowStart?: Date,
-  windowEnd?: Date
+  windowEnd?: Date,
+  timeZone: string = defaultTimeZone()
 ): EventDay[] {
   const grouped = new Map<string, EventOccurrence[]>();
-  const rows = events.flatMap((event) => eventOccurrences(event, windowStart, windowEnd));
+  const rows = events.flatMap((event) =>
+    eventOccurrences(event, timeZone, windowStart, windowEnd)
+  );
   rows.sort(compareOccurrences);
   for (const row of rows) {
-    const key = localDateKey(row.day);
+    const key = dateKeyInTimeZone(row.day, timeZone);
     const dayRows = grouped.get(key) ?? [];
     dayRows.push(row);
     grouped.set(key, dayRows);
   }
   return [...grouped.entries()].map(([key, dayRows]) => ({
     key,
-    label: dayFormatter.format(dayRows[0].day).toUpperCase(),
+    label: formatInTimeZone(
+      dayRows[0].day,
+      timeZone,
+      { weekday: "long", month: "long", day: "numeric" },
+      UI_LOCALE
+    ).toUpperCase(),
     events: dayRows
   }));
 }
 
-function eventOccurrences(event: EventItem, windowStart?: Date, windowEnd?: Date): EventOccurrence[] {
+function eventOccurrences(
+  event: EventItem,
+  timeZone: string,
+  windowStart?: Date,
+  windowEnd?: Date
+): EventOccurrence[] {
   const start = parseValidDate(event.starts_at);
   const end = parseValidDate(event.ends_at);
   if (!start || (event.ends_at && (!end || end < start))) {
@@ -77,55 +97,80 @@ function eventOccurrences(event: EventItem, windowStart?: Date, windowEnd?: Date
     if (start.getTime() < from || start.getTime() >= (windowEnd?.getTime() ?? Infinity)) {
       return [];
     }
-    const day = startOfLocalDay(start);
-    return [{ key: `${event.occurrence_id}:${localDateKey(day)}`, event, day }];
+    const day = startOfDayInTimeZone(start, timeZone);
+    return [
+      {
+        key: `${event.occurrence_id}:${dateKeyInTimeZone(day, timeZone)}`,
+        event,
+        day
+      }
+    ];
   }
   if (to <= from) {
     return [];
   }
   const rows: EventOccurrence[] = [];
-  for (let day = startOfLocalDay(new Date(from)); day.getTime() < to; day = addDays(day, 1)) {
-    rows.push({ key: `${event.occurrence_id}:${localDateKey(day)}`, event, day });
+  let day = startOfDayInTimeZone(new Date(from), timeZone);
+  while (day.getTime() < to) {
+    rows.push({
+      key: `${event.occurrence_id}:${dateKeyInTimeZone(day, timeZone)}`,
+      event,
+      day
+    });
+    day = addDays(day, 1, timeZone);
   }
   return rows;
 }
 
-export function formatTimeRange(event: EventItem, occurrenceDay?: Date): string {
+export function formatTimeRange(
+  event: EventItem,
+  occurrenceDay?: Date,
+  timeZone: string = defaultTimeZone()
+): string {
   const start = new Date(event.starts_at);
-  const startText = start.toLocaleTimeString(UI_LOCALE, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
+  const startText = formatInTimeZone(
+    start,
+    timeZone,
+    { hour: "2-digit", minute: "2-digit", hour12: false },
+    UI_LOCALE
+  );
   if (!event.ends_at) {
     return startText;
   }
   const end = new Date(event.ends_at);
-  if (occurrenceDay && !sameLocalDate(start, end)) {
-    const dayStart = startOfLocalDay(occurrenceDay);
-    const dayEnd = addDays(dayStart, 1);
+  if (occurrenceDay && !sameLocalDate(start, end, timeZone)) {
+    const dayStart = startOfDayInTimeZone(occurrenceDay, timeZone);
+    const dayEnd = addDays(dayStart, 1, timeZone);
     if (start <= dayStart && end >= dayEnd) {
       return "All day";
     }
     if (start > dayStart) {
       return `From ${startText}`;
     }
-    return `Until ${end.toLocaleTimeString(UI_LOCALE, {
-      hour: "2-digit", minute: "2-digit", hour12: false
-    })}`;
+    return `Until ${formatInTimeZone(
+      end,
+      timeZone,
+      { hour: "2-digit", minute: "2-digit", hour12: false },
+      UI_LOCALE
+    )}`;
   }
-  if (!sameLocalDate(start, end)) {
-    return `${dateRangeFormatter.format(start)}-${dateRangeFormatter.format(end)}`;
+  if (!sameLocalDate(start, end, timeZone)) {
+    return `${formatDateRange(start, timeZone)}-${formatDateRange(end, timeZone)}`;
   }
-  const endText = end.toLocaleTimeString(UI_LOCALE, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
+  const endText = formatInTimeZone(
+    end,
+    timeZone,
+    { hour: "2-digit", minute: "2-digit", hour12: false },
+    UI_LOCALE
+  );
   return `${startText}-${endText}`;
 }
 
-export function eventProgress(event: EventItem, day: Date) {
+export function eventProgress(
+  event: EventItem,
+  day: Date,
+  timeZone: string = defaultTimeZone()
+) {
   const start = parseValidDate(event.starts_at);
   const end = parseValidDate(event.ends_at);
   if (!start || !end || end <= start || Number.isNaN(day.getTime())) {
@@ -133,16 +178,19 @@ export function eventProgress(event: EventItem, day: Date) {
   }
   // Midnight belongs to the preceding event day, consistent with calendar grouping.
   const lastDay = new Date(end.getTime() - 1);
-  const span = diffCalendarDays(start, lastDay);
+  const span = diffCalendarDaysInTimeZone(start, lastDay, timeZone);
   if (span === 0) {
     return null;
   }
-  const elapsed = Math.min(span, diffCalendarDays(start, day));
+  const elapsed = Math.min(
+    span,
+    diffCalendarDaysInTimeZone(start, day, timeZone)
+  );
   const remaining = span - elapsed;
   return {
     value: elapsed / span * 100,
     label: remaining === 0 ? "Ends today" : `${remaining} ${remaining === 1 ? "day" : "days"} left`,
-    range: `${dateRangeFormatter.format(start)} – ${dateRangeFormatter.format(lastDay)}`
+    range: `${formatDateRange(start, timeZone)} – ${formatDateRange(lastDay, timeZone)}`
   };
 }
 
@@ -161,21 +209,17 @@ function compareOccurrences(a: EventOccurrence, b: EventOccurrence): number {
   );
 }
 
-function startOfLocalDay(value: Date): Date {
-  const day = new Date(value);
-  day.setHours(0, 0, 0, 0);
-  return day;
+function sameLocalDate(a: Date, b: Date, timeZone: string): boolean {
+  return dateKeyInTimeZone(a, timeZone) === dateKeyInTimeZone(b, timeZone);
 }
 
-function localDateKey(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function sameLocalDate(a: Date, b: Date): boolean {
-  return localDateKey(a) === localDateKey(b);
+function formatDateRange(value: Date, timeZone: string): string {
+  return formatInTimeZone(
+    value,
+    timeZone,
+    { year: "numeric", month: "2-digit", day: "2-digit" },
+    UI_LOCALE
+  );
 }
 
 function parseValidDate(value: string | null | undefined): Date | null {
@@ -184,10 +228,4 @@ function parseValidDate(value: string | null | undefined): Date | null {
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function diffCalendarDays(start: Date, end: Date): number {
-  const startDay = startOfLocalDay(start);
-  const endDay = startOfLocalDay(end);
-  return Math.max(0, Math.round((endDay.getTime() - startDay.getTime()) / 86_400_000));
 }

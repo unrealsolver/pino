@@ -1,5 +1,6 @@
 import type { EventFilters } from "./api";
 import { defaultDateTo, todayMorning } from "./eventUtils";
+import { defaultTimeZone } from "./timezone";
 
 /** Public URL query keys owned by the event list filters. */
 export const EVENT_FILTER_PARAM_KEYS = ["date_from", "date_to", "category", "min_score", "q"] as const;
@@ -21,11 +22,16 @@ const INSTANT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\
  * Parses the public filter query string into resolved filter state. Invalid or
  * missing values fall back to the same defaults the list used before URLs existed.
  */
-export function parseEventFilterParams(params: URLSearchParams, now: Date = new Date()): EventFilters {
+export function parseEventFilterParams(
+  params: URLSearchParams,
+  now: Date = new Date(),
+  timeZone: string = defaultTimeZone()
+): EventFilters {
   const { dateFrom, dateTo } = resolveEventWindow(
     parseInstant(params.get("date_from")),
     parseInstant(params.get("date_to")),
-    now
+    now,
+    timeZone
   );
   return {
     categories: normalizeCategories(params.getAll("category")),
@@ -101,11 +107,15 @@ export function eventFiltersEqual(a: EventFilters, b: EventFilters): boolean {
  * Applies the same safe bounds on UI actions that parsing applies to URLs:
  * supported UTC years, canonical category/score/query shapes, and the 370-day window.
  */
-export function normalizeEventFilters(filters: EventFilters): EventFilters {
+export function normalizeEventFilters(
+  filters: EventFilters,
+  timeZone: string = defaultTimeZone()
+): EventFilters {
   const { dateFrom, dateTo } = resolveEventWindow(
     filters.dateFrom,
     filters.dateTo ?? null,
-    new Date()
+    new Date(),
+    timeZone
   );
   return {
     categories: normalizeCategories(filters.categories),
@@ -124,14 +134,15 @@ export function normalizeEventFilters(filters: EventFilters): EventFilters {
 function resolveEventWindow(
   candidateFrom: Date | null,
   candidateTo: Date | null,
-  now: Date
+  now: Date,
+  timeZone: string
 ): { dateFrom: Date; dateTo: Date } {
-  const defaultFrom = todayMorning(now);
+  const defaultFrom = todayMorning(now, timeZone);
   const dateFrom = isSupportedInstant(candidateFrom) ? candidateFrom : defaultFrom;
-  if (!isSupportedInstant(defaultDateTo(dateFrom))) {
-    return { dateFrom: defaultFrom, dateTo: defaultDateTo(defaultFrom) };
+  if (!isSupportedInstant(defaultDateTo(dateFrom, timeZone))) {
+    return { dateFrom: defaultFrom, dateTo: defaultDateTo(defaultFrom, timeZone) };
   }
-  const defaultEnd = defaultDateTo(dateFrom);
+  const defaultEnd = defaultDateTo(dateFrom, timeZone);
   let dateTo = isSupportedInstant(candidateTo) ? candidateTo : defaultEnd;
   if (isUnsafeInterval(dateFrom, dateTo)) {
     dateTo = defaultEnd;
