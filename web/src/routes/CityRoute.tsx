@@ -13,7 +13,7 @@ export function CityRoute() {
   if (resolution.kind === "entry") {
     return (
       <Navigate
-        to={{ pathname: "/lt/vilnius", search: location.search, hash: location.hash }}
+        to={{ pathname: "/vilnius", search: location.search, hash: location.hash }}
         replace
       />
     );
@@ -97,7 +97,7 @@ function CityNotFound({ pathname }: { pathname: string }) {
           </Text>
           <Text size="sm" c="dimmed">
             Only published cities can be browsed.{" "}
-            <Anchor component={Link} to="/lt/vilnius">
+            <Anchor component={Link} to="/vilnius">
               Browse Vilnius
             </Anchor>
             .

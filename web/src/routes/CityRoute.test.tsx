@@ -92,17 +92,33 @@ describe("city route composition", () => {
   );
 
   it.each(["/", "/lt", "/event", "/event/"])(
-    "replace-redirects %s to /lt/vilnius and preserves query and hash",
+    "replace-redirects %s to /vilnius and preserves query and hash",
     async (path) => {
       const fetchMock = mockApi();
       const { router } = renderApp([`${path}?${WINDOW_QUERY}&keep=1#section`]);
 
-      await waitFor(() => expect(router.state.location.pathname).toBe("/lt/vilnius"));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/vilnius"));
       expect(router.state.location.search).toBe(`?${WINDOW_QUERY}&keep=1`);
       expect(router.state.location.hash).toBe("#section");
       expect(router.state.historyAction).toBe("REPLACE");
       await screen.findByText("Events in Vilnius");
       expect(latestEventRequest(fetchMock).searchParams.get("city")).toBe("lt/vilnius");
+    }
+  );
+
+  it.each(["/vilnius", "/lt/vilnius"])(
+    "keeps the requested %s pathname through ordinary filter navigation",
+    async (path) => {
+      mockApi();
+      const { router } = renderApp([`${path}?${WINDOW_QUERY}`]);
+
+      await screen.findByText("Events in Vilnius");
+      fireEvent.change(screen.getByLabelText("Text"), { target: { value: "music" } });
+
+      await waitFor(() =>
+        expect(new URLSearchParams(router.state.location.search).get("q")).toBe("music")
+      );
+      expect(router.state.location.pathname).toBe(path);
     }
   );
 
@@ -126,6 +142,7 @@ describe("city route composition", () => {
     renderApp([`/ge/batumi?${WINDOW_QUERY}`]);
 
     expect(await screen.findByTestId("city-not-found")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Browse Vilnius" })).toHaveAttribute("href", "/vilnius");
     expect(screen.queryByText(/Events in/)).not.toBeInTheDocument();
     expect(eventRequests(fetchMock)).toHaveLength(0);
   });
