@@ -95,6 +95,21 @@ describe("EventRoute URL synchronization", () => {
     expect((screen.getByLabelText("Score") as HTMLInputElement).value).toBe("0.4");
   });
 
+  it("requests date-only URL bounds as full ISO instants", async () => {
+    const fetchMock = mockEvents([event()]);
+    const { router } = renderRoute([
+      "/event/?date_from=2026-10-25&date_to=2026-10-26&keep=1#section"
+    ]);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const requested = requestedUrl(fetchMock.mock.calls[0][0]);
+    expect(requested.searchParams.get("date_from")).toBe("2026-10-24T21:00:00.000Z");
+    expect(requested.searchParams.get("date_to")).toBe("2026-10-25T22:00:00.000Z");
+    expect(router.state.location.search).toContain("keep=1");
+    expect(router.state.location.hash).toBe("#section");
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("2026-10-25 00:00");
+  });
+
   it("pushes one entry and refetches when a category is selected", async () => {
     const fetchMock = mockEvents([event()], ["music", "social"]);
     const { router } = renderRoute([`/event/?${WINDOW_QUERY}`]);

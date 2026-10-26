@@ -105,15 +105,21 @@ export function EventRoute({ city }: { city: City }) {
       canonicalizeFilters(normalized);
       return;
     }
-    navigateToSearchParams(eventFiltersToSearchParams(normalized, searchParams), options);
+    navigateToSearchParams(
+      eventFiltersToSearchParams(normalized, searchParams, timeZone),
+      options
+    );
   }
 
   // Unchanged effective filters still replace the entry when owned keys need normalizing.
   function canonicalizeFilters(current: EventFilters) {
-    if (!eventFilterParamsNeedNormalization(current, searchParams)) {
+    if (!eventFilterParamsNeedNormalization(current, searchParams, timeZone)) {
       return;
     }
-    navigateToSearchParams(eventFiltersToSearchParams(current, searchParams), { replace: true });
+    navigateToSearchParams(
+      eventFiltersToSearchParams(current, searchParams, timeZone),
+      { replace: true }
+    );
   }
 
   function resetFilters() {

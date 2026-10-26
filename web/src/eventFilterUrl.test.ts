@@ -51,7 +51,6 @@ describe("event filter URL parsing", () => {
   });
 
   it.each([
-    ["date-only", "2026-06-08"],
     ["timezone-less", "2026-06-08T10:00"],
     ["impossible calendar day", "2026-02-30T00:00:00Z"],
     ["unparseable", "not-a-date"]
@@ -204,6 +203,252 @@ describe("event filter URL parsing", () => {
     expect(filters.minScore).toBe(0.9);
     expect(filters.query).toBe("first");
     expect(filters.dateFrom).toEqual(new Date("2026-06-08T00:00:00.000Z"));
+  });
+});
+
+describe("city-local date-only filter bounds", () => {
+  const VILNIUS = "Europe/Vilnius";
+  const NEW_YORK = "America/New_York";
+  const DEFAULT_WINDOW = {
+    dateFrom: new Date(DEFAULT_DATE_FROM),
+    dateTo: new Date(DEFAULT_DATE_TO)
+  };
+
+  it("resolves date-only From and exclusive To to city-local midnight", () => {
+    const filters = parseEventFilterParams(
+      params({ date_from: "2026-06-08", date_to: "2026-07-08" }),
+      NOW,
+      VILNIUS
+    );
+
+    expect(filters.dateFrom).toEqual(new Date("2026-06-07T21:00:00.000Z"));
+    expect(filters.dateTo).toEqual(new Date("2026-07-07T21:00:00.000Z"));
+  });
+
+  it("spans 25 elapsed hours for the Vilnius 2026-10-25 DST day", () => {
+    const filters = parseEventFilterParams(
+      params({ date_from: "2026-10-25", date_to: "2026-10-26" }),
+      NOW,
+      VILNIUS
+    );
+
+    expect(filters.dateFrom).toEqual(new Date("2026-10-24T21:00:00.000Z"));
+    expect(filters.dateTo).toEqual(new Date("2026-10-25T22:00:00.000Z"));
+    expect(filters.dateTo?.getTime()).toBe(
+      filters.dateFrom.getTime() + 25 * 60 * 60 * 1000
+    );
+  });
+
+  it("resolves the same state for date-only and equivalent explicit instants", () => {
+    const dateOnly = parseEventFilterParams(
+      params({ date_from: "2026-10-25", date_to: "2026-10-26" }),
+      NOW,
+      VILNIUS
+    );
+    const explicit = parseEventFilterParams(
+      params({
+        date_from: "2026-10-24T21:00:00.000Z",
+        date_to: "2026-10-25T22:00:00.000Z"
+      }),
+      NOW,
+      VILNIUS
+    );
+
+    expect(eventFiltersEqual(dateOnly, explicit)).toBe(true);
+  });
+
+  it.each([
+    ["month 13", "2026-13-01"],
+    ["month 00", "2026-00-10"],
+    ["day 00", "2026-01-00"],
+    ["day 32", "2026-01-32"],
+    ["April 31", "2026-04-31"],
+    ["rolled February 30", "2026-02-30"],
+    ["non-leap February 29", "2025-02-29"],
+    ["century non-leap February 29", "2100-02-29"],
+    ["single-digit month", "2026-6-01"],
+    ["single-digit day", "2026-06-1"],
+    ["short year", "26-06-01"],
+    ["trailing newline", "2026-01-01\n"],
+    ["year 0000", "0000-01-01"],
+    ["year 0001", "0001-01-01"],
+    ["year 9999", "9999-01-01"]
+  ])("rejects %s date-only bounds with the ordinary fallback", (_label, value) => {
+    const filters = parseEventFilterParams(params({ date_from: value }), NOW, VILNIUS);
+    expect(filters.dateFrom).toEqual(DEFAULT_WINDOW.dateFrom);
+    expect(filters.dateTo).toEqual(DEFAULT_WINDOW.dateTo);
+  });
+
+  it("accepts real leap days including the 2000 century exception", () => {
+    for (const value of ["2024-02-29", "2000-02-29"]) {
+      const filters = parseEventFilterParams(params({ date_from: value }), NOW, VILNIUS);
+      expect(filters.dateFrom).toEqual(new Date(`${value}T00:00:00+02:00`));
+    }
+  });
+
+  it("rejects invalid bounds independently while keeping a valid From", () => {
+    const filters = parseEventFilterParams(
+      params({ date_from: "2026-06-08", date_to: "2026-02-30" }),
+      NOW,
+      VILNIUS
+    );
+
+    expect(filters.dateFrom).toEqual(new Date("2026-06-07T21:00:00.000Z"));
+    expect(filters.dateTo).toEqual(new Date("2026-07-07T21:00:00.000Z"));
+  });
+
+  it("validates supported years on the resolved UTC instant", () => {
+    // Vilnius local midnight on 0002-01-01 resolves to year 0001 in UTC.
+    const pushedOut = parseEventFilterParams(
+      params({ date_from: "0002-01-01" }),
+      NOW,
+      VILNIUS
+    );
+    expect(pushedOut.dateFrom).toEqual(DEFAULT_WINDOW.dateFrom);
+    expect(pushedOut.dateTo).toEqual(DEFAULT_WINDOW.dateTo);
+
+    const inside = parseEventFilterParams(params({ date_from: "0002-01-02" }), NOW, VILNIUS);
+    expect(inside.dateFrom).toEqual(new Date("0002-01-01T22:18:44.000Z"));
+
+    const upper = parseEventFilterParams(params({ date_from: "9998-12-01" }), NOW, VILNIUS);
+    expect(upper.dateFrom).toEqual(new Date("9998-11-30T22:00:00.000Z"));
+    expect(upper.dateTo?.getUTCFullYear()).toBe(9998);
+  });
+
+  it("rejects a date whose local midnight does not exist instead of shifting it", () => {
+    const fallback = parseEventFilterParams(new URLSearchParams(), NOW, "America/Santiago");
+    const filters = parseEventFilterParams(
+      params({ date_from: "2026-09-06", date_to: "2026-09-06" }),
+      NOW,
+      "America/Santiago"
+    );
+
+    expect(filters).toEqual(fallback);
+  });
+
+  it("preserves explicit-zone second and millisecond precision, including the later fold", () => {
+    const precise = parseEventFilterParams(
+      params({ date_from: "2026-11-01T01:30:00.123-05:00" }),
+      NOW,
+      NEW_YORK
+    );
+    expect(precise.dateFrom).toEqual(new Date("2026-11-01T06:30:00.123Z"));
+
+    const earlier = parseEventFilterParams(
+      params({ date_from: "2026-11-01T01:30:00-04:00" }),
+      NOW,
+      NEW_YORK
+    );
+    const later = parseEventFilterParams(
+      params({ date_from: "2026-11-01T01:30:00-05:00" }),
+      NOW,
+      NEW_YORK
+    );
+    expect(earlier.dateFrom).toEqual(new Date("2026-11-01T05:30:00.000Z"));
+    expect(later.dateFrom).toEqual(new Date("2026-11-01T06:30:00.000Z"));
+
+    const truncated = parseEventFilterParams(
+      params({ date_from: "2026-06-08T10:00:00.987654321+03:00" }),
+      NOW,
+      VILNIUS
+    );
+    expect(truncated.dateFrom).toEqual(new Date("2026-06-08T07:00:00.987Z"));
+  });
+
+  it.each([
+    ["timezone-less", "2026-11-01T01:30:00"],
+    ["timezone-less with fraction", "2026-11-01T01:30:00.123"]
+  ])("keeps %s full timestamps invalid", (_label, value) => {
+    const filters = parseEventFilterParams(params({ date_from: value }), NOW, VILNIUS);
+    expect(filters.dateFrom).toEqual(new Date(DEFAULT_DATE_FROM));
+    expect(filters.dateTo).toEqual(new Date(DEFAULT_DATE_TO));
+  });
+
+  it("serializes exact city-local midnight as a stable date-only value", () => {
+    const filters: EventFilters = {
+      categories: [],
+      minScore: 0,
+      query: "",
+      dateFrom: new Date("2026-10-24T21:00:00.000Z"),
+      dateTo: new Date("2026-10-25T22:00:00.000Z")
+    };
+
+    const serialized = eventFiltersToSearchParams(
+      filters,
+      new URLSearchParams("keep=1"),
+      VILNIUS
+    );
+    expect(serialized.get("date_from")).toBe("2026-10-25");
+    expect(serialized.get("date_to")).toBe("2026-10-26");
+    expect(serialized.get("keep")).toBe("1");
+    expect(eventFilterParamsNeedNormalization(filters, serialized, VILNIUS)).toBe(false);
+  });
+
+  it("keeps non-midnight and later-fold bounds as full UTC ISO", () => {
+    const nonMidnight: EventFilters = {
+      categories: [],
+      minScore: 0,
+      query: "",
+      dateFrom: new Date("2026-06-08T07:00:00.000Z"),
+      dateTo: new Date("2026-07-08T07:00:00.000Z")
+    };
+    const vilnius = eventFiltersToSearchParams(nonMidnight, undefined, VILNIUS);
+    expect(vilnius.get("date_from")).toBe("2026-06-08T07:00:00.000Z");
+    expect(vilnius.get("date_to")).toBe("2026-07-08T07:00:00.000Z");
+
+    const laterFold: EventFilters = {
+      categories: [],
+      minScore: 0,
+      query: "",
+      dateFrom: new Date("2026-11-01T06:30:00.000Z"),
+      dateTo: new Date("2026-11-02T05:00:00.000Z")
+    };
+    const newYork = eventFiltersToSearchParams(laterFold, undefined, NEW_YORK);
+    expect(newYork.get("date_from")).toBe("2026-11-01T06:30:00.000Z");
+    expect(newYork.get("date_to")).toBe("2026-11-02");
+    expect(
+      eventFilterParamsNeedNormalization(laterFold, newYork, NEW_YORK)
+    ).toBe(false);
+  });
+
+  it("compacts only the earlier repeated-midnight occurrence", () => {
+    const timeZone = "America/Havana";
+    const parsed = parseEventFilterParams(
+      params({ date_from: "2026-11-01" }),
+      NOW,
+      timeZone
+    );
+    const earlier = new Date("2026-11-01T04:00:00.000Z");
+    const later = new Date("2026-11-01T05:00:00.000Z");
+    expect(parsed.dateFrom).toEqual(earlier);
+
+    const base: EventFilters = {
+      categories: [],
+      minScore: 0,
+      query: "",
+      dateFrom: earlier,
+      dateTo: new Date("2026-12-01T05:00:00.000Z")
+    };
+    expect(eventFiltersToSearchParams(base, undefined, timeZone).get("date_from"))
+      .toBe("2026-11-01");
+
+    const laterFilters: EventFilters = { ...base, dateFrom: later };
+    expect(eventFiltersToSearchParams(laterFilters, undefined, timeZone).get("date_from"))
+      .toBe("2026-11-01T05:00:00.000Z");
+  });
+
+  it("compacts early supported years to zero-padded date-only values", () => {
+    const filters: EventFilters = {
+      categories: [],
+      minScore: 0,
+      query: "",
+      dateFrom: new Date("0002-01-01T22:18:44.000Z"),
+      dateTo: new Date("0002-01-31T22:18:44.000Z")
+    };
+    const serialized = eventFiltersToSearchParams(filters, undefined, VILNIUS);
+    expect(serialized.get("date_from")).toBe("0002-01-02");
+    expect(serialized.get("date_to")).toBe("0002-02-01");
+    expect(eventFilterParamsNeedNormalization(filters, serialized, VILNIUS)).toBe(false);
   });
 });
 

@@ -341,7 +341,7 @@ describe("city timezone display and picker edits", () => {
     expect(edited.searchParams.get("date_to")).toBe("2026-07-30T21:00:00.000Z");
     expect(edited.searchParams.get("city")).toBe("lt/vilnius");
     expect(new URLSearchParams(router.state.location.search).get("date_from"))
-      .toBe("2026-06-30T21:00:00.000Z");
+      .toBe("2026-07-01");
   });
 
   it.each([
@@ -490,7 +490,7 @@ describe("city timezone display and picker edits", () => {
     mockApi();
     const url =
       `/zz/ny?date_from=${encodeURIComponent("2026-11-01T06:30:00.000Z")}` +
-      `&date_to=${encodeURIComponent("2026-11-02T05:00:00.000Z")}`;
+      `&date_to=2026-11-02`;
     const { router } = renderApp([url]);
 
     await screen.findByText("Events in New York");
@@ -509,6 +509,97 @@ describe("city timezone display and picker edits", () => {
     expect(router.state.location.key).toBe(keyBefore);
     expect(new URLSearchParams(router.state.location.search).get("date_from"))
       .toBe("2026-11-01T06:30:00.000Z");
+  });
+});
+
+describe("city date-only filter URLs", () => {
+  it("sends date-only bounds as full ISO and shares cache identity across aliases and spellings", async () => {
+    const fetchMock = mockApi();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } }
+    });
+    const dateOnly =
+      "/lt/vilnius?date_from=2026-10-25&date_to=2026-10-26&keep=1#section";
+    const explicit =
+      `/vilnius?date_from=${encodeURIComponent("2026-10-24T21:00:00.000Z")}` +
+      `&date_to=${encodeURIComponent("2026-10-25T22:00:00.000Z")}&keep=1#section`;
+    const { router } = renderApp([dateOnly, explicit], { queryClient, initialIndex: 0 });
+
+    await screen.findByText("Events in Vilnius");
+    await waitFor(() => expect(eventRequests(fetchMock)).toHaveLength(1));
+    const request = latestEventRequest(fetchMock);
+    expect(request.searchParams.get("city")).toBe("lt/vilnius");
+    expect(request.searchParams.get("date_from")).toBe("2026-10-24T21:00:00.000Z");
+    expect(request.searchParams.get("date_to")).toBe("2026-10-25T22:00:00.000Z");
+
+    await act(async () => {
+      await router.navigate(1);
+    });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/vilnius"));
+    await screen.findByText("Events in Vilnius");
+    // The equivalent explicit-instant spelling reuses the same resolved cache entry.
+    expect(eventRequests(fetchMock)).toHaveLength(1);
+    const eventKeys = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ["events"] })
+      .map((query) => query.queryKey);
+    expect(eventKeys).toEqual([
+      [
+        "events",
+        "lt/vilnius",
+        expect.objectContaining({
+          dateFrom: "2026-10-24T21:00:00.000Z",
+          dateTo: "2026-10-25T22:00:00.000Z"
+        })
+      ]
+    ]);
+  });
+
+  it("keeps canonical date-only midnight stable on an unchanged picker action", async () => {
+    mockApi();
+    const { router } = renderApp([
+      "/vilnius?keep=1&date_from=2026-10-25&date_to=2026-11-24#section"
+    ]);
+    await screen.findByText("Events in Vilnius");
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("2026-10-25 00:00");
+    const keyBefore = router.state.location.key;
+
+    fireEvent.click(screen.getByLabelText("From"));
+    fireEvent.click(await screen.findByRole("button", { name: "25 October 2026" }));
+
+    await waitFor(() =>
+      expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("2026-10-25 00:00")
+    );
+    expect(router.state.location.key).toBe(keyBefore);
+    expect(router.state.location.search).toBe(
+      "?keep=1&date_from=2026-10-25&date_to=2026-11-24"
+    );
+    expect(router.state.location.hash).toBe("#section");
+  });
+
+  it("keeps non-midnight bounds as UTC ISO while compacting a midnight To with replace", async () => {
+    const fetchMock = mockApi();
+    const { router } = renderApp([
+      `/vilnius?date_from=${encodeURIComponent("2026-06-08T07:00:00.000Z")}` +
+        `&date_to=${encodeURIComponent("2026-07-08T21:00:00.000Z")}&keep=1`
+    ]);
+    await screen.findByText("Events in Vilnius");
+    await waitFor(() => expect(eventRequests(fetchMock)).toHaveLength(1));
+    const keyBefore = router.state.location.key;
+
+    fireEvent.click(screen.getByLabelText("From"));
+    fireEvent.click(await screen.findByRole("button", { name: "8 June 2026" }));
+
+    await waitFor(() =>
+      expect(new URLSearchParams(router.state.location.search).get("date_to")).toBe("2026-07-09")
+    );
+    expect(new URLSearchParams(router.state.location.search).get("date_from")).toBe(
+      "2026-06-08T07:00:00.000Z"
+    );
+    expect(router.state.location.search).toContain("keep=1");
+    expect(router.state.historyAction).toBe("REPLACE");
+    expect(router.state.location.key).not.toBe(keyBefore);
+    expect(eventRequests(fetchMock)).toHaveLength(1);
   });
 });
 

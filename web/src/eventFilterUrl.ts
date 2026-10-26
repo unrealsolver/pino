@@ -1,6 +1,6 @@
 import type { EventFilters } from "./api";
 import { defaultDateTo, todayMorning } from "./eventUtils";
-import { defaultTimeZone } from "./timezone";
+import { dateKeyInTimeZone, defaultTimeZone, wallClockToInstant } from "./timezone";
 
 /** Public URL query keys owned by the event list filters. */
 export const EVENT_FILTER_PARAM_KEYS = ["date_from", "date_to", "category", "min_score", "q"] as const;
@@ -14,9 +14,12 @@ export const MAX_SUPPORTED_DATE_YEAR = 9998;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_EVENT_FILTER_RANGE_MS = MAX_EVENT_FILTER_RANGE_DAYS * MILLISECONDS_PER_DAY;
 
-// ISO datetime with an explicit zone: `Z` or a numeric `±HH:MM` offset. Date-only
-// and timezone-less strings are intentionally rejected.
+// ISO datetime with an explicit zone: `Z` or a numeric `±HH:MM` offset. Timezone-less
+// strings are intentionally rejected.
 const INSTANT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:\d{2})$/;
+
+// Strict city-local calendar date. Widths are exact, so `2026-6-1` is not accepted.
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
  * Parses the public filter query string into resolved filter state. Invalid or
@@ -28,8 +31,8 @@ export function parseEventFilterParams(
   timeZone: string = defaultTimeZone()
 ): EventFilters {
   const { dateFrom, dateTo } = resolveEventWindow(
-    parseInstant(params.get("date_from")),
-    parseInstant(params.get("date_to")),
+    parseBound(params.get("date_from"), timeZone),
+    parseBound(params.get("date_to"), timeZone),
     now,
     timeZone
   );
@@ -45,15 +48,19 @@ export function parseEventFilterParams(
 /**
  * Serializes resolved filters into a fresh query string, rewriting only the five
  * owned keys and preserving every unrelated parameter.
+ *
+ * A bound is written as a city-local `YYYY-MM-DD` only when that date parses back
+ * to the identical instant in the same timezone; everything else stays full UTC ISO.
  */
 export function eventFiltersToSearchParams(
   filters: EventFilters,
-  base?: URLSearchParams
+  base?: URLSearchParams,
+  timeZone: string = defaultTimeZone()
 ): URLSearchParams {
   const params = removeEventFilterParams(base);
-  params.set("date_from", filters.dateFrom.toISOString());
+  params.set("date_from", serializeBound(filters.dateFrom, timeZone));
   if (filters.dateTo) {
-    params.set("date_to", filters.dateTo.toISOString());
+    params.set("date_to", serializeBound(filters.dateTo, timeZone));
   }
   for (const category of filters.categories) {
     params.append("category", category);
@@ -87,9 +94,10 @@ export function hasEventFilterParams(params: URLSearchParams): boolean {
  */
 export function eventFilterParamsNeedNormalization(
   filters: EventFilters,
-  params: URLSearchParams
+  params: URLSearchParams,
+  timeZone: string = defaultTimeZone()
 ): boolean {
-  return eventFiltersToSearchParams(filters, params).toString() !== params.toString();
+  return eventFiltersToSearchParams(filters, params, timeZone).toString() !== params.toString();
 }
 
 /** True when the two filter states resolve to the same request. */
@@ -148,6 +156,51 @@ function resolveEventWindow(
     dateTo = defaultEnd;
   }
   return { dateFrom, dateTo };
+}
+
+/**
+ * A bound is either a strict city-local date or a full ISO instant with an explicit
+ * zone. Date-only values have no embedded zone, so the resolved route timezone is
+ * required to place them.
+ */
+function parseBound(value: string | null, timeZone: string): Date | null {
+  if (!value) {
+    return null;
+  }
+  return DATE_ONLY_PATTERN.test(value)
+    ? parseDateOnly(value, timeZone)
+    : parseInstant(value);
+}
+
+/**
+ * Resolves `YYYY-MM-DD` to the first instant of that calendar date in the city
+ * timezone. Nonexistent midnights are invalid rather than advanced by the DST gap.
+ */
+function parseDateOnly(value: string, timeZone: string): Date | null {
+  const match = DATE_ONLY_PATTERN.exec(value);
+  if (!match || match[0] !== value) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < MIN_SUPPORTED_DATE_YEAR || year > MAX_SUPPORTED_DATE_YEAR) {
+    return null;
+  }
+  if (!isRealWallClock(year, month, day, 0, 0, 0, 0)) {
+    return null;
+  }
+  return wallClockToInstant(
+    { year, month, day, hour: 0, minute: 0, second: 0, millisecond: 0 },
+    timeZone
+  );
+}
+
+/** Compact a bound only when the date-only form round-trips to the exact instant. */
+function serializeBound(instant: Date, timeZone: string): string {
+  const key = dateKeyInTimeZone(instant, timeZone);
+  const roundTrip = parseDateOnly(key, timeZone);
+  return roundTrip?.getTime() === instant.getTime() ? key : instant.toISOString();
 }
 
 function parseInstant(value: string | null): Date | null {
