@@ -16,7 +16,6 @@ def test_api_deadline_returns_safe_504(tmp_path, monkeypatch, path):
     from pino_web import app as app_module
 
     assert app_module.API_TIMEOUT_SECONDS == 10
-    monkeypatch.setattr(app_module, "API_TIMEOUT_SECONDS", 0.01)
     app = create_app(config=PinoConfig(), store=SQLiteStore(tmp_path / "db.sqlite"))
     # Replace health so its readiness exemption cannot accidentally exempt the deadline.
     app.router.routes[:] = [route for route in app.router.routes if route.path != path]
@@ -27,11 +26,14 @@ def test_api_deadline_returns_safe_504(tmp_path, monkeypatch, path):
         return {"late": True}
 
     with TestClient(app) as client:
-        response = client.get(path)
-        assert response.status_code == 504
-        assert response.json() == {"detail": "Request timed out"}
-        assert response.headers["cache-control"] == "no-store"
-        assert response.headers["x-content-type-options"] == "nosniff"
+        with monkeypatch.context() as patch:
+            patch.setattr(app_module, "API_TIMEOUT_SECONDS", 0.01)
+            response = client.get(path)
+            assert response.status_code == 504
+            assert response.json() == {"detail": "Request timed out"}
+            assert response.headers["cache-control"] == "no-store"
+            assert response.headers["x-content-type-options"] == "nosniff"
+        assert app_module.API_TIMEOUT_SECONDS == 10
         assert client.get("/api/events").status_code == 200
 
 
