@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Generator
-from contextlib import closing
+from collections.abc import Generator, Iterator, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     and_,
     bindparam,
+    case,
     cast,
     create_engine,
     delete,
@@ -32,7 +33,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Connection, Engine, make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -43,6 +44,16 @@ from pino_core.schedules import (
     compile_query_weekly_pattern,
     compile_weekly_pattern,
     expand_schedule,
+)
+from pino_core.stats import (
+    REFINEMENT_CONTENT_KINDS,
+    CityEventAggregate,
+    RecordTotalsAggregate,
+    RefinementTotalsAggregate,
+    SourceRecordAggregate,
+    SourceRefinementAggregate,
+    SourceStatusSnapshot,
+    WeekRecordCount,
 )
 
 _MAX_RELEVANT_SCAN = 5000
@@ -381,6 +392,63 @@ class DatabaseStore:
             unknown = {source: int(count) for source, count in unknown_rows}
         return dict(counts), unknown
 
+    def load_source_status_snapshot(
+        self,
+        *,
+        week_bounds: Sequence[tuple[datetime, datetime]],
+    ) -> SourceStatusSnapshot:
+        """Load grouped source statistics without materializing raw rows.
+
+        Record and refinement aggregates are queried independently, so a record
+        with several refinements is counted once for coverage while each
+        refinement row still counts as one output item. The query count is fixed
+        and does not grow with the number of sources or cities.
+        """
+        if not week_bounds:
+            raise ValueError("at least one week bound is required")
+        for week_start, week_end in week_bounds:
+            if (
+                week_start.tzinfo is None
+                or week_start.utcoffset() is None
+                or week_end.tzinfo is None
+                or week_end.utcoffset() is None
+            ):
+                raise ValueError("week bounds must be timezone-aware")
+            if week_start > week_end:
+                raise ValueError("week start must not be after week end")
+
+        with _snapshot_connection(self.engine) as connection:
+            record_row = connection.execute(_record_totals_query()).one()
+            refinement_rows = connection.execute(_refinement_totals_query()).all()
+            source_rows = connection.execute(_source_record_totals_query()).all()
+            week_rows = connection.execute(_source_week_records_query(week_bounds)).all()
+            source_refinement_rows = connection.execute(_source_refinement_query()).all()
+            city_rows = connection.execute(_city_event_query()).all()
+
+        return SourceStatusSnapshot(
+            records=RecordTotalsAggregate(
+                records_total=int(record_row.records_total or 0),
+                records_with_refinement_total=int(record_row.records_with_refinement_total or 0),
+                pending_records_total=(
+                    int(record_row.records_total or 0)
+                    - int(record_row.records_with_refinement_total or 0)
+                ),
+                oldest_pending_captured_at=_utc_or_none(record_row.oldest_pending_captured_at),
+                latest_captured_at=_utc_or_none(record_row.latest_captured_at),
+            ),
+            refinements=_fold_refinement_rows(refinement_rows),
+            sources=_source_record_aggregates(source_rows, week_rows),
+            source_refinements=_source_refinement_aggregates(source_refinement_rows),
+            city_events=tuple(
+                CityEventAggregate(
+                    city_id=row.city_id,
+                    items=int(row.items or 0),
+                    sources=frozenset({row.source} if row.source is not None else set()),
+                )
+                for row in city_rows
+            ),
+        )
+
     def list_relevant_refinements(
         self,
         *,
@@ -668,6 +736,232 @@ class SQLiteStore(DatabaseStore):
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         super().__init__(f"sqlite:///{self.path}")
+
+
+@contextmanager
+def _snapshot_connection(engine: Engine) -> Iterator[Connection]:
+    """Yield one local connection with a consistent, read-only snapshot.
+
+    SQLite's legacy transaction mode does not start a database transaction for a
+    plain SELECT, so an explicit ``BEGIN`` is required to keep every aggregate
+    query on the same read snapshot. PostgreSQL uses a local REPEATABLE READ,
+    read-only transaction for the same reason. Neither setting changes the
+    engine, schema, or unrelated queries.
+    """
+    connection = engine.connect()
+    try:
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN")
+        elif engine.dialect.name == "postgresql":
+            connection = connection.execution_options(
+                isolation_level="REPEATABLE READ",
+                postgresql_readonly=True,
+            )
+        else:
+            raise ValueError(f"Unsupported storage database: {engine.dialect.name}")
+        try:
+            yield connection
+        finally:
+            connection.rollback()
+    finally:
+        connection.close()
+
+
+def _refined_record_ids_subquery():
+    """Distinct refined record ids, so joins never multiply raw records."""
+    return select(refinements_table.c.record_id).distinct().subquery("refined_records")
+
+
+def _record_totals_query():
+    refined = _refined_record_ids_subquery()
+    return select(
+        func.count(records_table.c.id).label("records_total"),
+        func.count(refined.c.record_id).label("records_with_refinement_total"),
+        func.min(
+            case(
+                (refined.c.record_id.is_(None), records_table.c.captured_at),
+                else_=None,
+            )
+        ).label("oldest_pending_captured_at"),
+        func.max(records_table.c.captured_at).label("latest_captured_at"),
+    ).select_from(records_table.outerjoin(refined, records_table.c.id == refined.c.record_id))
+
+
+def _source_record_totals_query():
+    refined = _refined_record_ids_subquery()
+    return (
+        select(
+            records_table.c.source.label("source"),
+            func.count(records_table.c.id).label("records_total"),
+            func.count(refined.c.record_id).label("records_with_refinement_total"),
+            func.min(
+                case(
+                    (refined.c.record_id.is_(None), records_table.c.captured_at),
+                    else_=None,
+                )
+            ).label("oldest_pending_captured_at"),
+            func.max(records_table.c.captured_at).label("latest_captured_at"),
+        )
+        .select_from(records_table.outerjoin(refined, records_table.c.id == refined.c.record_id))
+        .group_by(records_table.c.source)
+        .order_by(records_table.c.source)
+    )
+
+
+def _source_week_records_query(week_bounds: Sequence[tuple[datetime, datetime]]):
+    refined = _refined_record_ids_subquery()
+    week_index = case(
+        *[
+            (
+                and_(
+                    records_table.c.captured_at >= week_start,
+                    records_table.c.captured_at < week_end,
+                ),
+                index,
+            )
+            for index, (week_start, week_end) in enumerate(week_bounds)
+        ],
+        else_=None,
+    )
+    return (
+        select(
+            records_table.c.source.label("source"),
+            week_index.label("week_index"),
+            func.count(records_table.c.id).label("records"),
+            func.count(refined.c.record_id).label("with_refinement"),
+        )
+        .select_from(records_table.outerjoin(refined, records_table.c.id == refined.c.record_id))
+        .where(
+            records_table.c.captured_at >= week_bounds[0][0],
+            records_table.c.captured_at < week_bounds[-1][1],
+        )
+        .group_by(records_table.c.source, week_index)
+        .order_by(records_table.c.source, week_index)
+    )
+
+
+def _refinement_totals_query():
+    return select(
+        refinements_table.c.content_kind.label("content_kind"),
+        func.count().label("items"),
+        func.max(refinements_table.c.refined_at).label("last_refined_at"),
+    ).group_by(refinements_table.c.content_kind)
+
+
+def _source_refinement_query():
+    return (
+        select(
+            records_table.c.source.label("source"),
+            refinements_table.c.content_kind.label("content_kind"),
+            func.count().label("items"),
+            func.max(refinements_table.c.refined_at).label("last_refined_at"),
+        )
+        .select_from(
+            refinements_table.join(
+                records_table,
+                records_table.c.id == refinements_table.c.record_id,
+            )
+        )
+        .group_by(records_table.c.source, refinements_table.c.content_kind)
+        .order_by(records_table.c.source, refinements_table.c.content_kind)
+    )
+
+
+def _city_event_query():
+    return (
+        select(
+            refinements_table.c.city_id.label("city_id"),
+            records_table.c.source.label("source"),
+            func.count().label("items"),
+        )
+        .select_from(
+            refinements_table.outerjoin(
+                records_table,
+                records_table.c.id == refinements_table.c.record_id,
+            )
+        )
+        .where(refinements_table.c.content_kind == "event")
+        .group_by(refinements_table.c.city_id, records_table.c.source)
+        .order_by(refinements_table.c.city_id, records_table.c.source)
+    )
+
+
+def _fold_refinement_rows(rows: Sequence[Any]) -> RefinementTotalsAggregate:
+    items_by_kind = {kind: 0 for kind in REFINEMENT_CONTENT_KINDS}
+    last_refined_at: datetime | None = None
+    for row in rows:
+        if row.content_kind in items_by_kind:
+            items_by_kind[row.content_kind] += int(row.items or 0)
+        latest = _utc_or_none(row.last_refined_at)
+        if latest is not None and (last_refined_at is None or latest > last_refined_at):
+            last_refined_at = latest
+    return RefinementTotalsAggregate(
+        items_by_kind=items_by_kind,
+        last_refined_at=last_refined_at,
+    )
+
+
+def _source_record_aggregates(
+    source_rows: Sequence[Any],
+    week_rows: Sequence[Any],
+) -> tuple[SourceRecordAggregate, ...]:
+    weeks_by_source: dict[str, list[WeekRecordCount]] = {}
+    for row in week_rows:
+        if row.week_index is None:
+            continue
+        records = int(row.records or 0)
+        with_refinement = int(row.with_refinement or 0)
+        weeks_by_source.setdefault(row.source, []).append(
+            WeekRecordCount(
+                index=int(row.week_index),
+                records=records,
+                pending=records - with_refinement,
+            )
+        )
+
+    aggregates: list[SourceRecordAggregate] = []
+    for row in source_rows:
+        records_total = int(row.records_total or 0)
+        records_with_refinement_total = int(row.records_with_refinement_total or 0)
+        aggregates.append(
+            SourceRecordAggregate(
+                source=row.source,
+                records_total=records_total,
+                records_with_refinement_total=records_with_refinement_total,
+                pending_records_total=records_total - records_with_refinement_total,
+                oldest_pending_captured_at=_utc_or_none(row.oldest_pending_captured_at),
+                latest_captured_at=_utc_or_none(row.latest_captured_at),
+                weeks=tuple(weeks_by_source.get(row.source, ())),
+            )
+        )
+    return tuple(aggregates)
+
+
+def _source_refinement_aggregates(
+    rows: Sequence[Any],
+) -> tuple[SourceRefinementAggregate, ...]:
+    grouped: dict[str, list[Any]] = {}
+    for row in rows:
+        grouped.setdefault(row.source, []).append(row)
+    aggregates: list[SourceRefinementAggregate] = []
+    for source in sorted(grouped):
+        refinement = _fold_refinement_rows(grouped[source])
+        aggregates.append(
+            SourceRefinementAggregate(
+                source=source,
+                items_by_kind=refinement.items_by_kind,
+                last_refined_at=refinement.last_refined_at,
+            )
+        )
+    return tuple(aggregates)
+
+
+def _utc_or_none(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _record_with_refinement_from_row(row: Any) -> tuple[Record, Refinement]:

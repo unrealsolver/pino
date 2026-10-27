@@ -14,6 +14,17 @@ from pino_core.refinement import (
     render_refinement_system_prompt,
 )
 from pino_core.registry import build_sources
+from pino_core.stats import (
+    CityStats,
+    IngestionWeek,
+    RecordMetrics,
+    RefinementItemCounts,
+    RefinementMetrics,
+    SourceStats,
+    SourceStatsReport,
+    SourceStatsTotals,
+    build_source_stats_report,
+)
 from pino_core.storage import DatabaseStore, SQLiteStore
 from pino_core.tools import build_tools
 
@@ -22,8 +33,10 @@ __all__ = [
     "ChatAgent",
     "CheckPipeline",
     "CheckResult",
+    "CityStats",
     "DatabaseStore",
     "DigestService",
+    "IngestionWeek",
     "LLMError",
     "LLMUsageEvent",
     "MemoryEntry",
@@ -32,15 +45,22 @@ __all__ = [
     "QCReport",
     "QC_REJECTED_REFINER",
     "Record",
+    "RecordMetrics",
     "Refinement",
     "RefinementDebugResult",
+    "RefinementItemCounts",
+    "RefinementMetrics",
     "RefinementProgress",
     "RefinementQC",
     "RefinementService",
     "SQLiteStore",
     "SourceCheckResult",
+    "SourceStats",
+    "SourceStatsReport",
+    "SourceStatsTotals",
     "build_llm_client",
     "build_refinement_llm_config",
+    "build_source_stats_report",
     "build_sources",
     "build_tools",
     "load_config",
