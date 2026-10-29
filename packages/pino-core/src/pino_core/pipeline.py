@@ -10,7 +10,13 @@ from zoneinfo import ZoneInfo
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.config import MediaConfig
 from pino_core.media import MediaStore
-from pino_core.models import Record, Refinement, utc_now
+from pino_core.models import (
+    Record,
+    Refinement,
+    SourceSyncFailureStage,
+    SourceSyncRun,
+    utc_now,
+)
 from pino_core.sources import CursorSourceAdapter, SourceAdapter, MediaSourceAdapter
 from pino_core.storage import DatabaseStore
 
@@ -78,11 +84,27 @@ class CheckPipeline:
         for source in self.sources:
             if on_progress is not None:
                 on_progress(CheckProgress(source.name, _source_kind(source), "fetching"))
+            # A durable attempt must exist before any source fetch happens. A
+            # failure here stops the run before fetching; it is not a source error.
+            attempt = self.store.start_source_sync_attempt(source.name, started_at=utc_now())
+            sync_fetched = 0
+            sync_inserted = 0
+            sync_duplicates = 0
             next_cursor = None
             is_cursor_source = isinstance(source, CursorSourceAdapter)
             previous_cursor = None
             if is_cursor_source:
-                previous_cursor = self.store.get_source_cursor(source.name)
+                try:
+                    previous_cursor = self.store.get_source_cursor(source.name)
+                except Exception:
+                    self._record_source_sync_failure(
+                        attempt,
+                        fetched=sync_fetched,
+                        inserted=sync_inserted,
+                        duplicates=sync_duplicates,
+                        stage="cursor",
+                    )
+                    raise
             try:
                 if is_cursor_source:
                     fetch_result = source.fetch_since(previous_cursor)
@@ -91,6 +113,13 @@ class CheckPipeline:
                 else:
                     fetched = source.fetch()
             except Exception as exc:
+                self._record_source_sync_failure(
+                    attempt,
+                    fetched=sync_fetched,
+                    inserted=sync_inserted,
+                    duplicates=sync_duplicates,
+                    stage="fetch",
+                )
                 source_results.append(
                     SourceCheckResult(
                         name=source.name,
@@ -119,26 +148,54 @@ class CheckPipeline:
                 on_progress(CheckProgress(source.name, _source_kind(source), "storing"))
             source_inserted = 0
             source_duplicates = 0
+            sync_fetched = len(fetched)
             fetched_count += len(fetched)
             media_candidates: list[Record] = []
-            for record in fetched:
-                result = self.store.add_record(record)
-                stored_record = result.record
-                media_candidates.append(stored_record)
-                if self.media is not None and not isinstance(source, MediaSourceAdapter):
-                    stored_record = self.media.enrich(stored_record, payload=record.payload)
-                    if stored_record.images != result.record.images:
-                        self.store.set_record_images(stored_record)
-                if result.inserted:
-                    inserted_count += 1
-                    source_inserted += 1
-                    inserted_ids.append(result.record.id)
-                    records.append(stored_record)
-                else:
-                    duplicate_count += 1
-                    source_duplicates += 1
+            try:
+                for record in fetched:
+                    result = self.store.add_record(record)
+                    # add_record commits immediately, before media persistence.
+                    # Track that committed outcome now so a later store failure
+                    # cannot hide it from the recorded partial counts.
+                    if result.inserted:
+                        sync_inserted += 1
+                    else:
+                        sync_duplicates += 1
+                    stored_record = result.record
+                    media_candidates.append(stored_record)
+                    if self.media is not None and not isinstance(source, MediaSourceAdapter):
+                        stored_record = self.media.enrich(stored_record, payload=record.payload)
+                        if stored_record.images != result.record.images:
+                            self.store.set_record_images(stored_record)
+                    if result.inserted:
+                        inserted_count += 1
+                        source_inserted += 1
+                        inserted_ids.append(result.record.id)
+                        records.append(stored_record)
+                    else:
+                        duplicate_count += 1
+                        source_duplicates += 1
+            except Exception:
+                self._record_source_sync_failure(
+                    attempt,
+                    fetched=sync_fetched,
+                    inserted=sync_inserted,
+                    duplicates=sync_duplicates,
+                    stage="store",
+                )
+                raise
             if next_cursor is not None:
-                self.store.set_source_cursor(source.name, next_cursor)
+                try:
+                    self.store.set_source_cursor(source.name, next_cursor)
+                except Exception:
+                    self._record_source_sync_failure(
+                        attempt,
+                        fetched=sync_fetched,
+                        inserted=sync_inserted,
+                        duplicates=sync_duplicates,
+                        stage="cursor",
+                    )
+                    raise
             if self.media is not None and isinstance(source, MediaSourceAdapter):
                 try:
                     enriched = source.enrich_media(media_candidates, self.media)
@@ -147,8 +204,18 @@ class CheckPipeline:
                         "Media retrieval failed for %s: %s", source.name, exc
                     )
                     enriched = []
-                for item in enriched:
-                    self.store.set_record_media(item)
+                try:
+                    for item in enriched:
+                        self.store.set_record_media(item)
+                except Exception:
+                    self._record_source_sync_failure(
+                        attempt,
+                        fetched=sync_fetched,
+                        inserted=sync_inserted,
+                        duplicates=sync_duplicates,
+                        stage="store",
+                    )
+                    raise
                 changed = {item.id: item for item in enriched}
                 records = [changed.get(item.id, item) for item in records]
             cursor_status: Literal["unsupported", "none", "unchanged", "updated"]
@@ -160,6 +227,14 @@ class CheckPipeline:
                 cursor_status = "unchanged"
             else:
                 cursor_status = "none"
+            # Required fetch/store/cursor work is complete: record success. A
+            # telemetry failure here must surface rather than claim it was saved.
+            self.store.complete_source_sync_success(
+                attempt.id,
+                fetched_count=sync_fetched,
+                inserted_count=sync_inserted,
+                duplicate_count=sync_duplicates,
+            )
             source_results.append(
                 SourceCheckResult(
                     name=source.name,
@@ -186,6 +261,35 @@ class CheckPipeline:
             pending_refinement_new=pending_refinement_new,
             sources=source_results,
         )
+
+    def _record_source_sync_failure(
+        self,
+        attempt: SourceSyncRun,
+        *,
+        fetched: int,
+        inserted: int,
+        duplicates: int,
+        stage: SourceSyncFailureStage,
+    ) -> None:
+        """Best-effort failure completion that never masks the original error.
+
+        Only safe stage codes are persisted. If telemetry cannot be written, log
+        the failure type and continue; never write a recursive failure row.
+        """
+        try:
+            self.store.complete_source_sync_failure(
+                attempt.id,
+                fetched_count=fetched,
+                inserted_count=inserted,
+                duplicate_count=duplicates,
+                failure_stage=stage,
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).error(
+                "Could not record source sync failure for %s (%s)",
+                attempt.source,
+                type(exc).__name__,
+            )
 
 
 def _source_kind(source: SourceAdapter) -> Literal["web", "tg"]:
