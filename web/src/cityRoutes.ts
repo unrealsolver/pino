@@ -7,7 +7,7 @@ export const SHORT_CITY_ALIASES: Readonly<Record<string, string>> = {
 };
 
 /** System/entry paths win over any future short city alias with the same name. */
-export const RESERVED_PATH_SEGMENTS = new Set(["event", "api", "media", "assets"]);
+export const RESERVED_PATH_SEGMENTS = new Set(["event", "api", "media", "assets", "status"]);
 
 export type CityPathResolution =
   | { kind: "entry" }

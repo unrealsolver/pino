@@ -34,6 +34,75 @@ export type CityListResponse = {
   cities: City[];
 };
 
+export type StatsRefinementItemCounts = {
+  event: number;
+  advertisement: number;
+  announcement: number;
+  non_event: number;
+  unknown: number;
+};
+
+export type StatsRecordMetrics = {
+  records_total: number;
+  records_with_refinement_total: number;
+  pending_records_total: number;
+  oldest_pending_captured_at: string | null;
+  latest_captured_at: string | null;
+};
+
+export type StatsRefinementMetrics = {
+  refinement_items_total: number;
+  refinement_items_by_kind: StatsRefinementItemCounts;
+  event_items_total: number;
+  last_refined_at: string | null;
+};
+
+export type StatsIngestionWeek = {
+  week_start: string;
+  week_end: string;
+  starts_at: string;
+  ends_at: string;
+  is_partial: boolean;
+  records: number;
+  with_refinement: number;
+  pending: number;
+};
+
+export type StatsSource = {
+  source: string;
+  ingestion: StatsRecordMetrics;
+  refinement: StatsRefinementMetrics;
+  weeks: StatsIngestionWeek[];
+};
+
+export type StatsTotals = {
+  ingestion: StatsRecordMetrics;
+  refinement: StatsRefinementMetrics;
+};
+
+export type StatsCity = {
+  city_id: string;
+  country_code: string;
+  slug: string;
+  name: string;
+  timezone: string;
+  event_items_total: number;
+  sources_with_event_items: number;
+};
+
+export type StatsResponse = {
+  as_of: string;
+  reporting_timezone: string;
+  ingestion_time_basis: "captured_at";
+  weeks: StatsIngestionWeek[];
+  totals: StatsTotals;
+  sources: StatsSource[];
+  cities: StatsCity[];
+  supported_cities_total: number;
+  unassigned_city_event_items_total: number;
+  unsupported_city_event_items_total: number;
+};
+
 export type EventFilters = {
   categories: string[];
   minScore: number;
@@ -51,8 +120,14 @@ export type SerializedEventFilters = {
 };
 
 export type EventQueryKey = ["events", string, SerializedEventFilters];
+export type StatsQueryKey = ["stats", number];
 
 export const CITIES_QUERY_KEY = ["cities"] as const;
+
+/** The reported week count is part of the key; the page uses one fixed window. */
+export function statsQueryKey(weeks: number): StatsQueryKey {
+  return ["stats", weeks];
+}
 
 export function serializeEventFilters(filters: EventFilters): SerializedEventFilters {
   return {
@@ -115,4 +190,18 @@ export async function fetchEvents(
     signal: options.signal
   });
   return readJson<EventListResponse>(response);
+}
+
+export async function fetchStats(
+  weeks: number,
+  options: { signal?: AbortSignal } = {}
+): Promise<StatsResponse> {
+  const params = new URLSearchParams();
+  params.set("weeks", String(weeks));
+
+  const response = await fetch(`/api/stats?${params.toString()}`, {
+    headers: { Accept: "application/json" },
+    signal: options.signal
+  });
+  return readJson<StatsResponse>(response);
 }

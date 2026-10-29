@@ -1,5 +1,6 @@
-import { ActionIcon, Checkbox, Group, Text, Title } from "@mantine/core";
+import { ActionIcon, Anchor, Checkbox, Group, Text, Title } from "@mantine/core";
 import { CalendarClock, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export function EventHeader({
   cityName,
@@ -33,6 +34,9 @@ export function EventHeader({
         </div>
       </Group>
       <Group gap="sm">
+        <Anchor component={Link} to="/status" size="sm">
+          Data status
+        </Anchor>
         <Checkbox
           label="Show hidden"
           checked={showHidden}
