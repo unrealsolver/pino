@@ -6,11 +6,12 @@ from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast as type_cast
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     Column,
     DateTime,
     Index,
@@ -39,7 +40,18 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from pino_llm import LLMUsage
 
-from pino_core.models import ChatMessage, LLMUsageEvent, MemoryEntry, Record, Refinement, utc_now
+from pino_core.models import (
+    SOURCE_SYNC_FAILURE_STAGES,
+    ChatMessage,
+    LLMUsageEvent,
+    MemoryEntry,
+    Record,
+    Refinement,
+    SourceSyncFailureStage,
+    SourceSyncOutcome,
+    SourceSyncRun,
+    utc_now,
+)
 from pino_core.schedules import (
     compile_query_weekly_pattern,
     compile_weekly_pattern,
@@ -147,6 +159,43 @@ source_cursors_table = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+source_sync_runs_table = Table(
+    "source_sync_runs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("source", String, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("completed_at", DateTime(timezone=True)),
+    Column("outcome", String),
+    Column("fetched_count", Integer, nullable=False, server_default="0"),
+    Column("inserted_count", Integer, nullable=False, server_default="0"),
+    Column("duplicate_count", Integer, nullable=False, server_default="0"),
+    Column("failure_stage", String),
+    CheckConstraint(
+        "(completed_at IS NULL AND outcome IS NULL) OR "
+        "(completed_at IS NOT NULL AND outcome IS NOT NULL "
+        "AND outcome IN ('success', 'failure') AND completed_at >= started_at)",
+        name="ck_source_sync_runs_completion",
+    ),
+    CheckConstraint(
+        "fetched_count >= 0 AND inserted_count >= 0 AND duplicate_count >= 0 "
+        "AND inserted_count + duplicate_count <= fetched_count",
+        name="ck_source_sync_runs_counts",
+    ),
+    CheckConstraint(
+        "failure_stage IS NULL OR (outcome IS NOT NULL AND outcome = 'failure')",
+        name="ck_source_sync_runs_failure_stage",
+    ),
+    Index("ix_source_sync_runs_source_started_at", "source", "started_at", "id"),
+    Index(
+        "ix_source_sync_runs_source_outcome_completed_at",
+        "source",
+        "outcome",
+        "completed_at",
+        "id",
+    ),
+)
+
 llm_usage_events_table = Table(
     "llm_usage_events",
     metadata,
@@ -208,6 +257,14 @@ class LLMUsageSummary:
         if self.calls <= 0:
             return 0
         return round(self.duration_ms / self.calls)
+
+
+class SourceSyncRunNotFoundError(LookupError):
+    """Raised when a source sync attempt id does not exist."""
+
+
+class SourceSyncRunAlreadyCompletedError(RuntimeError):
+    """Raised when a terminal source sync attempt is completed again."""
 
 
 class DatabaseStore:
@@ -288,6 +345,152 @@ class DatabaseStore:
                     .values(**values),
                 )
             session.commit()
+
+    def start_source_sync_attempt(
+        self,
+        source: str,
+        *,
+        started_at: datetime | None = None,
+    ) -> SourceSyncRun:
+        """Persist a new unfinished attempt before any source fetch happens."""
+        attempt = SourceSyncRun(
+            source=source,
+            started_at=_require_aware_utc(
+                started_at if started_at is not None else utc_now(),
+                field="started_at",
+            ),
+        )
+        self._insert_model(source_sync_runs_table, attempt)
+        return attempt
+
+    def complete_source_sync_success(
+        self,
+        run_id: str,
+        *,
+        fetched_count: int,
+        inserted_count: int,
+        duplicate_count: int,
+        completed_at: datetime | None = None,
+    ) -> SourceSyncRun:
+        """Complete a started attempt as a successful terminal run.
+
+        Zero-result and duplicate-only attempts are successful. The counts are
+        the truthful partial totals observed when the attempt finished.
+        """
+        return self._complete_source_sync_run(
+            run_id,
+            outcome="success",
+            fetched_count=fetched_count,
+            inserted_count=inserted_count,
+            duplicate_count=duplicate_count,
+            failure_stage=None,
+            completed_at=completed_at,
+        )
+
+    def complete_source_sync_failure(
+        self,
+        run_id: str,
+        *,
+        fetched_count: int,
+        inserted_count: int,
+        duplicate_count: int,
+        failure_stage: str | None = None,
+        completed_at: datetime | None = None,
+    ) -> SourceSyncRun:
+        """Complete a started attempt as a failed terminal run.
+
+        ``failure_stage`` is an optional safe stage code from
+        ``SOURCE_SYNC_FAILURE_STAGES``. Raw exception text must never be passed.
+        """
+        return self._complete_source_sync_run(
+            run_id,
+            outcome="failure",
+            fetched_count=fetched_count,
+            inserted_count=inserted_count,
+            duplicate_count=duplicate_count,
+            failure_stage=_validated_failure_stage(failure_stage),
+            completed_at=completed_at,
+        )
+
+    def _complete_source_sync_run(
+        self,
+        run_id: str,
+        *,
+        outcome: SourceSyncOutcome,
+        fetched_count: int,
+        inserted_count: int,
+        duplicate_count: int,
+        failure_stage: SourceSyncFailureStage | None,
+        completed_at: datetime | None,
+    ) -> SourceSyncRun:
+        fetched = _validated_sync_count(fetched_count, field="fetched_count")
+        inserted = _validated_sync_count(inserted_count, field="inserted_count")
+        duplicate = _validated_sync_count(duplicate_count, field="duplicate_count")
+        if inserted + duplicate > fetched:
+            raise ValueError("inserted_count + duplicate_count must not exceed fetched_count")
+        values = {
+            "completed_at": _require_aware_utc(
+                completed_at if completed_at is not None else utc_now(),
+                field="completed_at",
+            ),
+            "outcome": outcome,
+            "fetched_count": fetched,
+            "inserted_count": inserted,
+            "duplicate_count": duplicate,
+            "failure_stage": failure_stage,
+        }
+        with Session(self.engine) as session:
+            # The completion predicate makes terminal writes atomic: an already
+            # completed row can never be overwritten by a later completion.
+            result = session.execute(
+                update(source_sync_runs_table)
+                .where(
+                    source_sync_runs_table.c.id == run_id,
+                    source_sync_runs_table.c.completed_at.is_(None),
+                )
+                .values(**values),
+            )
+            if result.rowcount != 1:
+                session.rollback()
+                exists = session.execute(
+                    select(source_sync_runs_table.c.id).where(
+                        source_sync_runs_table.c.id == run_id
+                    ),
+                ).scalar_one_or_none()
+                if exists is None:
+                    raise SourceSyncRunNotFoundError(f"source sync attempt not found: {run_id}")
+                raise SourceSyncRunAlreadyCompletedError(
+                    f"source sync attempt is already completed: {run_id}"
+                )
+            row = session.execute(
+                select(source_sync_runs_table).where(source_sync_runs_table.c.id == run_id),
+            ).one()
+            attempt = SourceSyncRun.model_validate(dict(row._mapping))
+            session.commit()
+            return attempt
+
+    def latest_source_sync_attempts(self) -> tuple[SourceSyncRun, ...]:
+        """Return the latest attempt per attempted source.
+
+        Includes sources that have attempts but no stored records, and sources
+        whose latest attempt is unfinished.
+        """
+        return self._latest_source_sync_runs(successful_only=False)
+
+    def latest_source_sync_successes(self) -> tuple[SourceSyncRun, ...]:
+        """Return the latest successful terminal completion per source.
+
+        This is independent of the latest attempt: a later failure or unfinished
+        attempt does not erase the previous successful completion.
+        """
+        return self._latest_source_sync_runs(successful_only=True)
+
+    def _latest_source_sync_runs(self, *, successful_only: bool) -> tuple[SourceSyncRun, ...]:
+        with Session(self.engine) as session:
+            rows = session.execute(
+                _latest_source_sync_runs_query(successful_only=successful_only),
+            ).all()
+        return tuple(SourceSyncRun.model_validate(dict(row._mapping)) for row in rows)
 
     def list_records(self, limit: int = 50) -> list[Record]:
         rows = self._select_latest(records_table, records_table.c.captured_at, limit)
@@ -736,6 +939,64 @@ class SQLiteStore(DatabaseStore):
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         super().__init__(f"sqlite:///{self.path}")
+
+
+def _latest_source_sync_runs_query(*, successful_only: bool):
+    """Rank attempts per source without one query per source.
+
+    Latest attempts use ``(started_at, id)``; successful terminal runs use
+    ``(completed_at, id)``. The id tie-break keeps equal timestamps stable.
+    """
+    if successful_only:
+        order_by = [
+            source_sync_runs_table.c.completed_at.desc(),
+            source_sync_runs_table.c.id.desc(),
+        ]
+    else:
+        order_by = [
+            source_sync_runs_table.c.started_at.desc(),
+            source_sync_runs_table.c.id.desc(),
+        ]
+    ranked = select(
+        source_sync_runs_table,
+        func.row_number()
+        .over(
+            partition_by=source_sync_runs_table.c.source,
+            order_by=order_by,
+        )
+        .label("run_rank"),
+    )
+    if successful_only:
+        ranked = ranked.where(
+            source_sync_runs_table.c.outcome == "success",
+            source_sync_runs_table.c.completed_at.is_not(None),
+        )
+    ranked_runs = ranked.subquery("ranked_source_sync_runs")
+    return (
+        select(*(ranked_runs.c[column.name] for column in source_sync_runs_table.columns))
+        .where(ranked_runs.c.run_rank == 1)
+        .order_by(ranked_runs.c.source)
+    )
+
+
+def _require_aware_utc(value: datetime, *, field: str) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field} must be a timezone-aware datetime")
+    return value.astimezone(timezone.utc)
+
+
+def _validated_sync_count(value: int, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field} must be a non-negative integer")
+    return value
+
+
+def _validated_failure_stage(value: str | None) -> SourceSyncFailureStage | None:
+    if value is None:
+        return None
+    if value not in SOURCE_SYNC_FAILURE_STAGES:
+        raise ValueError("failure_stage must be one of: " + ", ".join(SOURCE_SYNC_FAILURE_STAGES))
+    return type_cast(SourceSyncFailureStage, value)
 
 
 @contextmanager

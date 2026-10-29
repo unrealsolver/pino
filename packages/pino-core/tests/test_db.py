@@ -74,7 +74,7 @@ def test_upgrade_bootstraps_current_sqlite_schema(tmp_path: Path) -> None:
         assert actual_columns == set(table.columns.keys())
     with engine.begin() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "0003"
+    assert revision == "0004"
     assert "refinement_schedule_index" not in inspector.get_table_names()
 
 

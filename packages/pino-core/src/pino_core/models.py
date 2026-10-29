@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -179,6 +179,60 @@ class LLMUsageEvent(BaseModel):
     @classmethod
     def _normalize_created_at_to_utc(cls, value: datetime | None) -> datetime | None:
         return ensure_utc_datetime(value)
+
+
+SourceSyncOutcome = Literal["success", "failure"]
+
+# Safe failure-stage codes mirror the required non-media pipeline phases:
+# ``fetch`` for source retrieval, ``store`` for record/media persistence, and
+# ``cursor`` for cursor persistence. Raw exception text, source settings,
+# credentials, URLs, and filesystem paths must never be stored as a stage.
+SourceSyncFailureStage = Literal["fetch", "store", "cursor"]
+
+SOURCE_SYNC_FAILURE_STAGES: tuple[SourceSyncFailureStage, ...] = get_args(SourceSyncFailureStage)
+
+
+class SourceSyncRun(BaseModel):
+    """One durable attempt to synchronize a single source.
+
+    A row is written before the source fetch and completed exactly once with the
+    truthful counts observed at that point. ``outcome`` and ``completed_at`` are
+    set together only on terminal completion. The table intentionally stores no
+    raw exception text, source settings, credentials, filesystem paths, or
+    payloads.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default_factory=new_id)
+    source: str = Field(min_length=1)
+    started_at: datetime = Field(default_factory=utc_now)
+    completed_at: datetime | None = None
+    outcome: SourceSyncOutcome | None = None
+    fetched_count: int = Field(default=0, ge=0)
+    inserted_count: int = Field(default=0, ge=0)
+    duplicate_count: int = Field(default=0, ge=0)
+    failure_stage: SourceSyncFailureStage | None = None
+
+    @field_validator("started_at", "completed_at")
+    @classmethod
+    def _assume_utc_for_naive_datetimes(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc_datetime(value)
+
+    @model_validator(mode="after")
+    def _validate_terminal_state(self) -> SourceSyncRun:
+        if self.completed_at is not None:
+            if self.outcome is None:
+                raise ValueError("completed_at requires a terminal outcome")
+            if self.completed_at < self.started_at:
+                raise ValueError("completed_at must not be before started_at")
+        elif self.outcome is not None:
+            raise ValueError("outcome requires completed_at")
+        if self.failure_stage is not None and (self.outcome is None or self.outcome != "failure"):
+            raise ValueError("failure_stage requires a failed terminal outcome")
+        if self.inserted_count + self.duplicate_count > self.fetched_count:
+            raise ValueError("inserted_count + duplicate_count must not exceed fetched_count")
+        return self
 
 
 def compute_record_fingerprint(record: Record) -> str:
