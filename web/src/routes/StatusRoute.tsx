@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Badge,
@@ -12,11 +13,13 @@ import {
   SimpleGrid,
   Stack,
   Table,
+  Tabs,
   Text,
-  Title
+  Title,
+  Tooltip
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { Info, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import {
@@ -76,7 +79,7 @@ export function StatusRoute() {
               <div>
                 <Title order={1}>Data status</Title>
                 <Text size="sm" c="dimmed">
-                  Stored ingestion, refinement, and recorded source sync. Read-only.
+                  Stored ingestion, refinement, and recorded source sync.
                 </Text>
               </div>
               <Group gap="sm">
@@ -97,15 +100,14 @@ export function StatusRoute() {
             {data && (
               <Group gap="xs" wrap="wrap">
                 <Text size="sm" c="dimmed">
-                  Report as of{" "}
+                  As of{" "}
                   <Text component="span" fw={600} c="dark.8">
                     {formatTimestamp(data.as_of, data.reporting_timezone)}
                   </Text>
-                  . Reporting timezone:{" "}
+                  {" · "}Reporting timezone:{" "}
                   <Text component="span" fw={600} c="dark.8">
                     {data.reporting_timezone}
                   </Text>
-                  . Weeks start Monday.
                 </Text>
                 {isBackgroundRefresh && (
                   <Badge variant="light" color="amber" aria-live="polite">
@@ -172,33 +174,49 @@ export function StatusRoute() {
                   data-testid="status-empty"
                 >
                   <Text size="sm">
-                    No raw records are stored yet. The tables show zero counts, and the city
-                    table lists the published registry.
+                    Tables show zero counts and the published city registry.
                   </Text>
                 </Alert>
               )}
 
-              <IngestionSection
-                totals={data.totals.ingestion}
-                timeZone={data.reporting_timezone}
-              />
+              <Tabs defaultValue="ingestion" variant="outline" keepMounted={false}>
+                <Tabs.List>
+                  <Tabs.Tab value="ingestion">Ingestion</Tabs.Tab>
+                  <Tabs.Tab value="refinement">Refinement</Tabs.Tab>
+                  <Tabs.Tab value="sync">Sync</Tabs.Tab>
+                  <Tabs.Tab value="cities">Cities</Tabs.Tab>
+                </Tabs.List>
 
-              <WeeklyCoverageSection
-                weeks={data.weeks}
-                sources={data.sources}
-                totals={data.totals.ingestion}
-                timeZone={data.reporting_timezone}
-              />
+                <Tabs.Panel value="ingestion" pt="md">
+                  <Stack gap="xl">
+                    <IngestionSection
+                      totals={data.totals.ingestion}
+                      sources={data.sources}
+                      timeZone={data.reporting_timezone}
+                    />
+                    <WeeklyCoverageSection weeks={data.weeks} sources={data.sources} />
+                  </Stack>
+                </Tabs.Panel>
 
-              <RefinementSection
-                totals={data.totals.refinement}
-                sources={data.sources}
-                timeZone={data.reporting_timezone}
-              />
+                <Tabs.Panel value="refinement" pt="md">
+                  <RefinementSection
+                    totals={data.totals.refinement}
+                    sources={data.sources}
+                    timeZone={data.reporting_timezone}
+                  />
+                </Tabs.Panel>
 
-              <SourceSyncSection sources={data.sources} />
+                <Tabs.Panel value="sync" pt="md">
+                  <SourceSyncSection
+                    sources={data.sources}
+                    timeZone={data.reporting_timezone}
+                  />
+                </Tabs.Panel>
 
-              <CitySection data={data} />
+                <Tabs.Panel value="cities" pt="md">
+                  <CitySection data={data} />
+                </Tabs.Panel>
+              </Tabs>
             </>
           )}
         </Stack>
@@ -207,71 +225,92 @@ export function StatusRoute() {
   );
 }
 
+function InfoTip({ label, ariaLabel }: { label: string; ariaLabel: string }) {
+  return (
+    <Tooltip label={label} withArrow multiline w={280} events={{ hover: true, focus: true, touch: true }}>
+      <ActionIcon variant="subtle" color="gray" size="sm" aria-label={ariaLabel}>
+        <Info size={16} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
 function IngestionSection({
   totals,
+  sources,
   timeZone
 }: {
   totals: StatsRecordMetrics;
+  sources: StatsSource[];
   timeZone: string;
 }) {
   return (
-    <Stack gap="md" component="section" aria-labelledby="status-ingestion-heading">
-      <Group justify="space-between" align="center" gap="sm" wrap="wrap">
-        <Title order={2} size="h4" id="status-ingestion-heading">
-          Ingestion and coverage
-        </Title>
-        <Badge variant="light" color="amber">
-          Raw record counts
-        </Badge>
-      </Group>
-
+    <Stack gap="md" component="section" aria-label="Ingestion totals">
       <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
         <MetricCard
           label="Raw records"
           value={formatCount(totals.records_total)}
-          note="All stored raw records, all time. Includes records without a refinement."
-        />
-        <MetricCard
-          label="Records with refinement"
-          value={formatCount(totals.records_with_refinement_total)}
-          note="Distinct raw records with at least one current refinement result. Each record is counted once."
+          note="All stored raw records."
         />
         <MetricCard
           label="Pending refinement"
           value={formatCount(totals.pending_records_total)}
-          note="Raw records with no current refinement result. Pending records do not indicate failed or running work."
+          note="No current refinement result."
         />
         <MetricCard
           label="Oldest pending capture"
           value={formatTimestamp(totals.oldest_pending_captured_at, timeZone)}
-          note="Original capture time of the oldest pending record, not measured queue wait time."
+          note="Original capture time, not queue wait."
+          valueSize="lg"
+        />
+        <MetricCard
+          label="Latest capture"
+          value={formatTimestamp(totals.latest_captured_at, timeZone)}
+          note="Most recent recorded capture."
           valueSize="lg"
         />
       </SimpleGrid>
 
       <Paper withBorder p="md" bg="white">
-        <Text size="sm">
-          Latest captured record:{" "}
-          <Text component="span" fw={600}>
-            {formatTimestamp(totals.latest_captured_at, timeZone)}
-          </Text>
-        </Text>
+        <Table.ScrollContainer
+          minWidth={620}
+          type="native"
+          role="region"
+          tabIndex={0}
+          aria-label="All-time raw records by source"
+        >
+          <Table striped highlightOnHover verticalSpacing="xs" horizontalSpacing="sm" tabularNums>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th scope="col">Source</Table.Th>
+                <Table.Th scope="col">Raw records</Table.Th>
+                <Table.Th scope="col">Pending</Table.Th>
+                <Table.Th scope="col">Latest capture</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {sources.map((source) => (
+                <Table.Tr key={source.source}>
+                  <Table.Th scope="row">{source.source}</Table.Th>
+                  <Table.Td>{formatCount(source.ingestion.records_total)}</Table.Td>
+                  <Table.Td>{formatCount(source.ingestion.pending_records_total)}</Table.Td>
+                  <Table.Td>
+                    {formatTimestamp(source.ingestion.latest_captured_at, timeZone)}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+            <Table.Tfoot bg="gray.0">
+              <Table.Tr fw={700}>
+                <Table.Th scope="row" fw={700}>All observed sources</Table.Th>
+                <Table.Td fw={700}>{formatCount(totals.records_total)}</Table.Td>
+                <Table.Td fw={700}>{formatCount(totals.pending_records_total)}</Table.Td>
+                <Table.Td fw={700}>{formatTimestamp(totals.latest_captured_at, timeZone)}</Table.Td>
+              </Table.Tr>
+            </Table.Tfoot>
+          </Table>
+        </Table.ScrollContainer>
       </Paper>
-
-      <Alert color="amber" variant="light" title="Ingestion time is recorded as first capture">
-        <Stack gap="xs">
-          <Text size="sm">
-            “First captured records” are grouped by the original recorded capture time. That time
-            is when a record was recorded, not when it was inserted into the database: imported or
-            static records may carry a historical capture time, and a duplicate fetch does not
-            count again.
-          </Text>
-          <Text size="sm">
-            The oldest pending capture is measured from capture time, not queue wait. Pending
-            records are not evidence of failed or running refinement jobs.
-          </Text>
-        </Stack>
-      </Alert>
     </Stack>
   );
 }
@@ -304,186 +343,93 @@ function MetricCard({
 
 function WeeklyCoverageSection({
   weeks,
-  sources,
-  totals,
-  timeZone
+  sources
 }: {
   weeks: StatsIngestionWeek[];
   sources: StatsSource[];
-  totals: StatsRecordMetrics;
-  timeZone: string;
 }) {
   return (
-    <Stack gap="md" component="section" aria-labelledby="status-weekly-heading">
+    <Stack gap="md" component="section" aria-label="Weekly captured records">
       <Group justify="space-between" align="center" gap="sm" wrap="wrap">
-        <Title order={2} size="h4" id="status-weekly-heading">
-          Weekly ingestion by source
-        </Title>
+        <Group gap="xs" align="center">
+          <Title order={2} size="h5">
+            Weekly captured records
+          </Title>
+          <InfoTip
+            ariaLabel="About capture time"
+            label="Ingestion time is recorded as first capture. Imported or static records may carry historical capture times; duplicate fetches do not count again."
+          />
+        </Group>
         <Badge variant="light" color="wood">
           {weeks.length} weeks
         </Badge>
       </Group>
 
-      <Text size="sm" c="dimmed">
-        “First captured records” groups raw records by their original recorded capture time
-        into Monday-start weeks in {timeZone}. Refined and pending values are the current
-        coverage of the records captured in that week, as of this report. They are not jobs
-        completed during that week and not a historical queue size.
-      </Text>
-
       <Paper withBorder p="md" bg="white">
-        <Stack gap="sm">
-          <Text fw={600}>All-time coverage and pending outside window by source</Text>
-          <Table.ScrollContainer
-            minWidth={760}
-            type="native"
-            role="region"
-            tabIndex={0}
-            aria-label="All-time ingestion coverage and pending outside window by source"
+        <Table.ScrollContainer
+          minWidth={1120}
+          type="native"
+          role="region"
+          tabIndex={0}
+          aria-label="Weekly first-captured records by source"
+        >
+          <Table
+            striped
+            highlightOnHover
+            withColumnBorders
+            verticalSpacing="xs"
+            horizontalSpacing="sm"
+            tabularNums
           >
-            <Table striped highlightOnHover verticalSpacing="xs" horizontalSpacing="sm" tabularNums>
-              <Table.Caption>
-                Raw record coverage by observed source. “Pending outside window” counts all
-                pending captures outside the displayed capture interval, including future-dated
-                captures. “Latest capture” is a storage timestamp, not a sync time.
-              </Table.Caption>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th scope="col">Source</Table.Th>
-                  <Table.Th scope="col">Raw records</Table.Th>
-                  <Table.Th scope="col">With refinement</Table.Th>
-                  <Table.Th scope="col">Pending</Table.Th>
-                  <Table.Th scope="col">Pending outside window</Table.Th>
-                  <Table.Th scope="col">Latest capture</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {sources.map((source) => (
-                  <Table.Tr key={source.source}>
-                    <Table.Th scope="row">{source.source}</Table.Th>
-                    <Table.Td>{formatCount(source.ingestion.records_total)}</Table.Td>
-                    <Table.Td>
-                      {formatCount(source.ingestion.records_with_refinement_total)}
-                    </Table.Td>
-                    <Table.Td>{formatCount(source.ingestion.pending_records_total)}</Table.Td>
-                    <Table.Td>
-                      {formatCount(
-                        pendingOutsideWindow(source.weeks, source.ingestion.pending_records_total)
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {formatTimestamp(source.ingestion.latest_captured_at, timeZone)}
-                    </Table.Td>
-                  </Table.Tr>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th scope="col">Source</Table.Th>
+                {weeks.map((week) => (
+                  <Table.Th key={week.week_start} scope="col">
+                    <Text size="xs" fw={700}>
+                      Week of {week.week_start}
+                    </Text>
+                    <Text size="xs" c="dimmed" fw={400}>
+                      Ends {week.week_end}
+                    </Text>
+                    {week.is_partial && (
+                      <Badge size="xs" variant="light" color="amber" mt="xs">
+                        Partial
+                      </Badge>
+                    )}
+                  </Table.Th>
                 ))}
-              </Table.Tbody>
-              <Table.Tfoot>
-                <Table.Tr>
-                  <Table.Th scope="row">All observed sources</Table.Th>
-                  <Table.Td>{formatCount(totals.records_total)}</Table.Td>
-                  <Table.Td>{formatCount(totals.records_with_refinement_total)}</Table.Td>
-                  <Table.Td>{formatCount(totals.pending_records_total)}</Table.Td>
-                  <Table.Td>
-                    {formatCount(pendingOutsideWindow(weeks, totals.pending_records_total))}
-                  </Table.Td>
-                  <Table.Td>{formatTimestamp(totals.latest_captured_at, timeZone)}</Table.Td>
-                </Table.Tr>
-              </Table.Tfoot>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
-      </Paper>
-
-      <Paper withBorder p="md" bg="white">
-        <Stack gap="sm">
-          <Text fw={600}>First captured records and current cohort coverage</Text>
-          <Table.ScrollContainer
-            minWidth={1120}
-            type="native"
-            role="region"
-            tabIndex={0}
-            aria-label="Eight-week first-captured records and current coverage by source"
-          >
-            <Table
-              striped
-              highlightOnHover
-              withColumnBorders
-              verticalSpacing="xs"
-              horizontalSpacing="sm"
-              tabularNums
-            >
-              <Table.Caption>
-                Week bounds are Monday-start half-open local dates; the end date is exclusive.
-                The current week is partial and marked. Coverage for an older cohort changes when
-                an old record is refined later.
-              </Table.Caption>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th scope="col">Source</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {sources.map((source) => (
+                <Table.Tr key={source.source}>
+                  <Table.Th scope="row">{source.source}</Table.Th>
                   {weeks.map((week) => (
-                    <Table.Th key={week.week_start} scope="col">
-                      <Text size="xs" fw={700}>
-                        Week of {week.week_start}
-                      </Text>
-                      <Text size="xs" c="dimmed" fw={400}>
-                        Ends {week.week_end}
-                      </Text>
-                      {week.is_partial && (
-                        <>
-                          <Badge size="xs" variant="light" color="amber" mt="xs">
-                            Partial week
-                          </Badge>
-                          <Text size="xs" c="dimmed">
-                            Through report time
-                          </Text>
-                        </>
-                      )}
-                    </Table.Th>
+                    <WeekCountCell key={week.week_start} count={weekCount(source, week)} />
                   ))}
                 </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {sources.map((source) => (
-                  <Table.Tr key={source.source}>
-                    <Table.Th scope="row">{source.source}</Table.Th>
-                    {weeks.map((week) => (
-                      <WeekCoverageCell
-                        key={week.week_start}
-                        counts={weekCounts(source, week)}
-                      />
-                    ))}
-                  </Table.Tr>
+              ))}
+            </Table.Tbody>
+            <Table.Tfoot bg="gray.0">
+              <Table.Tr fw={700}>
+                <Table.Th scope="row" fw={700}>All observed sources</Table.Th>
+                {weeks.map((week) => (
+                  <WeekCountCell key={week.week_start} count={week.records} emphasized />
                 ))}
-              </Table.Tbody>
-              <Table.Tfoot>
-                <Table.Tr>
-                  <Table.Th scope="row">All observed sources</Table.Th>
-                  {weeks.map((week) => (
-                    <WeekCoverageCell key={week.week_start} counts={week} />
-                  ))}
-                </Table.Tr>
-              </Table.Tfoot>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
+              </Table.Tr>
+            </Table.Tfoot>
+          </Table>
+        </Table.ScrollContainer>
       </Paper>
     </Stack>
   );
 }
 
-function WeekCoverageCell({
-  counts
-}: {
-  counts: Pick<StatsIngestionWeek, "records" | "with_refinement" | "pending">;
-}) {
+function WeekCountCell({ count, emphasized = false }: { count: number; emphasized?: boolean }) {
   return (
-    <Table.Td>
-      <Text size="sm" fw={counts.records > 0 ? 600 : 400}>
-        {formatCount(counts.records)} captured
-      </Text>
-      <Text size="xs" c="dimmed">
-        {formatCount(counts.with_refinement)} refined · {formatCount(counts.pending)} pending
-      </Text>
+    <Table.Td fw={emphasized ? 700 : count > 0 ? 600 : 400}>
+      {formatCount(count)}
     </Table.Td>
   );
 }
@@ -498,20 +444,16 @@ function RefinementSection({
   timeZone: string;
 }) {
   return (
-    <Stack gap="md" component="section" aria-labelledby="status-refinement-heading">
-      <Group justify="space-between" align="center" gap="sm" wrap="wrap">
-        <Title order={2} size="h4" id="status-refinement-heading">
+    <Stack gap="md" component="section" aria-label="Refinement output">
+      <Group gap="xs" align="center">
+        <Title order={2} size="h5">
           Refinement output
         </Title>
-        <Badge variant="light" color="wood">
-          Output item counts
-        </Badge>
+        <InfoTip
+          ariaLabel="About refinement items"
+          label="Output items are not raw records. Event items are all time and not deduplicated across sources."
+        />
       </Group>
-
-      <Text size="sm" c="dimmed">
-        These are current refinement output item counts, not processed raw records, lifetime
-        throughput, or job completion figures.
-      </Text>
 
       <Paper withBorder p="md" bg="white">
         <Stack gap="sm">
@@ -540,11 +482,6 @@ function RefinementSection({
               All time
             </Badge>
           </Group>
-          <Text size="xs" c="dimmed">
-            Event items include past events and are not deduplicated across sources. One raw
-            record may yield several output items, so neither this count nor displayed calendar
-            occurrences equal records processed.
-          </Text>
 
           <Text size="sm">
             Latest refinement result:{" "}
@@ -552,82 +489,70 @@ function RefinementSection({
               {formatTimestamp(totals.last_refined_at, timeZone)}
             </Text>
           </Text>
-          <Text size="xs" c="dimmed">
-            A stored refinement does not by itself indicate a successful or high-quality result.
-            Coverage is not a success rate.
-          </Text>
         </Stack>
       </Paper>
 
-      <Alert color="gray" variant="light" title="Storage timestamps are not sync times">
-        <Text size="sm">
-          Latest captured record and latest refinement result are storage timestamps, not sync
-          times. No freshness or health claim is made here.
-        </Text>
-      </Alert>
-
       <Paper withBorder p="md" bg="white">
-        <Stack gap="sm">
-          <Text fw={600}>Refinement output by source</Text>
-          <Table.ScrollContainer
-            minWidth={900}
-            type="native"
-            role="region"
-            tabIndex={0}
-            aria-label="Refinement output items by source"
-          >
-            <Table striped highlightOnHover verticalSpacing="xs" horizontalSpacing="sm" tabularNums>
-              <Table.Caption>
-                Current refinement output items by observed source. Item counts are not raw
-                record counts, and the latest refinement result is not a sync time.
-              </Table.Caption>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th scope="col">Source</Table.Th>
-                  <Table.Th scope="col">Refined items</Table.Th>
-                  <Table.Th scope="col">Event</Table.Th>
-                  <Table.Th scope="col">Advertisement</Table.Th>
-                  <Table.Th scope="col">Announcement</Table.Th>
-                  <Table.Th scope="col">Non-event</Table.Th>
-                  <Table.Th scope="col">Unknown</Table.Th>
-                  <Table.Th scope="col">Latest refinement result</Table.Th>
+        <Table.ScrollContainer
+          minWidth={900}
+          type="native"
+          role="region"
+          tabIndex={0}
+          aria-label="Refinement output items by source"
+        >
+          <Table striped highlightOnHover verticalSpacing="xs" horizontalSpacing="sm" tabularNums>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th scope="col">Source</Table.Th>
+                <Table.Th scope="col">Refined items</Table.Th>
+                <Table.Th scope="col">Event</Table.Th>
+                <Table.Th scope="col">Advertisement</Table.Th>
+                <Table.Th scope="col">Announcement</Table.Th>
+                <Table.Th scope="col">Non-event</Table.Th>
+                <Table.Th scope="col">Unknown</Table.Th>
+                <Table.Th scope="col">Latest refinement</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {sources.map((source) => (
+                <Table.Tr key={source.source}>
+                  <Table.Th scope="row">{source.source}</Table.Th>
+                  <Table.Td>{formatCount(source.refinement.refinement_items_total)}</Table.Td>
+                  <Table.Td>{formatCount(source.refinement.refinement_items_by_kind.event)}</Table.Td>
+                  <Table.Td>
+                    {formatCount(source.refinement.refinement_items_by_kind.advertisement)}
+                  </Table.Td>
+                  <Table.Td>
+                    {formatCount(source.refinement.refinement_items_by_kind.announcement)}
+                  </Table.Td>
+                  <Table.Td>
+                    {formatCount(source.refinement.refinement_items_by_kind.non_event)}
+                  </Table.Td>
+                  <Table.Td>{formatCount(source.refinement.refinement_items_by_kind.unknown)}</Table.Td>
+                  <Table.Td>{formatTimestamp(source.refinement.last_refined_at, timeZone)}</Table.Td>
                 </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {sources.map((source) => (
-                  <Table.Tr key={source.source}>
-                    <Table.Th scope="row">{source.source}</Table.Th>
-                    <Table.Td>{formatCount(source.refinement.refinement_items_total)}</Table.Td>
-                    <Table.Td>{formatCount(source.refinement.refinement_items_by_kind.event)}</Table.Td>
-                    <Table.Td>
-                      {formatCount(source.refinement.refinement_items_by_kind.advertisement)}
-                    </Table.Td>
-                    <Table.Td>
-                      {formatCount(source.refinement.refinement_items_by_kind.announcement)}
-                    </Table.Td>
-                    <Table.Td>
-                      {formatCount(source.refinement.refinement_items_by_kind.non_event)}
-                    </Table.Td>
-                    <Table.Td>{formatCount(source.refinement.refinement_items_by_kind.unknown)}</Table.Td>
-                    <Table.Td>{formatTimestamp(source.refinement.last_refined_at, timeZone)}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-              <Table.Tfoot>
-                <Table.Tr>
-                  <Table.Th scope="row">All observed sources</Table.Th>
-                  <Table.Td>{formatCount(totals.refinement_items_total)}</Table.Td>
-                  <Table.Td>{formatCount(totals.refinement_items_by_kind.event)}</Table.Td>
-                  <Table.Td>{formatCount(totals.refinement_items_by_kind.advertisement)}</Table.Td>
-                  <Table.Td>{formatCount(totals.refinement_items_by_kind.announcement)}</Table.Td>
-                  <Table.Td>{formatCount(totals.refinement_items_by_kind.non_event)}</Table.Td>
-                  <Table.Td>{formatCount(totals.refinement_items_by_kind.unknown)}</Table.Td>
-                  <Table.Td>{formatTimestamp(totals.last_refined_at, timeZone)}</Table.Td>
-                </Table.Tr>
-              </Table.Tfoot>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
+              ))}
+            </Table.Tbody>
+            <Table.Tfoot bg="gray.0">
+              <Table.Tr fw={700}>
+                <Table.Th scope="row" fw={700}>All observed sources</Table.Th>
+                <Table.Td fw={700}>{formatCount(totals.refinement_items_total)}</Table.Td>
+                <Table.Td fw={700}>{formatCount(totals.refinement_items_by_kind.event)}</Table.Td>
+                <Table.Td fw={700}>
+                  {formatCount(totals.refinement_items_by_kind.advertisement)}
+                </Table.Td>
+                <Table.Td fw={700}>
+                  {formatCount(totals.refinement_items_by_kind.announcement)}
+                </Table.Td>
+                <Table.Td fw={700}>
+                  {formatCount(totals.refinement_items_by_kind.non_event)}
+                </Table.Td>
+                <Table.Td fw={700}>{formatCount(totals.refinement_items_by_kind.unknown)}</Table.Td>
+                <Table.Td fw={700}>{formatTimestamp(totals.last_refined_at, timeZone)}</Table.Td>
+              </Table.Tr>
+            </Table.Tfoot>
+          </Table>
+        </Table.ScrollContainer>
       </Paper>
     </Stack>
   );
@@ -640,70 +565,62 @@ const SYNC_STATE_LABELS: Record<StatsSourceSync["state"], string> = {
   failure: "Failure"
 };
 
-function SourceSyncSection({ sources }: { sources: StatsSource[] }) {
+const SYNC_STATE_COLORS: Record<StatsSourceSync["state"], string> = {
+  unknown: "gray",
+  unfinished: "gray",
+  success: "green",
+  failure: "red"
+};
+
+function SourceSyncSection({
+  sources,
+  timeZone
+}: {
+  sources: StatsSource[];
+  timeZone: string;
+}) {
   return (
-    <Stack gap="md" component="section" aria-labelledby="status-sync-heading">
-      <Group justify="space-between" align="center" gap="sm" wrap="wrap">
-        <Title order={2} size="h4" id="status-sync-heading">
+    <Stack gap="md" component="section" aria-label="Source sync">
+      <Group gap="xs" align="center">
+        <Title order={2} size="h5">
           Source sync
         </Title>
-        <Badge variant="light" color="gray">
-          Recorded attempts
-        </Badge>
+        <InfoTip
+          ariaLabel="About sync status"
+          label="Unknown and unfinished are not terminal outcomes. A successful sync does not mean refinement or media upload is complete."
+        />
       </Group>
-
-      <Text size="sm" c="dimmed">
-        Last recorded sync attempt and last successful completion per source. Fetched and
-        stored counts describe source ingestion only. A successful sync can leave newly stored
-        records pending refinement; it does not mean refinement or media upload has completed.
-        No schedule, availability, or freshness is inferred.
-      </Text>
 
       <Paper withBorder p="md" bg="white">
         <Table.ScrollContainer
-          minWidth={1080}
+          minWidth={860}
           type="native"
           role="region"
           tabIndex={0}
           aria-label="Recorded source sync attempts and last successful completion"
         >
           <Table striped highlightOnHover verticalSpacing="xs" horizontalSpacing="sm" tabularNums>
-            <Table.Caption>
-              “No sync recorded” means no attempt is stored, not a failure. An unfinished
-              attempt has no recorded completion and is not claimed to be running. A later
-              failure does not erase the prior successful completion.
-            </Table.Caption>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th scope="col">Source</Table.Th>
                 <Table.Th scope="col">Last attempt</Table.Th>
-                <Table.Th scope="col">Attempt time (UTC)</Table.Th>
                 <Table.Th scope="col">Attempt counts</Table.Th>
-                <Table.Th scope="col">Last successful sync (UTC)</Table.Th>
+                <Table.Th scope="col">Last successful sync</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {sources.map((source) => (
-                <SourceSyncRow key={source.source} source={source} />
+                <SourceSyncRow key={source.source} source={source} timeZone={timeZone} />
               ))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       </Paper>
-
-      <Alert color="gray" variant="light" title="Sync is not refinement or media freshness">
-        <Text size="sm">
-          Source sync records whether a fetch/storage attempt was started and completed. It
-          does not measure refinement quality or backlog, and media-upload freshness is not
-          tracked here. Latest capture and latest refinement result remain separate storage
-          timestamps.
-        </Text>
-      </Alert>
     </Stack>
   );
 }
 
-function SourceSyncRow({ source }: { source: StatsSource }) {
+function SourceSyncRow({ source, timeZone }: { source: StatsSource; timeZone: string }) {
   const sync = source.sync;
   const attempt = sync.last_attempt;
 
@@ -711,28 +628,17 @@ function SourceSyncRow({ source }: { source: StatsSource }) {
     <Table.Tr>
       <Table.Th scope="row">{source.source}</Table.Th>
       <Table.Td>
-        <Badge variant="light" color="gray" size="sm">
-          {SYNC_STATE_LABELS[sync.state]}
+        <Badge variant="light" color={SYNC_STATE_COLORS[sync.state]} size="sm">
+          {syncStateLabel(sync)}
         </Badge>
-        {attempt?.failure_stage && (
-          <Text size="xs" c="dimmed">
-            Failure stage: {attempt.failure_stage}
+        {attempt && (
+          <Text size="sm" mt="xs">
+            {formatTimestamp(attempt.started_at, timeZone)}
           </Text>
         )}
-      </Table.Td>
-      <Table.Td>
-        {attempt ? (
-          <>
-            <Text size="sm">Started {formatTimestamp(attempt.started_at, "UTC")}</Text>
-            <Text size="xs" c="dimmed">
-              {attempt.completed_at
-                ? `Completed ${formatTimestamp(attempt.completed_at, "UTC")}`
-                : "Completion not recorded"}
-            </Text>
-          </>
-        ) : (
-          <Text size="sm" c="dimmed">
-            No attempt recorded
+        {attempt?.state === "unfinished" && (
+          <Text size="xs" c="dimmed">
+            Completion not recorded
           </Text>
         )}
       </Table.Td>
@@ -743,27 +649,25 @@ function SourceSyncRow({ source }: { source: StatsSource }) {
               Not recorded
             </Text>
           ) : (
-            <>
-              <Text size="sm">Fetched {formatCount(attempt.fetched_count)}</Text>
-              <Text size="xs" c="dimmed">
-                Stored {formatCount(attempt.inserted_count)} · Duplicates{" "}
-                {formatCount(attempt.duplicate_count)}
-              </Text>
-            </>
+            <Text size="sm">
+              Fetched {formatCount(attempt.fetched_count)} · Stored{" "}
+              {formatCount(attempt.inserted_count)} · Dup{" "}
+              {formatCount(attempt.duplicate_count)}
+            </Text>
           )
         ) : (
           <Text size="sm" c="dimmed">
-            No attempt recorded
+            Not recorded
           </Text>
         )}
       </Table.Td>
       <Table.Td>
         {sync.last_success ? (
           <>
-            <Text size="sm">{formatTimestamp(sync.last_success.completed_at, "UTC")}</Text>
+            <Text size="sm">{formatTimestamp(sync.last_success.completed_at, timeZone)}</Text>
             <Text size="xs" c="dimmed">
               Fetched {formatCount(sync.last_success.fetched_count)} · Stored{" "}
-              {formatCount(sync.last_success.inserted_count)} · Duplicates{" "}
+              {formatCount(sync.last_success.inserted_count)} · Dup{" "}
               {formatCount(sync.last_success.duplicate_count)}
             </Text>
           </>
@@ -777,6 +681,13 @@ function SourceSyncRow({ source }: { source: StatsSource }) {
   );
 }
 
+function syncStateLabel(sync: StatsSourceSync): string {
+  if (sync.state === "failure" && sync.last_attempt?.failure_stage) {
+    return `${SYNC_STATE_LABELS.failure}: ${sync.last_attempt.failure_stage}`;
+  }
+  return SYNC_STATE_LABELS[sync.state];
+}
+
 function CitySection({ data }: { data: StatsResponse }) {
   const assignedTotal = data.cities.reduce(
     (total, city) => total + city.event_items_total,
@@ -784,9 +695,9 @@ function CitySection({ data }: { data: StatsResponse }) {
   );
 
   return (
-    <Stack gap="md" component="section" aria-labelledby="status-cities-heading">
+    <Stack gap="md" component="section" aria-label="City event items">
       <Group justify="space-between" align="center" gap="sm" wrap="wrap">
-        <Title order={2} size="h4" id="status-cities-heading">
+        <Title order={2} size="h5">
           City event items
         </Title>
         <Badge variant="light" color="wood">
@@ -794,31 +705,20 @@ function CitySection({ data }: { data: StatsResponse }) {
         </Badge>
       </Group>
 
-      <Text size="sm" c="dimmed">
-        City rows count current refined event items assigned to each published city, all time.
-        Raw records are not assigned to a city before refinement, so no city-level ingestion or
-        backlog figures are inferred.
-      </Text>
-
       <Paper withBorder p="md" bg="white">
         <Table.ScrollContainer
-          minWidth={680}
+          minWidth={520}
           type="native"
           role="region"
           tabIndex={0}
           aria-label="Refined event items by city"
         >
           <Table striped highlightOnHover verticalSpacing="xs" horizontalSpacing="sm" tabularNums>
-            <Table.Caption>
-              Refined event items by published city. Counts are all time and not deduplicated
-              across sources.
-            </Table.Caption>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th scope="col">City</Table.Th>
-                <Table.Th scope="col">Refined event items</Table.Th>
-                <Table.Th scope="col">Sources with event items</Table.Th>
-                <Table.Th scope="col">Browse</Table.Th>
+                <Table.Th scope="col">Event items</Table.Th>
+                <Table.Th scope="col">Sources</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -831,23 +731,22 @@ function CitySection({ data }: { data: StatsResponse }) {
       </Paper>
 
       <Group gap="xs" wrap="wrap">
-        <Badge variant="light">Published cities: {formatCount(data.supported_cities_total)}</Badge>
         <Badge variant="light" color="gray">
-          Unassigned event items: {formatCount(data.unassigned_city_event_items_total)}
+          Published cities {formatCount(data.supported_cities_total)}
         </Badge>
         <Badge variant="light" color="gray">
-          Unsupported city event items: {formatCount(data.unsupported_city_event_items_total)}
+          Assigned {formatCount(assignedTotal)}
+        </Badge>
+        <Badge variant="light" color="gray">
+          Unassigned {formatCount(data.unassigned_city_event_items_total)}
+        </Badge>
+        <Badge variant="light" color="gray">
+          Unsupported {formatCount(data.unsupported_city_event_items_total)}
+        </Badge>
+        <Badge variant="light" color="gray">
+          Total {formatCount(data.totals.refinement.event_items_total)}
         </Badge>
       </Group>
-
-      <Text size="xs" c="dimmed">
-        Published city totals ({formatCount(assignedTotal)}) plus the unassigned
-        ({formatCount(data.unassigned_city_event_items_total)}) and unsupported
-        ({formatCount(data.unsupported_city_event_items_total)}) buckets add up to the refined
-        event item total ({formatCount(data.totals.refinement.event_items_total)}). “Unassigned”
-        means refinement assigned no city; “unsupported” means a city outside the published
-        registry.
-      </Text>
     </Stack>
   );
 }
@@ -856,42 +755,18 @@ function CityRow({ city }: { city: StatsCity }) {
   return (
     <Table.Tr>
       <Table.Th scope="row">
-        <Text fw={600}>{city.name}</Text>
-        <Text size="xs" c="dimmed">
-          {city.city_id} · {city.timezone}
-        </Text>
+        <Anchor component={Link} to={`/${city.country_code}/${city.slug}`} fw={600}>
+          {city.name}
+        </Anchor>
       </Table.Th>
       <Table.Td>{formatCount(city.event_items_total)}</Table.Td>
       <Table.Td>{formatCount(city.sources_with_event_items)}</Table.Td>
-      <Table.Td>
-        <Anchor
-          component={Link}
-          to={`/${city.country_code}/${city.slug}`}
-          aria-label={`Browse ${city.name} events`}
-        >
-          Browse {city.name}
-        </Anchor>
-      </Table.Td>
     </Table.Tr>
   );
 }
 
-function weekCounts(
-  source: StatsSource,
-  week: StatsIngestionWeek
-): Pick<StatsIngestionWeek, "records" | "with_refinement" | "pending"> {
-  return (
-    source.weeks.find((entry) => entry.week_start === week.week_start) ?? {
-      records: 0,
-      with_refinement: 0,
-      pending: 0
-    }
-  );
-}
-
-function pendingOutsideWindow(weeks: StatsIngestionWeek[], pendingTotal: number): number {
-  const pendingInside = weeks.reduce((total, week) => total + week.pending, 0);
-  return Math.max(0, pendingTotal - pendingInside);
+function weekCount(source: StatsSource, week: StatsIngestionWeek): number {
+  return source.weeks.find((entry) => entry.week_start === week.week_start)?.records ?? 0;
 }
 
 function formatCount(value: number): string {
@@ -906,7 +781,7 @@ function formatTimestamp(value: string | null, timeZone: string): string {
   if (Number.isNaN(instant.getTime())) {
     return "Unknown timestamp";
   }
-  const label = formatInTimeZone(
+  return formatInTimeZone(
     instant,
     timeZone,
     {
@@ -919,5 +794,4 @@ function formatTimestamp(value: string | null, timeZone: string): string {
     },
     "en-LT"
   );
-  return `${label} (${timeZone})`;
 }
