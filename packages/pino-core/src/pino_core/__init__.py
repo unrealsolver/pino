@@ -30,6 +30,9 @@ from pino_core.stats import (
     SourceStats,
     SourceStatsReport,
     SourceStatsTotals,
+    SourceSyncAttempt,
+    SourceSyncStatus,
+    SourceSyncSuccess,
     build_source_stats_report,
 )
 from pino_core.storage import (
@@ -70,6 +73,9 @@ __all__ = [
     "SourceStats",
     "SourceStatsReport",
     "SourceStatsTotals",
+    "SourceSyncAttempt",
+    "SourceSyncStatus",
+    "SourceSyncSuccess",
     "SourceSyncRun",
     "SourceSyncRunAlreadyCompletedError",
     "SourceSyncRunNotFoundError",

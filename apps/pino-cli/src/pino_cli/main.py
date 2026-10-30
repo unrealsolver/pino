@@ -26,15 +26,22 @@ from pino_core import (
     RefinementDebugResult,
     RefinementProgress,
     RefinementService,
+    SourceStatsReport,
     build_refinement_llm_config,
     build_llm_client,
+    build_source_stats_report,
     build_tools,
     load_config,
     recent_chat_history,
     render_chat_system_prompt,
     render_refinement_system_prompt,
 )
-from pino_core.db import current_database_revision, show_migration_history, upgrade_database
+from pino_core.db import (
+    current_database_revision,
+    require_current_schema,
+    show_migration_history,
+    upgrade_database,
+)
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
 from pino_core.pipeline import CheckProgress
 from pino_core.media import MediaStore
@@ -1049,6 +1056,99 @@ def sources_stats(
         weeks=weeks,
         today=datetime.now(timezone_info).date(),
     )
+
+
+@sources_app.command("health")
+def sources_health(
+    config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+) -> None:
+    """Show recorded source sync attempts without fetching or writing."""
+    config = get_config(config_path)
+    # Read-only command: require the existing schema and never auto-migrate.
+    store = DatabaseStore(config.storage.database_url())
+    require_current_schema(store.engine)
+    report = build_source_stats_report(store, weeks=1)
+    print_source_health(report)
+
+
+def print_source_health(report: SourceStatsReport) -> None:
+    console.print(
+        Text(f"Recorded source sync facts as of {_format_utc(report.as_of)}.", style="dim")
+    )
+    table = Table(
+        "Source",
+        "Last attempt",
+        "Started (UTC)",
+        "Completed (UTC)",
+        "Fetched / stored / duplicates",
+        "Failure stage",
+        "Last successful sync (UTC)",
+    )
+    for source in report.sources:
+        sync = source.sync
+        attempt = sync.last_attempt
+        if attempt is None:
+            state = "No sync recorded"
+            started = "-"
+            completed = "-"
+            counts = "-"
+            stage = "-"
+        else:
+            state = _format_sync_state(attempt.state)
+            started = _format_utc(attempt.started_at)
+            completed = (
+                _format_utc(attempt.completed_at)
+                if attempt.completed_at is not None
+                else "Completion not recorded"
+            )
+            if attempt.state == "unfinished":
+                # Unfinished attempts store initialized zeros, not observed counts.
+                counts = "Not recorded"
+            else:
+                counts = (
+                    f"{_format_int(attempt.fetched_count)} / "
+                    f"{_format_int(attempt.inserted_count)} / "
+                    f"{_format_int(attempt.duplicate_count)}"
+                )
+            stage = attempt.failure_stage or "-"
+        last_success = (
+            _format_utc(sync.last_success.completed_at)
+            if sync.last_success is not None
+            else "None recorded"
+        )
+        table.add_row(
+            plain_text(source.source),
+            plain_text(state),
+            plain_text(started),
+            plain_text(completed),
+            plain_text(counts),
+            plain_text(stage),
+            plain_text(last_success),
+        )
+    console.print(table)
+    console.print(
+        Text(
+            "Fetched/stored counts describe source sync only. A successful sync may "
+            "leave records pending refinement; no schedule, availability, or "
+            "media-upload freshness is inferred.",
+            style="dim",
+        )
+    )
+
+
+def _format_sync_state(state: str) -> str:
+    return {
+        "unknown": "No sync recorded",
+        "unfinished": "Unfinished",
+        "success": "Success",
+        "failure": "Failure",
+    }.get(state, state)
+
+
+def _format_utc(value: datetime | None) -> str:
+    if value is None:
+        return "-"
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def print_source_stats(

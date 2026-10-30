@@ -92,8 +92,43 @@ class StatsIngestionWeek(BaseModel):
     pending: int = Field(ge=0)
 
 
+class StatsSourceSyncAttempt(BaseModel):
+    """Safe public facts for one recorded source-sync attempt."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["unfinished", "success", "failure"]
+    started_at: datetime
+    completed_at: datetime | None = None
+    fetched_count: int = Field(ge=0)
+    inserted_count: int = Field(ge=0)
+    duplicate_count: int = Field(ge=0)
+    failure_stage: Literal["fetch", "store", "cursor"] | None = None
+
+
+class StatsSourceSyncSuccess(BaseModel):
+    """Last successful terminal completion, independent of the latest attempt."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    completed_at: datetime
+    fetched_count: int = Field(ge=0)
+    inserted_count: int = Field(ge=0)
+    duplicate_count: int = Field(ge=0)
+
+
+class StatsSourceSync(BaseModel):
+    """Recorded sync facts without health, freshness, or schedule inference."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["unknown", "unfinished", "success", "failure"]
+    last_attempt: StatsSourceSyncAttempt | None = None
+    last_success: StatsSourceSyncSuccess | None = None
+
+
 class StatsSource(BaseModel):
-    """Per-source ingestion, coverage, and refinement output."""
+    """Per-source ingestion, coverage, refinement output, and recorded sync."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -101,6 +136,7 @@ class StatsSource(BaseModel):
     ingestion: StatsRecordMetrics
     refinement: StatsRefinementMetrics
     weeks: list[StatsIngestionWeek]
+    sync: StatsSourceSync = Field(default_factory=lambda: StatsSourceSync(state="unknown"))
 
 
 class StatsTotals(BaseModel):

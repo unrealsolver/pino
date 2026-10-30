@@ -68,11 +68,35 @@ export type StatsIngestionWeek = {
   pending: number;
 };
 
+export type StatsSourceSyncAttempt = {
+  state: "unfinished" | "success" | "failure";
+  started_at: string;
+  completed_at: string | null;
+  fetched_count: number;
+  inserted_count: number;
+  duplicate_count: number;
+  failure_stage: "fetch" | "store" | "cursor" | null;
+};
+
+export type StatsSourceSyncSuccess = {
+  completed_at: string;
+  fetched_count: number;
+  inserted_count: number;
+  duplicate_count: number;
+};
+
+export type StatsSourceSync = {
+  state: "unknown" | "unfinished" | "success" | "failure";
+  last_attempt: StatsSourceSyncAttempt | null;
+  last_success: StatsSourceSyncSuccess | null;
+};
+
 export type StatsSource = {
   source: string;
   ingestion: StatsRecordMetrics;
   refinement: StatsRefinementMetrics;
   weeks: StatsIngestionWeek[];
+  sync: StatsSourceSync;
 };
 
 export type StatsTotals = {

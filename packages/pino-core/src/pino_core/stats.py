@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from pino_core.cities import CITY_REGISTRY, list_cities, normalize_city_id
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
+from pino_core.models import SourceSyncFailureStage, SourceSyncRun
 
 if TYPE_CHECKING:
     from pino_core.storage import DatabaseStore
@@ -95,6 +96,8 @@ class SourceStatusSnapshot:
     sources: tuple[SourceRecordAggregate, ...]
     source_refinements: tuple[SourceRefinementAggregate, ...]
     city_events: tuple[CityEventAggregate, ...]
+    sync_attempts: tuple[SourceSyncRun, ...] = ()
+    sync_successes: tuple[SourceSyncRun, ...] = ()
 
 
 class RefinementItemCounts(BaseModel):
@@ -157,6 +160,50 @@ class IngestionWeek(BaseModel):
     pending: int = Field(ge=0)
 
 
+class SourceSyncAttempt(BaseModel):
+    """One recorded source-sync attempt, without raw error or configuration.
+
+    ``state`` is ``unfinished`` when no terminal completion was recorded. It is
+    deliberately not labelled running or failed. A terminal attempt is
+    ``success`` or ``failure``; a successful zero-insert run remains success.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    state: Literal["unfinished", "success", "failure"]
+    started_at: datetime
+    completed_at: datetime | None = None
+    fetched_count: int = Field(ge=0)
+    inserted_count: int = Field(ge=0)
+    duplicate_count: int = Field(ge=0)
+    failure_stage: SourceSyncFailureStage | None = None
+
+
+class SourceSyncSuccess(BaseModel):
+    """Last successful terminal source-sync completion, independent of attempts."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    completed_at: datetime
+    fetched_count: int = Field(ge=0)
+    inserted_count: int = Field(ge=0)
+    duplicate_count: int = Field(ge=0)
+
+
+class SourceSyncStatus(BaseModel):
+    """Recorded sync facts for one observed or attempted source.
+
+    ``state`` is ``unknown`` when no attempt was recorded. A later failed or
+    unfinished attempt does not erase ``last_success``.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    state: Literal["unknown", "unfinished", "success", "failure"]
+    last_attempt: SourceSyncAttempt | None = None
+    last_success: SourceSyncSuccess | None = None
+
+
 class SourceStats(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -164,6 +211,9 @@ class SourceStats(BaseModel):
     ingestion: RecordMetrics
     refinement: RefinementMetrics
     weeks: tuple[IngestionWeek, ...]
+    sync: SourceSyncStatus = Field(
+        default_factory=lambda: SourceSyncStatus(state="unknown"),
+    )
 
 
 class SourceStatsTotals(BaseModel):
@@ -230,13 +280,18 @@ def build_source_stats_report(
 
     source_aggregates = {aggregate.source: aggregate for aggregate in snapshot.sources}
     source_refinements = {aggregate.source: aggregate for aggregate in snapshot.source_refinements}
+    sync_attempts = {attempt.source: attempt for attempt in snapshot.sync_attempts}
+    sync_successes = {success.source: success for success in snapshot.sync_successes}
+    source_names = sorted(set(source_aggregates) | set(sync_attempts) | set(sync_successes))
     sources = tuple(
         _source_stats(
-            source_aggregates[source],
+            source_aggregates.get(source, _empty_source_record_aggregate(source)),
             source_refinements.get(source),
             week_windows,
+            sync_attempts.get(source),
+            sync_successes.get(source),
         )
-        for source in sorted(source_aggregates)
+        for source in source_names
     )
 
     cities, unassigned, unsupported = _city_stats(snapshot.city_events)
@@ -335,6 +390,8 @@ def _source_stats(
     aggregate: SourceRecordAggregate,
     refinement: SourceRefinementAggregate | None,
     week_windows: tuple[_WeekWindow, ...],
+    attempt: SourceSyncRun | None,
+    success: SourceSyncRun | None,
 ) -> SourceStats:
     week_counts = {week.index: week for week in aggregate.weeks}
     return SourceStats(
@@ -350,7 +407,61 @@ def _source_stats(
             )
             for window in week_windows
         ),
+        sync=_source_sync_status(attempt, success),
     )
+
+
+def _empty_source_record_aggregate(source: str) -> SourceRecordAggregate:
+    """Explicit zero phase-A values for a source observed only through sync runs."""
+    return SourceRecordAggregate(
+        source=source,
+        records_total=0,
+        records_with_refinement_total=0,
+        pending_records_total=0,
+        oldest_pending_captured_at=None,
+        latest_captured_at=None,
+        weeks=(),
+    )
+
+
+def _source_sync_status(
+    attempt: SourceSyncRun | None,
+    success: SourceSyncRun | None,
+) -> SourceSyncStatus:
+    state: Literal["unknown", "unfinished", "success", "failure"]
+    last_attempt: SourceSyncAttempt | None
+    if attempt is None:
+        state = "unknown"
+        last_attempt = None
+    else:
+        attempt_state: Literal["unfinished", "success", "failure"]
+        if attempt.completed_at is None:
+            attempt_state = "unfinished"
+        elif attempt.outcome == "success":
+            attempt_state = "success"
+        else:
+            attempt_state = "failure"
+        state = attempt_state
+        last_attempt = SourceSyncAttempt(
+            state=attempt_state,
+            started_at=attempt.started_at,
+            completed_at=attempt.completed_at,
+            fetched_count=attempt.fetched_count,
+            inserted_count=attempt.inserted_count,
+            duplicate_count=attempt.duplicate_count,
+            failure_stage=attempt.failure_stage,
+        )
+    last_success = (
+        SourceSyncSuccess(
+            completed_at=success.completed_at,
+            fetched_count=success.fetched_count,
+            inserted_count=success.inserted_count,
+            duplicate_count=success.duplicate_count,
+        )
+        if success is not None and success.completed_at is not None
+        else None
+    )
+    return SourceSyncStatus(state=state, last_attempt=last_attempt, last_success=last_success)
 
 
 def _record_metrics(aggregate: RecordTotalsAggregate | SourceRecordAggregate) -> RecordMetrics:

@@ -602,10 +602,11 @@ class DatabaseStore:
     ) -> SourceStatusSnapshot:
         """Load grouped source statistics without materializing raw rows.
 
-        Record and refinement aggregates are queried independently, so a record
-        with several refinements is counted once for coverage while each
-        refinement row still counts as one output item. The query count is fixed
-        and does not grow with the number of sources or cities.
+        Record, refinement, and source-sync aggregates are queried independently,
+        so a record with several refinements is counted once for coverage while
+        each refinement row still counts as one output item. Every query uses the
+        same read snapshot. The query count is fixed and does not grow with the
+        number of sources or cities.
         """
         if not week_bounds:
             raise ValueError("at least one week bound is required")
@@ -627,6 +628,12 @@ class DatabaseStore:
             week_rows = connection.execute(_source_week_records_query(week_bounds)).all()
             source_refinement_rows = connection.execute(_source_refinement_query()).all()
             city_rows = connection.execute(_city_event_query()).all()
+            sync_attempt_rows = connection.execute(
+                _latest_source_sync_runs_query(successful_only=False)
+            ).all()
+            sync_success_rows = connection.execute(
+                _latest_source_sync_runs_query(successful_only=True)
+            ).all()
 
         return SourceStatusSnapshot(
             records=RecordTotalsAggregate(
@@ -649,6 +656,12 @@ class DatabaseStore:
                     sources=frozenset({row.source} if row.source is not None else set()),
                 )
                 for row in city_rows
+            ),
+            sync_attempts=tuple(
+                SourceSyncRun.model_validate(dict(row._mapping)) for row in sync_attempt_rows
+            ),
+            sync_successes=tuple(
+                SourceSyncRun.model_validate(dict(row._mapping)) for row in sync_success_rows
             ),
         )
 

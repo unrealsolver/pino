@@ -28,7 +28,8 @@ import {
   type StatsRefinementItemCounts,
   type StatsRefinementMetrics,
   type StatsResponse,
-  type StatsSource
+  type StatsSource,
+  type StatsSourceSync
 } from "../api";
 import { formatInTimeZone } from "../timezone";
 
@@ -75,7 +76,7 @@ export function StatusRoute() {
               <div>
                 <Title order={1}>Data status</Title>
                 <Text size="sm" c="dimmed">
-                  Stored ingestion, coverage, and refinement output. Read-only.
+                  Stored ingestion, refinement, and recorded source sync. Read-only.
                 </Text>
               </div>
               <Group gap="sm">
@@ -194,6 +195,8 @@ export function StatusRoute() {
                 sources={data.sources}
                 timeZone={data.reporting_timezone}
               />
+
+              <SourceSyncSection sources={data.sources} />
 
               <CitySection data={data} />
             </>
@@ -627,6 +630,150 @@ function RefinementSection({
         </Stack>
       </Paper>
     </Stack>
+  );
+}
+
+const SYNC_STATE_LABELS: Record<StatsSourceSync["state"], string> = {
+  unknown: "No sync recorded",
+  unfinished: "Unfinished",
+  success: "Success",
+  failure: "Failure"
+};
+
+function SourceSyncSection({ sources }: { sources: StatsSource[] }) {
+  return (
+    <Stack gap="md" component="section" aria-labelledby="status-sync-heading">
+      <Group justify="space-between" align="center" gap="sm" wrap="wrap">
+        <Title order={2} size="h4" id="status-sync-heading">
+          Source sync
+        </Title>
+        <Badge variant="light" color="gray">
+          Recorded attempts
+        </Badge>
+      </Group>
+
+      <Text size="sm" c="dimmed">
+        Last recorded sync attempt and last successful completion per source. Fetched and
+        stored counts describe source ingestion only. A successful sync can leave newly stored
+        records pending refinement; it does not mean refinement or media upload has completed.
+        No schedule, availability, or freshness is inferred.
+      </Text>
+
+      <Paper withBorder p="md" bg="white">
+        <Table.ScrollContainer
+          minWidth={1080}
+          type="native"
+          role="region"
+          tabIndex={0}
+          aria-label="Recorded source sync attempts and last successful completion"
+        >
+          <Table striped highlightOnHover verticalSpacing="xs" horizontalSpacing="sm" tabularNums>
+            <Table.Caption>
+              “No sync recorded” means no attempt is stored, not a failure. An unfinished
+              attempt has no recorded completion and is not claimed to be running. A later
+              failure does not erase the prior successful completion.
+            </Table.Caption>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th scope="col">Source</Table.Th>
+                <Table.Th scope="col">Last attempt</Table.Th>
+                <Table.Th scope="col">Attempt time (UTC)</Table.Th>
+                <Table.Th scope="col">Attempt counts</Table.Th>
+                <Table.Th scope="col">Last successful sync (UTC)</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {sources.map((source) => (
+                <SourceSyncRow key={source.source} source={source} />
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Paper>
+
+      <Alert color="gray" variant="light" title="Sync is not refinement or media freshness">
+        <Text size="sm">
+          Source sync records whether a fetch/storage attempt was started and completed. It
+          does not measure refinement quality or backlog, and media-upload freshness is not
+          tracked here. Latest capture and latest refinement result remain separate storage
+          timestamps.
+        </Text>
+      </Alert>
+    </Stack>
+  );
+}
+
+function SourceSyncRow({ source }: { source: StatsSource }) {
+  const sync = source.sync;
+  const attempt = sync.last_attempt;
+
+  return (
+    <Table.Tr>
+      <Table.Th scope="row">{source.source}</Table.Th>
+      <Table.Td>
+        <Badge variant="light" color="gray" size="sm">
+          {SYNC_STATE_LABELS[sync.state]}
+        </Badge>
+        {attempt?.failure_stage && (
+          <Text size="xs" c="dimmed">
+            Failure stage: {attempt.failure_stage}
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        {attempt ? (
+          <>
+            <Text size="sm">Started {formatTimestamp(attempt.started_at, "UTC")}</Text>
+            <Text size="xs" c="dimmed">
+              {attempt.completed_at
+                ? `Completed ${formatTimestamp(attempt.completed_at, "UTC")}`
+                : "Completion not recorded"}
+            </Text>
+          </>
+        ) : (
+          <Text size="sm" c="dimmed">
+            No attempt recorded
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        {attempt ? (
+          attempt.state === "unfinished" ? (
+            <Text size="sm" c="dimmed">
+              Not recorded
+            </Text>
+          ) : (
+            <>
+              <Text size="sm">Fetched {formatCount(attempt.fetched_count)}</Text>
+              <Text size="xs" c="dimmed">
+                Stored {formatCount(attempt.inserted_count)} · Duplicates{" "}
+                {formatCount(attempt.duplicate_count)}
+              </Text>
+            </>
+          )
+        ) : (
+          <Text size="sm" c="dimmed">
+            No attempt recorded
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        {sync.last_success ? (
+          <>
+            <Text size="sm">{formatTimestamp(sync.last_success.completed_at, "UTC")}</Text>
+            <Text size="xs" c="dimmed">
+              Fetched {formatCount(sync.last_success.fetched_count)} · Stored{" "}
+              {formatCount(sync.last_success.inserted_count)} · Duplicates{" "}
+              {formatCount(sync.last_success.duplicate_count)}
+            </Text>
+          </>
+        ) : (
+          <Text size="sm" c="dimmed">
+            No successful sync recorded
+          </Text>
+        )}
+      </Table.Td>
+    </Table.Tr>
   );
 }
 

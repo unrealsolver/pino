@@ -606,7 +606,7 @@ def test_report_uses_one_consistent_sqlite_snapshot_during_concurrent_writes(
         event.remove(store.engine, "before_cursor_execute", capture)
 
     assert writer_finished is True
-    assert select_count == 6
+    assert select_count == 8
     assert len(reader_connections) == 1
     assert report.totals.ingestion.records_total == 1
     assert report.totals.refinement.event_items_total == 1
@@ -691,7 +691,7 @@ def test_postgresql_snapshot_uses_one_repeatable_read_connection() -> None:
         "isolation_level": "REPEATABLE READ",
         "postgresql_readonly": True,
     }
-    assert len(connection.statements) == 6
+    assert len(connection.statements) == 8
     assert connection.rolled_back is True
     assert connection.closed is True
 
@@ -716,7 +716,7 @@ def test_query_count_is_independent_of_source_and_city_count(store: SQLiteStore)
         )
     many_source_queries = _count_report_queries(many_sources)
 
-    assert one_source_queries == many_source_queries == 6
+    assert one_source_queries == many_source_queries == 8
 
 
 def test_postgresql_query_construction(store: SQLiteStore) -> None:
