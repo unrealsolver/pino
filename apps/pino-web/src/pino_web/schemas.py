@@ -62,6 +62,7 @@ class StatsRecordMetrics(BaseModel):
     records_total: int = Field(ge=0)
     records_with_refinement_total: int = Field(ge=0)
     pending_records_total: int = Field(ge=0)
+    ignored_records_total: int = Field(ge=0)
     oldest_pending_captured_at: datetime | None = None
     latest_captured_at: datetime | None = None
 
@@ -90,6 +91,7 @@ class StatsIngestionWeek(BaseModel):
     records: int = Field(ge=0)
     with_refinement: int = Field(ge=0)
     pending: int = Field(ge=0)
+    ignored: int = Field(ge=0)
 
 
 class StatsSourceSyncAttempt(BaseModel):

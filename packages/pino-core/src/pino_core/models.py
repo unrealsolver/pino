@@ -28,6 +28,14 @@ def ensure_utc_datetime(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
+# Legacy QC tombstone marker kept for requeue cleanup and existing rows.
+QC_REJECTED_REFINER = "qc:rejected"
+
+RefinementIgnoreReason = Literal["model_declined", "qc_rejected"]
+
+REFINEMENT_IGNORE_REASONS: tuple[RefinementIgnoreReason, ...] = get_args(RefinementIgnoreReason)
+
+
 class RecordImage(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -58,6 +66,21 @@ class Record(BaseModel):
     captured_at: datetime = Field(default_factory=utc_now)
     payload: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
+    refinement_ignored_at: datetime | None = None
+    refinement_ignored_reason: RefinementIgnoreReason | None = None
+
+    @field_validator("refinement_ignored_at")
+    @classmethod
+    def _assume_utc_for_ignored_at(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc_datetime(value)
+
+    @model_validator(mode="after")
+    def _validate_refinement_ignore_pair(self) -> Record:
+        if (self.refinement_ignored_at is None) != (self.refinement_ignored_reason is None):
+            raise ValueError(
+                "refinement_ignored_at and refinement_ignored_reason must be set together"
+            )
+        return self
 
     def with_fingerprint(self) -> Record:
         """Return this record with a deterministic idempotency fingerprint."""

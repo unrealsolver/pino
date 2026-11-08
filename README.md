@@ -373,6 +373,8 @@ Refinement prompts are arranged for MiniMax automatic prompt caching: the stable
 
 Refinements are cached by record ID. `pino evaluate` remains as a temporary alias for `pino refine`.
 
+Expected failures stop retrying. A well-formed model rejection envelope (`{"error": "..."}` only, no item fields) or a schedule QC rejection marks the record ignored with a safe reason (`model_declined` or `qc_rejected`) instead of leaving it pending. Ignored records are excluded from refinement selection and from pending counts. Use `pino refine --requeue RECORD_ID` to clear the disposition later; it performs no LLM work and removes only legacy `qc:rejected` tombstone rows.
+
 ### Schedule model evaluation
 
 Use the reviewed Afisha Vilnius fixtures to compare explicitly selected model profiles:

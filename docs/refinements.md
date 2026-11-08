@@ -106,7 +106,8 @@ Upcoming-event queries should read from `refinements`, not `records`.
 - Apply Pino's private preference weights at query time.
 
 Records without refinements remain visible in raw/debug views and pending-work
-counts. They should not silently enter an upcoming-event query.
+counts. They should not silently enter an upcoming-event query. Records with an
+ignored disposition stay out of pending counts until explicitly requeued.
 
 Relevant-record retrieval must avoid truncating candidates before compatibility
 is computed. A small date-ordered slice can hide moderately compatible events
@@ -229,10 +230,21 @@ For Telegram and other prose-heavy sources, use an LLM extraction pass.
 
 After normalization and before persistence, a source may run deterministic QC.
 The immutable `QCReport` is an in-memory stage result and is not added to the
-LLM prompt. An error discards the generated item and persists only a minimal
-`qc:rejected` tombstone refinement (`content_kind: unknown`, no summary or
-schedule), so the raw record does not remain pending. A warning is reported but
-allows the generated refinement through.
+LLM prompt. An error discards the generated item and marks the raw record
+ignored with reason `qc_rejected`, so it leaves the pending queue without a fake
+refinement row. A warning is reported but allows the generated refinement
+through.
+
+A well-formed model rejection envelope, exactly `{"error": "<text>"}` with no
+item fields or extra keys, also marks the record ignored with reason
+`model_declined`. The free-text reason is never persisted or classified.
+Malformed envelopes, parse/shape failures, and transport errors stay retryable.
+Valid `non_event` and `unknown` outputs are normal refinements, not ignores.
+
+Ignored records are excluded from refinement selection and pending counts, and
+`pino refine --requeue RECORD_ID` clears the disposition for a later attempt.
+Legacy `qc:rejected` tombstone refinements remain until requeue, which removes
+only rows with that exact refiner marker and never real refinements.
 
 Afisha Vilnius enables `qc: afisha_vilnius`. Its `#Dmonth` tags are mandatory
 schedule evidence using the publication year. Explicit occurrences must contain

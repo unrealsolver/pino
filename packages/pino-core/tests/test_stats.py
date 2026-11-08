@@ -653,6 +653,7 @@ def test_postgresql_snapshot_uses_one_repeatable_read_connection() -> None:
                     SimpleNamespace(
                         records_total=0,
                         records_with_refinement_total=0,
+                        ignored_records_total=0,
                         oldest_pending_captured_at=None,
                         latest_captured_at=None,
                     )

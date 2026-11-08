@@ -41,10 +41,11 @@ class WeekRecordCount:
     index: int
     records: int
     pending: int
+    ignored: int = 0
 
     @property
     def with_refinement(self) -> int:
-        return self.records - self.pending
+        return self.records - self.pending - self.ignored
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class RecordTotalsAggregate:
     pending_records_total: int
     oldest_pending_captured_at: datetime | None
     latest_captured_at: datetime | None
+    ignored_records_total: int = 0
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,7 @@ class SourceRecordAggregate:
     oldest_pending_captured_at: datetime | None
     latest_captured_at: datetime | None
     weeks: tuple[WeekRecordCount, ...]
+    ignored_records_total: int = 0
 
 
 @dataclass(frozen=True)
@@ -117,13 +120,17 @@ class RefinementItemCounts(BaseModel):
 
 
 class RecordMetrics(BaseModel):
-    """Raw record counts, intentionally separate from refinement output items."""
+    """Raw record counts, intentionally separate from refinement output items.
+
+    Dispositions are mutually exclusive: with-refinement, ignored, then pending.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     records_total: int = Field(ge=0)
     records_with_refinement_total: int = Field(ge=0)
     pending_records_total: int = Field(ge=0)
+    ignored_records_total: int = Field(ge=0)
     oldest_pending_captured_at: datetime | None = None
     latest_captured_at: datetime | None = None
 
@@ -158,6 +165,7 @@ class IngestionWeek(BaseModel):
     records: int = Field(ge=0)
     with_refinement: int = Field(ge=0)
     pending: int = Field(ge=0)
+    ignored: int = Field(ge=0)
 
 
 class SourceSyncAttempt(BaseModel):
@@ -374,7 +382,7 @@ def _build_week_windows(
 
 
 def _week_record_count(snapshot: SourceStatusSnapshot, index: int) -> WeekRecordCount:
-    totals = WeekRecordCount(index=index, records=0, pending=0)
+    totals = WeekRecordCount(index=index, records=0, pending=0, ignored=0)
     for source in snapshot.sources:
         for week in source.weeks:
             if week.index == index:
@@ -382,6 +390,7 @@ def _week_record_count(snapshot: SourceStatusSnapshot, index: int) -> WeekRecord
                     index=index,
                     records=totals.records + week.records,
                     pending=totals.pending + week.pending,
+                    ignored=totals.ignored + week.ignored,
                 )
     return totals
 
@@ -402,7 +411,8 @@ def _source_stats(
             _ingestion_week(
                 window,
                 week_counts.get(
-                    window.index, WeekRecordCount(index=window.index, records=0, pending=0)
+                    window.index,
+                    WeekRecordCount(index=window.index, records=0, pending=0, ignored=0),
                 ),
             )
             for window in week_windows
@@ -418,6 +428,7 @@ def _empty_source_record_aggregate(source: str) -> SourceRecordAggregate:
         records_total=0,
         records_with_refinement_total=0,
         pending_records_total=0,
+        ignored_records_total=0,
         oldest_pending_captured_at=None,
         latest_captured_at=None,
         weeks=(),
@@ -469,6 +480,7 @@ def _record_metrics(aggregate: RecordTotalsAggregate | SourceRecordAggregate) ->
         records_total=aggregate.records_total,
         records_with_refinement_total=aggregate.records_with_refinement_total,
         pending_records_total=aggregate.pending_records_total,
+        ignored_records_total=aggregate.ignored_records_total,
         oldest_pending_captured_at=aggregate.oldest_pending_captured_at,
         latest_captured_at=aggregate.latest_captured_at,
     )
@@ -501,6 +513,7 @@ def _ingestion_week(window: _WeekWindow, counts: WeekRecordCount) -> IngestionWe
         records=counts.records,
         with_refinement=counts.with_refinement,
         pending=counts.pending,
+        ignored=counts.ignored,
     )
 
 

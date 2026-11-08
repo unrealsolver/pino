@@ -27,6 +27,7 @@ from sqlalchemy import (
     cast,
     create_engine,
     delete,
+    exists,
     func,
     insert,
     or_,
@@ -41,12 +42,15 @@ from sqlalchemy.sql.elements import ColumnElement
 from pino_llm import LLMUsage
 
 from pino_core.models import (
+    QC_REJECTED_REFINER,
+    REFINEMENT_IGNORE_REASONS,
     SOURCE_SYNC_FAILURE_STAGES,
     ChatMessage,
     LLMUsageEvent,
     MemoryEntry,
     Record,
     Refinement,
+    RefinementIgnoreReason,
     SourceSyncFailureStage,
     SourceSyncOutcome,
     SourceSyncRun,
@@ -101,6 +105,8 @@ records_table = Table(
     Column("captured_at", DateTime(timezone=True), nullable=False),
     Column("payload", JSON, nullable=False),
     Column("provenance", JSON, nullable=False),
+    Column("refinement_ignored_at", DateTime(timezone=True)),
+    Column("refinement_ignored_reason", String),
     UniqueConstraint("fingerprint", name="uq_records_fingerprint"),
     Index("ix_records_published_at", "published_at"),
 )
@@ -225,6 +231,14 @@ class RecordRefinementStatus:
     @property
     def is_refined(self) -> bool:
         return bool(self.refinements)
+
+
+@dataclass(frozen=True)
+class RequeueResult:
+    found: bool
+    ignored_cleared: bool
+    tombstones_removed: int
+    refinements_remaining: int = 0
 
 
 @dataclass(frozen=True)
@@ -532,7 +546,10 @@ class DatabaseStore:
                     refinements_table,
                     records_table.c.id == refinements_table.c.record_id,
                 )
-                .where(refinements_table.c.record_id.is_(None))
+                .where(
+                    refinements_table.c.record_id.is_(None),
+                    records_table.c.refinement_ignored_at.is_(None),
+                )
                 .order_by(records_table.c.captured_at.desc())
                 .limit(limit),
             )
@@ -554,7 +571,10 @@ class DatabaseStore:
                         records_table.c.id == refinements_table.c.record_id,
                     ),
                 )
-                .where(refinements_table.c.record_id.is_(None))
+                .where(
+                    refinements_table.c.record_id.is_(None),
+                    records_table.c.refinement_ignored_at.is_(None),
+                )
             )
             if record_ids is not None:
                 if not record_ids:
@@ -639,9 +659,11 @@ class DatabaseStore:
             records=RecordTotalsAggregate(
                 records_total=int(record_row.records_total or 0),
                 records_with_refinement_total=int(record_row.records_with_refinement_total or 0),
+                ignored_records_total=int(record_row.ignored_records_total or 0),
                 pending_records_total=(
                     int(record_row.records_total or 0)
                     - int(record_row.records_with_refinement_total or 0)
+                    - int(record_row.ignored_records_total or 0)
                 ),
                 oldest_pending_captured_at=_utc_or_none(record_row.oldest_pending_captured_at),
                 latest_captured_at=_utc_or_none(record_row.latest_captured_at),
@@ -807,6 +829,12 @@ class DatabaseStore:
             session.execute(
                 delete(refinements_table).where(refinements_table.c.record_id == record_id)
             )
+            # A stored refinement supersedes an ignore disposition.
+            session.execute(
+                update(records_table)
+                .where(records_table.c.id == record_id)
+                .values(refinement_ignored_at=None, refinement_ignored_reason=None)
+            )
             for refinement in refinements:
                 if refinement.record_id != record_id:
                     raise ValueError("refinement record_id does not match replacement record")
@@ -816,6 +844,79 @@ class DatabaseStore:
                 if self.engine.dialect.name == "postgresql" and refinement.schedule is not None:
                     _insert_postgres_schedule_index(session, refinement)
             session.commit()
+
+    def ignore_refinement(self, record_id: str, reason: RefinementIgnoreReason) -> bool:
+        """Mark a record ignored only while it has no refinement row.
+
+        The single conditional UPDATE keeps a concurrent valid refinement from
+        being clobbered: a record that already has a refinement is left alone.
+        """
+        if reason not in REFINEMENT_IGNORE_REASONS:
+            raise ValueError(
+                "reason must be one of: " + ", ".join(REFINEMENT_IGNORE_REASONS)
+            )
+        with Session(self.engine) as session:
+            result = session.execute(
+                update(records_table)
+                .where(
+                    records_table.c.id == record_id,
+                    records_table.c.refinement_ignored_at.is_(None),
+                    ~exists(
+                        select(refinements_table.c.id).where(
+                            refinements_table.c.record_id == record_id
+                        )
+                    ),
+                )
+                .values(
+                    refinement_ignored_at=utc_now(),
+                    refinement_ignored_reason=reason,
+                )
+            )
+            session.commit()
+            return result.rowcount == 1
+
+    def requeue_record(self, record_id: str) -> RequeueResult:
+        """Clear the ignore disposition and any legacy QC tombstone rows."""
+        with Session(self.engine) as session:
+            exists_row = session.execute(
+                select(records_table.c.id).where(records_table.c.id == record_id),
+            ).first()
+            if exists_row is None:
+                return RequeueResult(found=False, ignored_cleared=False, tombstones_removed=0)
+            removed = (
+                session.execute(
+                    delete(refinements_table).where(
+                        refinements_table.c.record_id == record_id,
+                        refinements_table.c.refiner == QC_REJECTED_REFINER,
+                    )
+                ).rowcount
+                or 0
+            )
+            cleared = (
+                session.execute(
+                    update(records_table)
+                    .where(
+                        records_table.c.id == record_id,
+                        records_table.c.refinement_ignored_at.is_not(None),
+                    )
+                    .values(refinement_ignored_at=None, refinement_ignored_reason=None)
+                ).rowcount
+                == 1
+            )
+            remaining = int(
+                session.execute(
+                    select(func.count())
+                    .select_from(refinements_table)
+                    .where(refinements_table.c.record_id == record_id)
+                ).scalar_one()
+            )
+            session.commit()
+            return RequeueResult(
+                found=True,
+                ignored_cleared=cleared,
+                tombstones_removed=removed,
+                refinements_remaining=remaining,
+            )
 
     def list_refinements(self, record_id: str) -> list[Refinement]:
         with Session(self.engine) as session:
@@ -1046,14 +1147,25 @@ def _refined_record_ids_subquery():
     return select(refinements_table.c.record_id).distinct().subquery("refined_records")
 
 
+def _pending_record_condition(refined) -> ColumnElement[bool]:
+    return and_(refined.c.record_id.is_(None), records_table.c.refinement_ignored_at.is_(None))
+
+
+def _ignored_record_condition(refined) -> ColumnElement[bool]:
+    return and_(refined.c.record_id.is_(None), records_table.c.refinement_ignored_at.is_not(None))
+
+
 def _record_totals_query():
     refined = _refined_record_ids_subquery()
     return select(
         func.count(records_table.c.id).label("records_total"),
         func.count(refined.c.record_id).label("records_with_refinement_total"),
+        func.count(
+            case((_ignored_record_condition(refined), records_table.c.id), else_=None)
+        ).label("ignored_records_total"),
         func.min(
             case(
-                (refined.c.record_id.is_(None), records_table.c.captured_at),
+                (_pending_record_condition(refined), records_table.c.captured_at),
                 else_=None,
             )
         ).label("oldest_pending_captured_at"),
@@ -1068,9 +1180,12 @@ def _source_record_totals_query():
             records_table.c.source.label("source"),
             func.count(records_table.c.id).label("records_total"),
             func.count(refined.c.record_id).label("records_with_refinement_total"),
+            func.count(
+                case((_ignored_record_condition(refined), records_table.c.id), else_=None)
+            ).label("ignored_records_total"),
             func.min(
                 case(
-                    (refined.c.record_id.is_(None), records_table.c.captured_at),
+                    (_pending_record_condition(refined), records_table.c.captured_at),
                     else_=None,
                 )
             ).label("oldest_pending_captured_at"),
@@ -1103,6 +1218,9 @@ def _source_week_records_query(week_bounds: Sequence[tuple[datetime, datetime]])
             week_index.label("week_index"),
             func.count(records_table.c.id).label("records"),
             func.count(refined.c.record_id).label("with_refinement"),
+            func.count(
+                case((_ignored_record_condition(refined), records_table.c.id), else_=None)
+            ).label("ignored"),
         )
         .select_from(records_table.outerjoin(refined, records_table.c.id == refined.c.record_id))
         .where(
@@ -1185,11 +1303,13 @@ def _source_record_aggregates(
             continue
         records = int(row.records or 0)
         with_refinement = int(row.with_refinement or 0)
+        ignored = int(row.ignored or 0)
         weeks_by_source.setdefault(row.source, []).append(
             WeekRecordCount(
                 index=int(row.week_index),
                 records=records,
-                pending=records - with_refinement,
+                pending=records - with_refinement - ignored,
+                ignored=ignored,
             )
         )
 
@@ -1197,12 +1317,16 @@ def _source_record_aggregates(
     for row in source_rows:
         records_total = int(row.records_total or 0)
         records_with_refinement_total = int(row.records_with_refinement_total or 0)
+        ignored_records_total = int(row.ignored_records_total or 0)
         aggregates.append(
             SourceRecordAggregate(
                 source=row.source,
                 records_total=records_total,
                 records_with_refinement_total=records_with_refinement_total,
-                pending_records_total=records_total - records_with_refinement_total,
+                ignored_records_total=ignored_records_total,
+                pending_records_total=(
+                    records_total - records_with_refinement_total - ignored_records_total
+                ),
                 oldest_pending_captured_at=_utc_or_none(row.oldest_pending_captured_at),
                 latest_captured_at=_utc_or_none(row.latest_captured_at),
                 weeks=tuple(weeks_by_source.get(row.source, ())),

@@ -46,6 +46,7 @@ export type StatsRecordMetrics = {
   records_total: number;
   records_with_refinement_total: number;
   pending_records_total: number;
+  ignored_records_total: number;
   oldest_pending_captured_at: string | null;
   latest_captured_at: string | null;
 };
@@ -66,6 +67,7 @@ export type StatsIngestionWeek = {
   records: number;
   with_refinement: number;
   pending: number;
+  ignored: number;
 };
 
 export type StatsSourceSyncAttempt = {

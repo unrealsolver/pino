@@ -177,8 +177,20 @@ def refine(
     config_path: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     limit: Annotated[int | None, typer.Option("--limit", "-n", min=1)] = None,
     debug: Annotated[bool, typer.Option("--debug")] = False,
+    requeue: Annotated[
+        str | None,
+        typer.Option("--requeue", help="Clear the ignored disposition for a record id."),
+    ] = None,
 ) -> None:
     """Refine captured records into reusable normalized items."""
+    if requeue is not None:
+        if selected_id is not None or limit is not None or debug:
+            raise typer.BadParameter(
+                "--requeue cannot be combined with a record id, --limit, or --debug",
+                param_hint="--requeue",
+            )
+        _run_refine_requeue(config_path=config_path, record_id=requeue)
+        return
     _run_refine(config_path=config_path, limit=limit, debug=debug, selected_id=selected_id)
 
 
@@ -450,6 +462,43 @@ def usage_recent(
     console.print(table)
 
 
+def _run_refine_requeue(*, config_path: Path | None, record_id: str) -> None:
+    """Clear an ignored record without LLM work or schema migration."""
+    normalized_id = record_id.strip()
+    if not normalized_id:
+        console.print(Text("Record id is required.", style="red"))
+        raise typer.Exit(code=1)
+    config = get_config(config_path)
+    store = DatabaseStore(config.storage.database_url())
+    require_current_schema(store.engine)
+    result = store.requeue_record(normalized_id)
+    if not result.found:
+        console.print(Text(f"Record not found: {normalized_id}", style="red"))
+        raise typer.Exit(code=1)
+    if result.ignored_cleared:
+        console.print(Text(f"Cleared ignored state for {normalized_id}.", style="green"))
+    if result.tombstones_removed:
+        console.print(
+            Text(
+                f"Removed {result.tombstones_removed} legacy QC tombstone(s) for {normalized_id}.",
+                style="green",
+            )
+        )
+    if not result.ignored_cleared and not result.tombstones_removed:
+        console.print(Text(f"No ignored state to clear for {normalized_id}.", style="dim"))
+        return
+    if result.refinements_remaining:
+        console.print(
+            Text(
+                f"{normalized_id} still has {result.refinements_remaining} refinement(s); "
+                "it remains out of the pending queue.",
+                style="yellow",
+            )
+        )
+    else:
+        console.print(Text(f"{normalized_id} is pending refinement again.", style="green"))
+
+
 def _run_refine(
     *,
     config_path: Path | None,
@@ -484,10 +533,11 @@ def _run_refine(
         table.add_row("refined", plain_text(result.refined))
         table.add_row("items", plain_text(result.items))
         table.add_row("skipped", plain_text(result.skipped))
+        table.add_row("ignored", plain_text(result.ignored))
         console.print(Panel(table, title="Refinement debug", border_style="blue"))
     console.print(
         f"Requested {result.requested}; refined {result.refined}; "
-        f"items {result.items}; skipped {result.skipped}.",
+        f"items {result.items}; skipped {result.skipped}; ignored {result.ignored}.",
     )
 
 
@@ -634,6 +684,13 @@ def print_refinement_progress(progress: RefinementProgress) -> None:
         if progress.qc is not None and progress.qc.schedule is not None:
             flag = progress.qc.schedule
             console.print(Text(f"    schedule QC {flag.level}: {flag.message}", style="yellow"))
+        return
+
+    if progress.status == "ignored":
+        record_id = progress.record.id if progress.record is not None else "unknown"
+        console.print(
+            Text(f"    ignored: {progress.reason or 'ignored'} ({record_id})", style="yellow")
+        )
         return
 
     reason = progress.reason or "skipped"

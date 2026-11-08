@@ -11,7 +11,8 @@ from pino_llm import LLMClient, LLMConfig, LLMMessage
 from pino_core.cities import list_cities, normalize_city_id
 from pino_core.config import RefinementConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
-from pino_core.models import Record, Refinement
+from pino_core.models import QC_REJECTED_REFINER as QC_REJECTED_REFINER
+from pino_core.models import Record, Refinement, RefinementIgnoreReason
 from pino_core.quality import QCReport, RefinementQC, no_refinement_qc
 from pino_core.storage import DatabaseStore
 
@@ -22,6 +23,7 @@ class RefinementRunResult:
     refined: int
     items: int
     skipped: int
+    ignored: int = 0
 
 
 @dataclass(frozen=True)
@@ -34,11 +36,12 @@ class RefinementDebugResult:
     refinements: list[Refinement]
     qc: QCReport = QCReport()
     error: str | None = None
+    model_declined: bool = False
 
 
 @dataclass(frozen=True)
 class RefinementProgress:
-    status: Literal["selected", "refining", "refined", "skipped"]
+    status: Literal["selected", "refining", "refined", "skipped", "ignored"]
     total: int
     index: int | None = None
     record: Record | None = None
@@ -52,7 +55,6 @@ class RefinementResponseError(RuntimeError):
 
 
 _CONTENT_KINDS = {"event", "advertisement", "announcement", "non_event", "unknown"}
-QC_REJECTED_REFINER = "qc:rejected"
 
 
 class RefinementService:
@@ -86,6 +88,7 @@ class RefinementService:
         refined = 0
         item_count = 0
         skipped = 0
+        ignored = 0
 
         for index, record in enumerate(records, start=1):
             _emit_progress(
@@ -107,8 +110,23 @@ class RefinementService:
                 continue
             result = self.debug_refine_record(record)
             if result.error is not None:
-                if result.qc.has_errors:
-                    self.store.replace_refinements(record.id, [self._qc_rejection(record)])
+                ignore_reason = _ignore_reason(result)
+                if ignore_reason is not None and self.store.ignore_refinement(
+                    record.id, ignore_reason
+                ):
+                    ignored += 1
+                    _emit_progress(
+                        on_progress,
+                        RefinementProgress(
+                            status="ignored",
+                            total=total,
+                            index=index,
+                            record=record,
+                            qc=result.qc,
+                            reason=ignore_reason,
+                        ),
+                    )
+                    continue
                 skipped += 1
                 _emit_progress(
                     on_progress,
@@ -139,7 +157,11 @@ class RefinementService:
             )
 
         return RefinementRunResult(
-            requested=total, refined=refined, items=item_count, skipped=skipped
+            requested=total,
+            refined=refined,
+            items=item_count,
+            skipped=skipped,
+            ignored=ignored,
         )
 
     def refine_record(self, record: Record) -> list[Refinement]:
@@ -155,6 +177,7 @@ class RefinementService:
         refinements: list[Refinement] = []
         qc = QCReport()
         error = _response_error(data)
+        model_declined = error is not None and _explicit_model_decline(data)
         if error is None:
             if _is_refinement_item(data):
                 refinements = [self._build_refinement(record, data)]
@@ -173,6 +196,7 @@ class RefinementService:
             refinements=refinements,
             qc=qc,
             error=error,
+            model_declined=model_declined,
         )
 
     def _build_refinement(
@@ -193,16 +217,6 @@ class RefinementService:
             category_scores=_category_scores(raw_item.get("category_scores"), self.config),
             refiner=f"llm:{self.model}",
             debug={"raw": raw_item},
-        )
-
-    def _qc_rejection(self, record: Record) -> Refinement:
-        return Refinement(
-            record_id=record.id,
-            item_index=0,
-            schema_version=self.config.schema_version,
-            taxonomy_version=self.config.taxonomy_version,
-            content_kind="unknown",
-            refiner=QC_REJECTED_REFINER,
         )
 
     def _system_prompt(self) -> str:
@@ -352,6 +366,27 @@ def _parse_json_object(raw_response: str) -> dict[str, Any]:
     if parsed_objects:
         return parsed_objects[0]
     return {}
+
+
+def _explicit_model_decline(value: dict[str, Any]) -> bool:
+    """Whether the response is exactly the prompt's rejection envelope.
+
+    Only ``{"error": "<non-empty text>"}`` qualifies: any item field or extra
+    key makes it malformed and retryable. The reason text is never persisted
+    or classified; it is English free text, not a machine field.
+    """
+    if set(value) != {"error"}:
+        return False
+    reason = value.get("error")
+    return isinstance(reason, str) and bool(reason.strip())
+
+
+def _ignore_reason(result: RefinementDebugResult) -> RefinementIgnoreReason | None:
+    if result.qc.has_errors:
+        return "qc_rejected"
+    if result.model_declined:
+        return "model_declined"
+    return None
 
 
 def _client_reasoning(client: LLMClient) -> str | None:

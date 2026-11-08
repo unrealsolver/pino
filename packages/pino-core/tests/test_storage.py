@@ -101,12 +101,18 @@ def test_postgresql_refinement_replacement_maintains_schedule_index(
     statements = [
         str(statement.compile(dialect=postgresql.dialect())) for statement, _parameters in executed
     ]
-    assert len(statements) == 3
+    assert len(statements) == 4
     assert statements[0].startswith("DELETE FROM refinements")
-    assert statements[1].startswith("INSERT INTO refinements")
-    assert statements[2].startswith("INSERT INTO refinement_schedule_index")
-    assert "CAST(%(schedule_weekly_pattern)s AS INT4MULTIRANGE)" in statements[2]
-    assert executed[2][1] == {
+    assert statements[1].startswith("UPDATE records SET")
+    assert executed[1][0].compile(dialect=postgresql.dialect()).params == {
+        "refinement_ignored_at": None,
+        "refinement_ignored_reason": None,
+        "id_1": "record-1",
+    }
+    assert statements[2].startswith("INSERT INTO refinements")
+    assert statements[3].startswith("INSERT INTO refinement_schedule_index")
+    assert "CAST(%(schedule_weekly_pattern)s AS INT4MULTIRANGE)" in statements[3]
+    assert executed[3][1] == {
         "schedule_refinement_id": refinement.id,
         "schedule_timezone": "Europe/Vilnius",
         "schedule_weekly_pattern": "{[1140,1261)}",

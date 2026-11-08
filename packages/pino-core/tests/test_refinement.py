@@ -11,7 +11,6 @@ from pino_core.config import RefinementConfig
 from pino_core.models import Record
 from pino_core.quality import QCFlag, QCReport
 from pino_core.refinement import (
-    QC_REJECTED_REFINER,
     RefinementService,
     _parse_json_object,
     build_refinement_llm_config,
@@ -77,7 +76,7 @@ def test_refinement_service_refines_pending_records(tmp_path: Path) -> None:
     assert refinements[0].relevant_to.isoformat() == "2026-06-05T20:00:00+00:00"
 
 
-def test_refinement_service_skips_model_error(tmp_path: Path) -> None:
+def test_refinement_service_ignores_model_decline_until_requeued(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     inserted = store.add_record(
@@ -85,12 +84,59 @@ def test_refinement_service_skips_model_error(tmp_path: Path) -> None:
     )
     client = StaticClient('{"error": "source contains multiple distinct events"}')
 
-    result = RefinementService(store, client, RefinementConfig()).refine_pending(limit=5)
+    service = RefinementService(store, client, RefinementConfig())
+    progress = []
+    result = service.refine_pending(limit=5, on_progress=progress.append)
 
     assert result.refined == 0
-    assert result.skipped == 1
+    assert result.skipped == 0
+    assert result.ignored == 1
     assert store.list_refinements(inserted.record.id) == []
+    stored = store.get_record(inserted.record.id)
+    assert stored is not None
+    assert stored.refinement_ignored_reason == "model_declined"
+    assert stored.refinement_ignored_at is not None
+    assert store.list_unrefined_records() == []
+    assert store.count_unrefined_records() == 0
+    assert progress[-1].status == "ignored"
+    assert progress[-1].record.id == inserted.record.id
+    assert service.refine_pending(limit=5).requested == 0
+    assert client.calls == 1
+
+    requeued = store.requeue_record(inserted.record.id)
+    assert requeued.ignored_cleared is True
     assert [record.id for record in store.list_unrefined_records()] == [inserted.record.id]
+    assert store.count_unrefined_records() == 1
+    client.response = '{"content_kind": "non_event", "category_scores": {}}'
+    assert service.refine_pending(limit=5).refined == 1
+    assert client.calls == 2
+    assert store.list_refinements(inserted.record.id)[0].content_kind == "non_event"
+    stored = store.get_record(inserted.record.id)
+    assert stored is not None
+    assert stored.refinement_ignored_at is None
+    assert stored.refinement_ignored_reason is None
+
+
+@pytest.mark.parametrize(
+    "response",
+    ['{}', '{"error": ""}', '{"error": 123}', '{"error": "declined", "extra": true}'],
+)
+def test_refinement_malformed_response_remains_retryable(tmp_path: Path, response: str) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    inserted = store.add_record(Record(kind="event", source="test", text="Event"))
+    client = StaticClient(response)
+    service = RefinementService(store, client, RefinementConfig())
+
+    for _ in range(2):
+        result = service.refine_pending()
+        assert result.skipped == 1
+        assert result.ignored == 0
+        assert store.count_unrefined_records() == 1
+    assert client.calls == 2
+    stored = store.get_record(inserted.record.id)
+    assert stored is not None
+    assert stored.refinement_ignored_at is None
 
 
 def test_refinement_service_uses_cached_refinements(tmp_path: Path) -> None:
@@ -395,7 +441,7 @@ def test_refinement_service_debug_refine_record_includes_provider_reasoning(
     assert result.refinements[0].summary == "Dry run"
 
 
-def test_refinement_qc_error_blocks_persistence(tmp_path: Path) -> None:
+def test_refinement_qc_error_ignores_record_without_fake_output(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "pino.sqlite")
     store.init_schema()
     inserted = store.add_record(Record(kind="event", source="test", text="Event #4июня"))
@@ -403,25 +449,29 @@ def test_refinement_qc_error_blocks_persistence(tmp_path: Path) -> None:
     qc = QCReport(schedule=QCFlag("error", "tagged date is missing"))
     progress = []
 
-    result = RefinementService(
+    service = RefinementService(
         store,
         client,
         RefinementConfig(),
         quality_check=lambda record, refinement: qc,
-    ).refine_pending(on_progress=progress.append)
+    )
+    result = service.refine_pending(on_progress=progress.append)
 
     assert result.refined == 0
-    assert result.skipped == 1
-    stored = store.list_refinements(inserted.record.id)
-    assert len(stored) == 1
-    assert stored[0].refiner == QC_REJECTED_REFINER
-    assert stored[0].content_kind == "unknown"
-    assert stored[0].summary is None
-    assert stored[0].schedule is None
-    assert stored[0].category_scores == {}
+    assert result.skipped == 0
+    assert result.ignored == 1
+    assert store.list_refinements(inserted.record.id) == []
+    stored = store.get_record(inserted.record.id)
+    assert stored is not None
+    assert stored.refinement_ignored_reason == "qc_rejected"
+    assert stored.refinement_ignored_at is not None
     assert store.list_unrefined_records() == []
+    assert store.count_unrefined_records() == 0
     assert progress[-1].qc == qc
-    assert progress[-1].reason == "schedule QC error: tagged date is missing"
+    assert progress[-1].status == "ignored"
+    assert progress[-1].reason == "qc_rejected"
+    assert service.refine_pending().requested == 0
+    assert client.calls == 1
 
 
 def test_refinement_qc_warning_is_carried_across_persistence_boundary(tmp_path: Path) -> None:

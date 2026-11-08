@@ -255,7 +255,12 @@ function IngestionSection({
         <MetricCard
           label="Pending refinement"
           value={formatCount(totals.pending_records_total)}
-          note="No current refinement result."
+          note="Awaiting refinement; excludes ignored."
+        />
+        <MetricCard
+          label="Ignored"
+          value={formatCount(totals.ignored_records_total)}
+          note="Expected failures excluded from refinement retries."
         />
         <MetricCard
           label="Oldest pending capture"
@@ -273,7 +278,7 @@ function IngestionSection({
 
       <Paper withBorder p="md" bg="white">
         <Table.ScrollContainer
-          minWidth={620}
+          minWidth={720}
           type="native"
           role="region"
           tabIndex={0}
@@ -285,6 +290,7 @@ function IngestionSection({
                 <Table.Th scope="col">Source</Table.Th>
                 <Table.Th scope="col">Raw records</Table.Th>
                 <Table.Th scope="col">Pending</Table.Th>
+                <Table.Th scope="col">Ignored</Table.Th>
                 <Table.Th scope="col">Latest capture</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -294,6 +300,7 @@ function IngestionSection({
                   <Table.Th scope="row">{source.source}</Table.Th>
                   <Table.Td>{formatCount(source.ingestion.records_total)}</Table.Td>
                   <Table.Td>{formatCount(source.ingestion.pending_records_total)}</Table.Td>
+                  <Table.Td>{formatCount(source.ingestion.ignored_records_total)}</Table.Td>
                   <Table.Td>
                     {formatTimestamp(source.ingestion.latest_captured_at, timeZone)}
                   </Table.Td>
@@ -305,6 +312,7 @@ function IngestionSection({
                 <Table.Th scope="row" fw={700}>All observed sources</Table.Th>
                 <Table.Td fw={700}>{formatCount(totals.records_total)}</Table.Td>
                 <Table.Td fw={700}>{formatCount(totals.pending_records_total)}</Table.Td>
+                <Table.Td fw={700}>{formatCount(totals.ignored_records_total)}</Table.Td>
                 <Table.Td fw={700}>{formatTimestamp(totals.latest_captured_at, timeZone)}</Table.Td>
               </Table.Tr>
             </Table.Tfoot>
