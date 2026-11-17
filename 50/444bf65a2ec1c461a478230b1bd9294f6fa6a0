@@ -1,0 +1,31 @@
+packages/pino-integration/src/pino_integration/kaveikti.py
+  s_28a646b9282ea6::t_bf192c38f0340f 35,57-65,75-81,86,139-140,143,147-151
+packages/pino-integration/src/pino_integration/vilnius_events.py
+  s_28a646b9282ea6::t_d32fffd5d66f7e 35-37,39,43-46,57-64,70-82,126-136,138
+packages/pino-integration/tests/fixtures/kaveikti_listing_2026.html
+  s_28a646b9282ea6::t_0c58711e019cb6 1-58
+packages/pino-integration/tests/fixtures/vilnius_events_listing_2026.html
+  s_28a646b9282ea6::t_49a37044b99208 1-71
+packages/pino-integration/tests/fixtures/vilnius_events_meta_rows.html
+  s_28a646b9282ea6::t_788e848360b51e 1-41
+packages/pino-integration/tests/test_kaveikti.py
+  s_28a646b9282ea6::t_9a1ca8e80975c0 51-80
+packages/pino-integration/tests/test_vilnius_events.py
+  s_28a646b9282ea6::t_0964b056760f12 3-4,34-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "50444bf65a2ec1c461a478230b1bd9294f6fa6a0",
+  "prompts": {},
+  "sessions": {
+    "s_28a646b9282ea6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18424-a2cb-79f0-b786-563e42522406",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Ruslan Panasiuk <ruslan.panasiuk@protonmail.com>"
+    }
+  }
+}
