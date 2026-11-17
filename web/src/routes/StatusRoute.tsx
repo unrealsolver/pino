@@ -375,7 +375,7 @@ function WeeklyCoverageSection({
 
       <Paper withBorder p="md" bg="white">
         <Table.ScrollContainer
-          minWidth={1120}
+          minWidth={800}
           type="native"
           role="region"
           tabIndex={0}
@@ -393,12 +393,17 @@ function WeeklyCoverageSection({
               <Table.Tr>
                 <Table.Th scope="col">Source</Table.Th>
                 {weeks.map((week) => (
-                  <Table.Th key={week.week_start} scope="col">
+                  <Table.Th key={week.week_start} scope="col" title={week.week_start}>
                     <Text size="xs" fw={700}>
-                      Week of {week.week_start}
+                      {formatInTimeZone(new Date(week.week_start), "UTC", {
+                        day: "2-digit",
+                        month: "short"
+                      }, "en-GB")},
                     </Text>
                     <Text size="xs" c="dimmed" fw={400}>
-                      Ends {week.week_end}
+                      {formatInTimeZone(new Date(week.week_start), "UTC", {
+                        weekday: "long"
+                      }, "en-GB")}
                     </Text>
                     {week.is_partial && (
                       <Badge size="xs" variant="light" color="amber" mt="xs">
