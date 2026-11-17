@@ -9,5 +9,5 @@ repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 rsync -rtO --info=progress2 --stats \
   --chmod=D2775,F664 \
   --include='*/' --include='*.webp' --exclude='*' \
-  -e 'ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10' \
-  "$repo_dir/.pino/media/" ops@204.168.143.13:/var/lib/pino/media/
+  -e 'ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10' \
+  "$repo_dir/.pino/media/" ops@based.lt:/var/lib/pino/media/

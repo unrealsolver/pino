@@ -32,11 +32,18 @@ class VilniusEventsSource:
 def parse_vilnius_events_records(html: str, *, source_name: str, page_url: str) -> list[Record]:
     """Parse event cards from a vilnius-events.lt listing page."""
     soup = BeautifulSoup(html, "html.parser")
+    cards = soup.select(".o-card.ve, .ve-list-item .oe-card")
+    if not cards:
+        raise ValueError(f"{source_name}: no event cards found at {page_url}")
     records: list[Record] = []
-    for index, card in enumerate(soup.select(".o-card.ve")):
+    for index, card in enumerate(cards):
         record = _parse_event_card(card, source_name=source_name, page_url=page_url, index=index)
         if record is not None:
             records.append(record)
+    if not records:
+        raise ValueError(
+            f"{source_name}: none of {len(cards)} event cards could be parsed at {page_url}"
+        )
     return records
 
 
@@ -47,18 +54,33 @@ def _parse_event_card(
     page_url: str,
     index: int,
 ) -> Record | None:
-    title = _text_or_none(card.select_one(".m-card__description-title"))
-    link = card.select_one("a.u-text-decoration-none[href]") or card.select_one("a[href]")
+    title = _text_or_none(card.select_one(".oe-card__title")) or _text_or_none(
+        card.select_one(".m-card__description-title")
+    )
+    link = (
+        card
+        if card.name == "a" and card.get("href")
+        else card.select_one("a.u-text-decoration-none[href]") or card.select_one("a[href]")
+    )
     if title is None or link is None:
         return None
 
     href = link.get("href")
     url = urljoin(page_url, str(href)) if href else None
-    display_time = _text_or_none(card.select_one(".m-card__description-date"))
-    location = _text_or_none(card.select_one("p.m-card__location a")) or _text_or_none(
-        card.select_one("p.m-card__location"),
+    display_time = _text_or_none(card.select_one(".m-card__description-date")) or (
+        _meta_display_time(card)
     )
-    category = _text_or_none(card.select_one(".m-card__category"))
+    location = (
+        _text_or_none(card.select_one(".oe-card__location"))
+        or _text_or_none(card.select_one("p.m-card__location a"))
+        or _text_or_none(card.select_one("p.m-card__location"))
+    )
+    tags = [_text_or_none(tag) for tag in card.select(".oe-card__tag")]
+    category = (
+        ", ".join(tag for tag in tags if tag)
+        if any(tags)
+        else _text_or_none(card.select_one(".m-card__category"))
+    )
     image_url = _image_url(card, page_url)
 
     details = [title]
@@ -101,8 +123,19 @@ def _clean_text(value: str) -> str:
     return " ".join(value.split())
 
 
+def _meta_display_time(card: Tag) -> str | None:
+    parts = []
+    for row in card.select(".oe-card__meta-row"):
+        if row.select_one(".oe-card__location") is not None:
+            continue
+        text = _text_or_none(row)
+        if text:
+            parts.append(text)
+    return " ".join(parts) or None
+
+
 def _image_url(card: Tag, page_url: str) -> str | None:
-    image = card.select_one("img.m-card__image")
+    image = card.select_one(".oe-card__image") or card.select_one("img.m-card__image")
     if image is None:
         return None
     src = image.get("data-wpfc-original-src") or image.get("src")

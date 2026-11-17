@@ -48,6 +48,36 @@ def test_parse_current_listing_without_microdata() -> None:
     assert "Time: Trečiadienį 18:30" in record.text
 
 
+def test_parse_2026_listing_markup() -> None:
+    html = (Path(__file__).parent / "fixtures" / "kaveikti_listing_2026.html").read_text(
+        encoding="utf-8"
+    )
+    records = parse_kaveikti_records(
+        html, source_name="kaveikti-vilnius", page_url="https://www.kaveikti.lt/renginiai/vilniuje"
+    )
+    assert len(records) == 2
+    first, second = records
+    assert first.external_id == "404339"
+    assert first.title == "„The Tiger Lillies“"
+    assert first.url == "https://www.kaveikti.lt/renginys/the-tiger-lillies-kaunas"
+    assert first.payload["category"] == "Koncertas"
+    assert first.payload["location"] == "Keistuolių teatras"
+    assert first.payload["display_time"] == "Penktadienį 19:00"
+    assert first.payload["start_at"] is None
+    assert first.payload["end_at"] is None
+    assert (
+        first.payload["image_url"]
+        == "https://www.kaveikti.lt/thumbs/events/14/77/65/the-tiger-lillies-vilnius-0c2d-q75-w560-cr2504_1408_0_0.webp?v=1243563987"
+    )
+    assert second.external_id == "417088"
+    assert second.title == "Artėjant šventėms išsirink ekskursiją sau, kolegoms ir draugams"
+    assert second.payload["category"] == "Ekskursija"
+    assert second.payload["location"] == "Vilniaus senamiestis"
+    assert second.payload["display_time"] == "Susisiekti su organizatoriumi"
+    assert second.payload["start_at"] is None
+    assert second.payload["end_at"] is None
+
+
 @pytest.mark.parametrize(
     "html, reason",
     [

@@ -32,7 +32,7 @@ class KaveiktiSource:
 def parse_kaveikti_records(html: str, *, source_name: str, page_url: str) -> list[Record]:
     """Parse event cards from a kaveikti.lt listing page."""
     soup = BeautifulSoup(html, "html.parser")
-    blocks = soup.select(".block.event-block")
+    blocks = soup.select(".block.event-block, .event-card")
     if not blocks:
         raise ValueError(f"{source_name}: no event cards found at {page_url}")
     records: list[Record] = []
@@ -54,9 +54,15 @@ def _parse_event_block(
     page_url: str,
     index: int,
 ) -> Record | None:
-    title_el = block.select_one(".title [itemprop='name']") or block.select_one(".title a")
-    link_el = block.select_one(".title a[href]") or block.select_one(
-        ".block-head a[href]",
+    title_el = (
+        block.select_one(".event-card__title-link")
+        or block.select_one(".title [itemprop='name']")
+        or block.select_one(".title a")
+    )
+    link_el = (
+        block.select_one(".event-card__title-link[href]")
+        or block.select_one(".title a[href]")
+        or block.select_one(".block-head a[href]")
     )
     if title_el is None or link_el is None:
         return None
@@ -66,13 +72,18 @@ def _parse_event_block(
     if not title or not href:
         return None
     url = urljoin(page_url, str(href)) if href else None
-    category = _text_or_none(block.select_one(".type-label"))
-    location = _text_or_none(block.select_one(".location a, .location span"))
+    category = _text_or_none(
+        block.select_one(".event-card__badge--category") or block.select_one(".type-label")
+    )
+    location = _text_or_none(
+        block.select_one(".event-card__venue span")
+        or block.select_one(".location a, .location span")
+    )
     display_time = _display_time(block)
     start_at = _meta_content(block, "startDate")
     end_at = _meta_content(block, "endDate")
     image_url = _image_url(block, page_url)
-    event_time_id = link_el.get("data-event-time-id")
+    event_time_id = block.get("data-event-time-id") or link_el.get("data-event-time-id")
 
     details = [title]
     if category:
@@ -125,15 +136,19 @@ def _meta_content(block: Tag, itemprop: str) -> str | None:
 
 
 def _display_time(block: Tag) -> str | None:
-    date = _text_or_none(block.select_one(".date-time .time-date"))
-    hour = _text_or_none(block.select_one(".date-time .time-h"))
+    date = _text_or_none(block.select_one(".time-date"))
+    hour = _text_or_none(block.select_one(".time-h"))
     if date and hour:
         return f"{date} {hour}"
-    return date or hour or None
+    return date or hour or _text_or_none(block.select_one(".event-card__meta--status")) or None
 
 
 def _image_url(block: Tag, page_url: str) -> str | None:
-    image = block.select_one(".block-head img") or block.select_one("img[itemprop='image']")
+    image = (
+        block.select_one(".event-card__image")
+        or block.select_one(".block-head img")
+        or block.select_one("img[itemprop='image']")
+    )
     if image is None:
         return None
     src = image.get("src")
