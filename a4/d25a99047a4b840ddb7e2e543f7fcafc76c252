@@ -1,0 +1,19 @@
+web/src/routes/StatusRoute.tsx
+  s_28a646b9282ea6::t_1ca0c2a636375e 378,396,398-401,404-406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4d25a99047a4b840ddb7e2e543f7fcafc76c252",
+  "prompts": {},
+  "sessions": {
+    "s_28a646b9282ea6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18424-a2cb-79f0-b786-563e42522406",
+        "model": "unknown"
+      },
+      "human_author": "Ruslan Panasiuk <ruslan.panasiuk@protonmail.com>"
+    }
+  }
+}
