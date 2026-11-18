@@ -1,0 +1,16 @@
+packages/pino-core/src/pino_core/schedules.py
+  h_958082ecdc4af7 273-278,285-298
+packages/pino-core/tests/test_schedules.py
+  h_958082ecdc4af7 4-5,248-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "52f5be505c7d8cb620761609e5c79534f2f9c414",
+  "prompts": {},
+  "humans": {
+    "h_958082ecdc4af7": {
+      "author": "Ruslan Panasiuk <ruslan.panasiuk@protonmail.com>"
+    }
+  }
+}
