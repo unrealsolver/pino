@@ -26,7 +26,7 @@ export function AppProviders({
 }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={theme} defaultColorScheme="light">
+      <MantineProvider theme={theme} forceColorScheme="light">
         <DatesProvider settings={{ locale: "en", firstDayOfWeek: 1, weekendDays: [0, 6] }}>
           {children}
         </DatesProvider>
