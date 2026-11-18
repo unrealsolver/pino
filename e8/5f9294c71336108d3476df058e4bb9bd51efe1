@@ -1,0 +1,19 @@
+web/src/App.tsx
+  s_28a646b9282ea6::t_9d4453612db4c7 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e85f9294c71336108d3476df058e4bb9bd51efe1",
+  "prompts": {},
+  "sessions": {
+    "s_28a646b9282ea6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18424-a2cb-79f0-b786-563e42522406",
+        "model": "unknown"
+      },
+      "human_author": "Ruslan Panasiuk <ruslan.panasiuk@protonmail.com>"
+    }
+  }
+}
