@@ -268,14 +268,32 @@ def compile_query_weekly_pattern(
     wall_start = local_start.replace(tzinfo=None)
     wall_end = local_end.replace(tzinfo=None)
     wall_minutes = int((wall_end - wall_start).total_seconds() / 60)
-    if wall_minutes < 0:
-        return WeeklyPattern(timezone=timezone_name, ranges=((0, _MINUTES_PER_WEEK),))
     elapsed_minutes = int((utc_end - utc_start).total_seconds() / 60)
     duration = max(wall_minutes, elapsed_minutes) + 1
+    if (
+        wall_minutes < 0
+        or duration >= _MINUTES_PER_WEEK
+        or _has_nearby_offset_change(local_start, local_end, timezone_info)
+    ):
+        return WeeklyPattern(timezone=timezone_name, ranges=((0, _MINUTES_PER_WEEK),))
     start = local_start.weekday() * _MINUTES_PER_DAY + _minute_of_day(local_start.time())
     ranges: list[tuple[int, int]] = []
     _append_cyclic_range(ranges, start, start + duration)
     return WeeklyPattern(timezone=timezone_name, ranges=tuple(_collapse_ranges(ranges)))
+
+
+def _has_nearby_offset_change(start: datetime, end: datetime, zone: ZoneInfo) -> bool:
+    # A skipped or repeated local time can be inside an occurrence even when
+    # both query bounds are on the same side of the change. Check whole local
+    # days, including the previous day where an overnight occurrence can start.
+    day = start.date() - timedelta(days=1)
+    last_day = end.date() + timedelta(days=1)
+    initial_offset = datetime.combine(day, time.min, zone).utcoffset()
+    while day < last_day:
+        day += timedelta(days=1)
+        if datetime.combine(day, time.min, zone).utcoffset() != initial_offset:
+            return True
+    return False
 
 
 def _upgrade_legacy_schedule(

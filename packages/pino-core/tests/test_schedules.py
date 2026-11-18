@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from pino_core.models import Refinement
 from pino_core.schedules import (
     compile_query_weekly_pattern,
@@ -243,3 +245,39 @@ def test_compile_query_weekly_pattern_is_conservative_across_dst_fallback() -> N
     )
 
     assert pattern.ranges == ((0, 10080),)
+
+
+@pytest.mark.parametrize(
+    "schedule_fields",
+    [
+        {
+            "kind": "recurrence",
+            "frequency": "weekly",
+            "from": "2026-03-01",
+            "until": None,
+            "rules": [{"weekdays": ["sunday"], "start": "03:30", "end": None}],
+        },
+        {
+            "kind": "occurrences",
+            "occurrences": [{"start": "2026-03-29T03:30", "end": None}],
+        },
+    ],
+)
+def test_spring_forward_occurrence_survives_weekly_prefilter(schedule_fields: dict) -> None:
+    timezone_name = "Europe/Vilnius"
+    schedule = normalize_schedule({"version": 1, "timezone": timezone_name, **schedule_fields})
+    assert schedule is not None
+    # Both query bounds are after the jump, so comparing their offsets misses it.
+    window_start = datetime(2026, 3, 29, 1, 25, tzinfo=timezone.utc)
+    window_end = datetime(2026, 3, 29, 1, 35, tzinfo=timezone.utc)
+
+    assert expand_schedule(
+        schedule, window_start=window_start, window_end=window_end, key_prefix="event"
+    )
+    indexed = compile_weekly_pattern(schedule)
+    query = compile_query_weekly_pattern(window_start, window_end, timezone_name)
+    assert any(
+        start < query_end and query_start < end
+        for start, end in indexed.ranges
+        for query_start, query_end in query.ranges
+    )
