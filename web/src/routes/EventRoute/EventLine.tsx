@@ -1,7 +1,8 @@
-import { ActionIcon, Badge, Group, Image, Paper, Progress, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Group, Image, Paper, Progress, Stack, Text, ThemeIcon, Tooltip, UnstyledButton } from "@mantine/core";
 import classes from "./EventLine.module.css";
 import { ExternalLink, Eye, EyeOff, MapPin } from "lucide-react";
 
+import type { EventItem } from "../../api";
 import {
   eventProgress,
   formatTimeRange,
@@ -13,19 +14,22 @@ export function EventLine({
   occurrence,
   timeZone,
   isHidden,
+  onOpenPoster,
   onToggleHidden
 }: {
   occurrence: EventOccurrence;
   timeZone: string;
   isHidden: boolean;
+  onOpenPoster: (event: EventItem) => void;
   onToggleHidden: () => void;
 }) {
   const event = occurrence.event;
+  const posterSrc = event.images?.[0];
   const categories = topCategories(event);
   const progress = eventProgress(event, occurrence.day, timeZone);
   const cover = (
     <Image
-      src={event.images?.[0]}
+      src={posterSrc}
       fallbackSrc="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='100'/%3E"
       alt=""
       loading="lazy"
@@ -68,10 +72,14 @@ export function EventLine({
         )}
       </div>
       <div className={classes.eventMain}>
-        {event.images?.[0] ? (
-          <a href={event.images[0]} target="_blank" rel="noreferrer" aria-label={`View cover for ${event.title}`}>
+        {posterSrc ? (
+          <UnstyledButton
+            aria-label={`View poster for ${event.title}`}
+            aria-haspopup="dialog"
+            onClick={() => onOpenPoster(event)}
+          >
             {cover}
-          </a>
+          </UnstyledButton>
         ) : cover}
         <Stack gap={0} miw={0} mih={100}>
           <Group gap="xs" wrap="nowrap" align="start">

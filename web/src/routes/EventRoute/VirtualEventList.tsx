@@ -3,8 +3,10 @@ import classes from "./VirtualEventList.module.css";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
+import type { EventItem } from "../../api";
 import { EventLine } from "./EventLine";
 import { HiddenDayControl } from "./HiddenDayControl";
+import { PosterPreview } from "./PosterPreview";
 import type { VirtualListItem } from "./utils";
 
 export function VirtualEventList({
@@ -21,6 +23,7 @@ export function VirtualEventList({
   onShowEvent: (eventId: string) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
+  const [posterEvent, setPosterEvent] = useState<EventItem | null>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
   const getVirtualItemKey = useCallback((index: number) => items[index]?.key ?? index, [items]);
   const updateScrollMargin = useCallback(() => {
@@ -78,6 +81,7 @@ export function VirtualEventList({
                 occurrence={item.occurrence}
                 timeZone={timeZone}
                 isHidden={hiddenEventIds.has(item.occurrence.event.refinement_id)}
+                onOpenPoster={setPosterEvent}
                 onToggleHidden={() =>
                   hiddenEventIds.has(item.occurrence.event.refinement_id)
                     ? onShowEvent(item.occurrence.event.refinement_id)
@@ -88,6 +92,7 @@ export function VirtualEventList({
           </Box>
         );
       })}
+      <PosterPreview event={posterEvent} onClose={() => setPosterEvent(null)} />
     </Box>
   );
 }

@@ -1,0 +1,14 @@
+.posterSurface {
+  background-color: transparent;
+}
+
+.posterClose {
+  position: absolute;
+  top: var(--mantine-spacing-xs);
+  right: var(--mantine-spacing-xs);
+}
+
+.posterCaption {
+  contain: inline-size;
+  overflow-wrap: anywhere;
+}

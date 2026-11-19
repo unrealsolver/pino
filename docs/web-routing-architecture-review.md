@@ -59,6 +59,9 @@ Google warns that location-dependent content can be incompletely crawled; explic
 
 **Keep lightweight expansion and navigation distinct initially.**
 
+The [accepted poster preview](web-routing-plan.md#accepted-open-posters-from-the-event-list)
+supersedes the inline “More” preview below for the first implementation.
+
 My first implementation would use:
 
 - A “More” button that expands a bounded preview without changing the URL.

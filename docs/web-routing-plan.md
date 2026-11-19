@@ -18,8 +18,9 @@ blanket authorization to change infrastructure.
 
 ## Sanity review
 
-The list-first direction holds up. Use real event links, small optional previews,
-and standalone details. Defer panels, contextual routing, and swipe navigation.
+The list-first direction holds up. Open posters directly from the list, and use
+event-title links for standalone details. Defer inline text expansion, panels,
+contextual routing, and swipe navigation.
 
 The current code still has the prerequisites identified in September:
 
@@ -154,9 +155,20 @@ focused element in session/history state. Restore after data and virtualized geo
 are ready. Fall back to the nearest available day when an event disappears. Keep
 restoration separate from shared URL filters. A direct event visit needs no list fetch.
 
-Inline expansion uses a button and bounded content; title links navigate normally.
-Test keyboard focus, Back/Forward, loaded images, changed row heights, and removed
-events on narrow and wide screens before considering a desktop panel.
+### Accepted: open posters from the event list
+
+Click or tap the poster thumbnail to open a large image preview over the list.
+Use the existing image URL so opening the preview requires no event-detail request
+or URL change. On mobile, use the available screen and allow zooming in on small
+print. Provide a visible close button and support Escape. On close, keep the
+list's scroll position and return focus to the thumbnail. Rows without an image
+have no poster action.
+
+The event title links to the standalone detail page once public event URLs are
+available. Preserve the clicked occurrence when opening details from the list.
+Defer a detail panel until browsing shows a need for more than the poster preview
+and the information already in the row. The poster preview can ship independently
+of the detail page.
 
 ## Delivery sequence
 
@@ -166,12 +178,13 @@ events on narrow and wide screens before considering a desktop panel.
 | 3a (complete) | Registry, validated LLM assignment, API filter and one-off historical stamp | City proposal and source context | Backend/script tests pass; 753 shared-DB rows stamped and preview verifies zero remaining |
 | 3b (complete, undeployed) | City routes and timezone-correct browsing | 3a + 1 | Both route forms preserved; client redirects, DST and foreign-timezone tests pass |
 | 3c | HTTP routing integration; optional IP matching | 3b + infrastructure routing contract | HTTP redirects/404s, query preservation, inference fallback |
+| Poster preview (accepted) | Open the existing event image over the list | Event image in the list | Mobile zoom, visible close, Escape, focus and scroll restoration, no detail request |
 | 2a | Identity reconciliation specification + fixtures | Identity policy decisions | Reordering/split/merge/removal behavior reviewed |
 | 2b | Durable event identity and migration | 2a | Migration and reprocessing invariants |
 | 4 | Standalone detail API + client page | 2b | Direct/past/unlisted event access, true not-found state |
 | 5a | Python public event HTML experiment + metadata | 2b + detail service from 4 | No-JS event HTML, status codes, fresh content, template packaging |
 | 5b | Bounded public city HTML and SPA handoff | 3b + 5a experiment review | No duplicate content, crawlable links, deployment acceptance |
-| 6 | Bounded expansion and browsing restoration | 4 | Realistic mobile/keyboard/history verification |
+| 6 | Browsing restoration after detail navigation | 4 | Realistic mobile/keyboard/history verification |
 
 Each row is independently reviewable; split migrations and user-facing work further
 when useful. Existing slice numbers are retained for reference; city slices now come
