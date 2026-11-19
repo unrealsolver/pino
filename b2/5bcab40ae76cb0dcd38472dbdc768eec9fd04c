@@ -1,0 +1,23 @@
+web/src/routes/EventRoute/PosterPreview.module.css
+  s_28a646b9282ea6::t_e63575a82f2e0d 1-14
+docs/web-routing-architecture-review.md
+  s_28a646b9282ea6::t_8a7e12af6f31ac 62-64
+docs/web-routing-plan.md
+  s_28a646b9282ea6::t_050e49208e74bd 21-23,158-171,181,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b25bcab40ae76cb0dcd38472dbdc768eec9fd04c",
+  "prompts": {},
+  "sessions": {
+    "s_28a646b9282ea6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18424-a2cb-79f0-b786-563e42522406",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "Ruslan Panasiuk <ruslan.panasiuk@protonmail.com>"
+    }
+  }
+}
