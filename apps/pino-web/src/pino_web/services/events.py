@@ -7,11 +7,11 @@ from zoneinfo import ZoneInfo
 from pino_core.cities import City, resolve_city
 from pino_core.config import PinoConfig
 from pino_core.dates import DEFAULT_SOURCE_TIMEZONE
-from pino_core.models import Refinement
-from pino_core.schedules import expand_schedule
+from pino_core.models import Record, Refinement
+from pino_core.schedules import compile_weekly_pattern, expand_schedule
 from pino_core.storage import EventQueryResult
 from pino_web.repositories.events import EventRepository
-from pino_web.schemas import EventItem, EventListResponse
+from pino_web.schemas import EventDetail, EventItem, EventListResponse
 
 MAX_QUERY_DAYS = 370
 DEFAULT_EVENT_LIMIT = 300
@@ -43,6 +43,43 @@ class EventService:
         self.config = config
         self.repository = repository
         self.local_timezone = local_timezone or ZoneInfo(DEFAULT_SOURCE_TIMEZONE)
+
+    def get_event(self, refinement_id: str) -> EventDetail | None:
+        result = self.repository.get_event(refinement_id)
+        if result is None:
+            return None
+        record, refinement = result
+        schedule = refinement.schedule
+        city = resolve_city(refinement.city_id) if refinement.city_id else None
+        timezone_name = city.timezone if city else _timezone_name(self.local_timezone)
+        if schedule is not None:
+            timezone_name = schedule["timezone"]
+        return EventDetail(
+            refinement_id=refinement.id,
+            record_id=record.id,
+            source_event_id=record.external_id,
+            source_kind=record.kind,
+            title=_event_title(record, refinement),
+            source_title=record.title,
+            summary=refinement.summary,
+            text=record.text,
+            source=record.source,
+            url=record.url,
+            images=_event_images(record, self.config.media.public_url),
+            location=refinement.location,
+            city_id=refinement.city_id,
+            timezone=timezone_name,
+            published_at=record.published_at,
+            captured_at=record.captured_at,
+            refined_at=refinement.refined_at,
+            relevant_from=refinement.relevant_from,
+            relevant_to=refinement.relevant_to,
+            schedule=schedule,
+            weekly_multirange=(
+                compile_weekly_pattern(schedule).as_postgresql_multirange() if schedule else None
+            ),
+            category_scores=refinement.category_scores,
+        )
 
     def list_events(
         self,
@@ -152,6 +189,14 @@ def _validate_categories(values: list[str], known_categories: list[str]) -> list
     return selected
 
 
+def _event_title(record: Record, refinement: Refinement) -> str:
+    return (refinement.summary or "").strip() or record.title or "Untitled event"
+
+
+def _event_images(record: Record, media_public_url: str) -> list[str]:
+    return [f"{media_public_url.rstrip('/')}/{image.path}" for image in record.images]
+
+
 def _to_event_items(
     result: EventQueryResult,
     local_timezone: tzinfo,
@@ -183,10 +228,10 @@ def _to_event_items(
         )
     return [
         EventItem(
-            images=[f"{media_public_url.rstrip('/')}/{image.path}" for image in record.images],
+            images=_event_images(record, media_public_url),
             refinement_id=refinement.id,
             occurrence_id=occurrence_id,
-            title=(refinement.summary or "").strip() or record.title or "Untitled event",
+            title=_event_title(record, refinement),
             text=record.text,
             source=record.source,
             url=record.url,

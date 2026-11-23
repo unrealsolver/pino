@@ -45,8 +45,22 @@ classification, SSR migration, and scroll restoration into one implementation.
 
 ## Proposal A: public identity and city data
 
+The first detail page uses the current refinement ID. A refinement defines the
+published event and its dates, and can be wrong. The source record preserves
+what was captured and may describe several events. There is no independent,
+authoritative event to match against when a refinement changes.
+
+Re-refinement is expected to be rare. For an unambiguous correction, prefer
+retaining the ID when possible. For failed or broken items, losing the previous
+ID is an accepted limitation of the first version. Ambiguous replacements can
+leave an old link unavailable. They should never silently send it to a different
+event. Refinement-based links can therefore return 404 after replacement.
+
+### Later durability work
+
 Introduce a durable public event entity, with a generated opaque ID and a separate
-association to source records/current refinements. Refinement IDs remain internal.
+association to source records/current refinements. That ID would replace the
+refinement ID in public links.
 Occurrences belong to an event; they are not separate identities for every list row.
 
 Start with source-local identity. Preserve associations on unambiguous reprocessing;
@@ -59,7 +73,7 @@ updates, reordered multi-event posts, splits, merges, removals, and source edits
 An ambiguous match must not silently attach an old URL to a different event. Record
 an unresolved association for review; retain the previous published representation
 until explicitly superseded or withdrawn. This publication-state policy needs a
-concrete storage/API design before public URLs ship.
+concrete storage/API design before promising durable public links.
 
 Add a manually maintained city registry (`country_code`, `city_slug`, IANA `timezone`).
 Initially use `lt/vilnius`; country is not UI language. Geographic scope is coarse and
@@ -85,8 +99,16 @@ Use disposable databases only; live migration/publication is separate work.
 | `/lt` | Entry redirect to a supported inferred Lithuanian city, otherwise Vilnius |
 | `/vilnius` | Supported short route rendering the same city feed as `/lt/vilnius` |
 | `/lt/vilnius` | Explicit city feed; normalized lowercase country/city identifiers |
-| `/{country}/{city}/event/{public_id}` | Stable standalone event page; resolve by globally unique ID and redirect old city paths |
+| `/event/{refinement_id}` | First standalone detail page with the link lifetime described in Proposal A |
+| `/event/{title-slug}-{short-id}` | Accepted readable URL format for a future iteration, e.g. `/event/open-synth-jam-k7m4q9` |
 | `/event/` | Existing list during migration; compatibility redirect to Vilnius preserving filters |
+
+Use one path segment for the readable event URL. Derive the slug from the first
+few meaningful words of the refined title, and append a short random ID with a
+uniqueness check at write time. Store the slug on first assignment and reuse it
+after title corrections. City and year stay out of the URL. If title-derived
+slugs are regularly awkward in practice, the existing refinement pass can
+optionally supply a short label, with the title-derived slug as the fallback.
 
 These route choices include the user's 2026-10-24 clarification: both short and
 country-qualified city URLs remain valid, with explicit short aliases for supported
@@ -96,8 +118,8 @@ data decision. IP matching needs a
 concrete data source; use the documented fallback in its absence. The city proposal
 distinguishes SPA navigation from real HTTP redirect/not-found integration.
 
-`GET /api/events/{public_id}` resolves without list filters, a current-date window, or
-list result limits. Return the normalized schedule and event bounds; bound any
+`GET /api/events/{refinement_id}` resolves without list filters, a current-date
+window, or list result limits. Return the normalized schedule and event bounds; bound any
 optional occurrence preview. Distinguish unknown IDs (404), explicitly withdrawn
 content (documented tombstone policy), and dependency failures (503).
 
@@ -181,7 +203,7 @@ of the detail page.
 | Poster preview (accepted) | Open the existing event image over the list | Event image in the list | Mobile zoom, visible close, Escape, focus and scroll restoration, no detail request |
 | 2a | Identity reconciliation specification + fixtures | Identity policy decisions | Reordering/split/merge/removal behavior reviewed |
 | 2b | Durable event identity and migration | 2a | Migration and reprocessing invariants |
-| 4 | Standalone detail API + client page | 2b | Direct/past/unlisted event access, true not-found state |
+| 4 | Standalone detail API + client page | Current refinement IDs for the first version; 2b for durable links | Direct/past/unlisted event access, true not-found state |
 | 5a | Python public event HTML experiment + metadata | 2b + detail service from 4 | No-JS event HTML, status codes, fresh content, template packaging |
 | 5b | Bounded public city HTML and SPA handoff | 3b + 5a experiment review | No duplicate content, crawlable links, deployment acceptance |
 | 6 | Browsing restoration after detail navigation | 4 | Realistic mobile/keyboard/history verification |

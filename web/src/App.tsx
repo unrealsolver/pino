@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { CityRoute } from "./routes/CityRoute";
+import { EventDetailRoute } from "./routes/EventDetailRoute";
 import { StatusRoute } from "./routes/StatusRoute";
 import { theme } from "./theme";
 
@@ -12,6 +13,7 @@ export function AppRoutes() {
     <Routes>
       {/* Explicit system route wins over the wildcard city handler. */}
       <Route path="/status" element={<StatusRoute />} />
+      <Route path="/event/:refinementId" element={<EventDetailRoute />} />
       <Route path="*" element={<CityRoute />} />
     </Routes>
   );

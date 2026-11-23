@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from pino_core.models import Record, Refinement
 from pino_core.storage import DatabaseStore, EventQueryResult
 
 
 class EventRepository:
     def __init__(self, store: DatabaseStore) -> None:
         self.store = store
+
+    def get_event(self, refinement_id: str) -> tuple[Record, Refinement] | None:
+        return self.store.get_event(refinement_id)
 
     def query_events(
         self,

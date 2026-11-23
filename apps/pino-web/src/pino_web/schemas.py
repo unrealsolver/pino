@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +22,31 @@ class EventItem(BaseModel):
     relevant_to: datetime | None
     category_scores: dict[str, float]
     matching_score: float
+
+
+class EventDetail(BaseModel):
+    refinement_id: str
+    record_id: str
+    source_event_id: str | None
+    source_kind: str
+    title: str
+    source_title: str | None
+    summary: str | None
+    text: str
+    source: str
+    url: str | None
+    images: list[str]
+    location: str | None
+    city_id: str | None
+    timezone: str
+    published_at: datetime | None
+    captured_at: datetime
+    refined_at: datetime
+    relevant_from: datetime | None
+    relevant_to: datetime | None
+    schedule: dict[str, Any] | None
+    weekly_multirange: str | None
+    category_scores: dict[str, float]
 
 
 class EventListResponse(BaseModel):

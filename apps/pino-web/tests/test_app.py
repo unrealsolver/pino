@@ -11,7 +11,7 @@ from pino_core.storage import SQLiteStore
 from pino_web.app import create_app
 from pino_web.deps import get_event_repository, get_event_service
 from pino_web.repositories.events import EventRepository
-from pino_web.routes.events import list_events
+from pino_web.routes.events import get_event, list_events
 from pino_web.services.events import (
     EventFilters,
     EventQueryError,
@@ -30,6 +30,54 @@ def test_app_registers_event_route_and_configured_store(tmp_path: Path) -> None:
 
     assert app.state.store is store
     assert any(route.path == "/api/events" for route in app.routes)
+    assert any(route.path == "/api/events/{refinement_id}" for route in app.routes)
+
+
+def test_event_detail_reads_past_schedule_and_index_by_id(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "pino.sqlite")
+    store.init_schema()
+    record = store.add_record(
+        Record(
+            kind="event",
+            source="test",
+            text="Monday jam",
+            payload={"internal": "source metadata"},
+        )
+    ).record
+    event = Refinement(
+        record_id=record.id,
+        content_kind="event",
+        summary="Synth jam",
+        schedule={
+            "version": 1,
+            "timezone": "Europe/Vilnius",
+            "kind": "recurrence",
+            "frequency": "weekly",
+            "from": "2020-01-06",
+            "until": "2020-01-27",
+            "rules": [{"weekdays": ["monday"], "start": "19:00", "end": "21:00"}],
+        },
+        debug={"internal": "refinement trace"},
+        refiner="test",
+    )
+    non_event = Refinement(
+        record_id=record.id, item_index=1, content_kind="non_event", refiner="test"
+    )
+    store.replace_refinements(record.id, [event, non_event])
+    service = EventService(config=_config(tmp_path), repository=EventRepository(store))
+
+    detail = get_event(event.id, service)
+    assert detail.title == "Synth jam"
+    assert detail.text == "Monday jam"
+    assert detail.schedule == event.schedule
+    assert detail.weekly_multirange == "{[1140,1261)}"
+    assert detail.timezone == "Europe/Vilnius"
+    assert {"payload", "provenance", "debug"}.isdisjoint(detail.model_dump())
+
+    for missing_id in ("missing", non_event.id):
+        with pytest.raises(HTTPException) as exc_info:
+            get_event(missing_id, service)
+        assert exc_info.value.status_code == 404
 
 
 def test_events_endpoint_translates_service_query_error(tmp_path: Path) -> None:

@@ -927,6 +927,18 @@ class DatabaseStore:
             )
             return [Refinement.model_validate(dict(row._mapping)) for row in rows]
 
+    def get_event(self, refinement_id: str) -> tuple[Record, Refinement] | None:
+        with Session(self.engine) as session:
+            row = session.execute(
+                select(records_table, refinements_table)
+                .join(refinements_table, records_table.c.id == refinements_table.c.record_id)
+                .where(
+                    refinements_table.c.id == refinement_id,
+                    refinements_table.c.content_kind == "event",
+                )
+            ).first()
+            return _record_with_refinement_from_row(row) if row is not None else None
+
     def get_refinement(self, refinement_id: str) -> Refinement | None:
         with Session(self.engine) as session:
             row = session.execute(

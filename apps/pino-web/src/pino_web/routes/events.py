@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from pino_web.deps import get_event_service
-from pino_web.schemas import EventListResponse
+from pino_web.schemas import ErrorResponse, EventDetail, EventListResponse
 from pino_web.services.events import (
     DEFAULT_EVENT_LIMIT,
     EventFilters,
@@ -47,3 +47,13 @@ def list_events(
         return service.list_events(filters=filters)
     except EventQueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/events/{refinement_id}", responses={404: {"model": ErrorResponse}})
+def get_event(
+    refinement_id: str, service: Annotated[EventService, Depends(get_event_service)]
+) -> EventDetail:
+    event = service.get_event(refinement_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event

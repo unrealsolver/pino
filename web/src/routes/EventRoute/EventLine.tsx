@@ -1,6 +1,7 @@
-import { ActionIcon, Badge, Group, Image, Paper, Progress, Stack, Text, ThemeIcon, Tooltip, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Anchor, Badge, Group, Image, Paper, Progress, Stack, Text, ThemeIcon, Tooltip, UnstyledButton } from "@mantine/core";
 import classes from "./EventLine.module.css";
 import { ExternalLink, Eye, EyeOff, MapPin } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
 import type { EventItem } from "../../api";
 import {
@@ -24,6 +25,7 @@ export function EventLine({
   onToggleHidden: () => void;
 }) {
   const event = occurrence.event;
+  const listLocation = useLocation();
   const posterSrc = event.images?.[0];
   const categories = topCategories(event);
   const progress = eventProgress(event, occurrence.day, timeZone);
@@ -84,7 +86,20 @@ export function EventLine({
         <Stack gap={0} miw={0} mih={100}>
           <Group gap="xs" wrap="nowrap" align="start">
             <Text role="heading" aria-level={3} className={classes.breakAnywhere} miw={0} fw={600} lineClamp={2}>
-              {event.title}
+              <Anchor
+                component={Link}
+                to={`/event/${encodeURIComponent(event.refinement_id)}`}
+                state={{
+                  listPath: listLocation.pathname + listLocation.search + listLocation.hash,
+                  startsAt: event.starts_at,
+                  endsAt: event.ends_at,
+                  timeZone
+                }}
+                c="inherit"
+                fw="inherit"
+              >
+                {event.title}
+              </Anchor>
             </Text>
             {event.url && (
               <ActionIcon

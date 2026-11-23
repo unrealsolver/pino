@@ -22,6 +22,28 @@ export type EventListResponse = {
   events: EventItem[];
 };
 
+export type EventDetail = Pick<
+  EventItem,
+  "refinement_id" | "title" | "source" | "url" | "location" | "category_scores"
+> & {
+  record_id: string;
+  source_event_id: string | null;
+  source_kind: string;
+  source_title: string | null;
+  summary: string | null;
+  text: string;
+  images: string[];
+  city_id: string | null;
+  timezone: string;
+  published_at: string | null;
+  captured_at: string;
+  refined_at: string;
+  relevant_from: string | null;
+  relevant_to: string | null;
+  schedule: Record<string, unknown> | null;
+  weekly_multirange: string | null;
+};
+
 export type City = {
   id: string;
   country_code: string;
@@ -216,6 +238,17 @@ export async function fetchEvents(
     signal: options.signal
   });
   return readJson<EventListResponse>(response);
+}
+
+export async function fetchEvent(
+  refinementId: string,
+  options: { signal?: AbortSignal } = {}
+): Promise<EventDetail | null> {
+  const response = await fetch(`/api/events/${encodeURIComponent(refinementId)}`, {
+    headers: { Accept: "application/json" },
+    signal: options.signal
+  });
+  return response.status === 404 ? null : readJson<EventDetail>(response);
 }
 
 export async function fetchStats(
