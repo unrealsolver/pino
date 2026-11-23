@@ -1,0 +1,41 @@
+web/src/routes/EventDetailRoute.test.tsx
+  s_28a646b9282ea6::t_ed88de7bc2f260 1-60
+web/src/routes/EventDetailRoute.tsx
+  s_28a646b9282ea6::t_1d864c0db0fd2e 1-167
+apps/pino-web/src/pino_web/repositories/events.py
+  s_28a646b9282ea6::t_accf2461eb5278 5,13-15
+apps/pino-web/src/pino_web/routes/events.py
+  s_28a646b9282ea6::t_c684ee39e4d267 9,50-59
+apps/pino-web/src/pino_web/schemas.py
+  s_28a646b9282ea6::t_54345942084a2c 4,27-51
+apps/pino-web/src/pino_web/services/events.py
+  s_28a646b9282ea6::t_661a61ebc70558 10-11,14,47-83,192-199,231,234
+apps/pino-web/tests/test_app.py
+  s_28a646b9282ea6::t_a73f562d88a8e8 14,33-80
+docs/web-routing-plan.md
+  s_28a646b9282ea6::t_d26863977eae13 48-60,62-63,76,102-103,106-112,121-122,206
+packages/pino-core/src/pino_core/storage.py
+  s_28a646b9282ea6::t_5e9c606bf62567 930-941
+web/src/App.tsx
+  s_28a646b9282ea6::t_2fcbe558784ce8 7,16
+web/src/api.ts
+  s_28a646b9282ea6::t_88e4435e5f64a2 25-46,243-253
+web/src/routes/EventRoute/EventLine.tsx
+  s_28a646b9282ea6::t_d6f0f25ce8b212 1,4,28,89-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff493f2dec6c6a6e1796834023a160e415cf6d45",
+  "prompts": {},
+  "sessions": {
+    "s_28a646b9282ea6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18424-a2cb-79f0-b786-563e42522406",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "Ruslan Panasiuk <ruslan.panasiuk@protonmail.com>"
+    }
+  }
+}
